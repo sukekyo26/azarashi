@@ -10,26 +10,36 @@
 
 ## デプロイ (install.sh)
 
-リポジトリ直下の `.<name>/` ディレクトリがデプロイ対象。その中身が `~/.<name>/` へ
-配置される（`.claude/` → `~/.claude/` など）。対象は自動検出されるので、新しい
-`.<name>/` を追加するだけで増やせる。
+`home/` ディレクトリの中身が `$HOME` へミラーされる（`home/.claude/` → `~/.claude/`、
+`home/.agents/` → `~/.agents/` など）。デプロイ対象を `home/` 配下に隔離してあるので、
+リポジトリ直下は azarashi 自身のプロジェクト設定に使える。
 
-- ファイル・ディレクトリは symlink（リポジトリでの編集が即反映される）。
-- `*.fragment.json` は既存の JSON 設定へ deep-merge（既存値が優先され、認証情報・
-  既存設定は破壊しない）。
+- ディレクトリは丸ごと symlink される。ただしデプロイ先が既に実ディレクトリとして
+  存在する場合は、その中へ入って子要素ごとにデプロイする（既存の状態を壊さない）。
+  ファイルも symlink なので、リポジトリでの編集は即反映される。
+- `*.fragment.json` は対応する JSON 設定へ deep-merge される（下記参照）。
 
 依存: `git` ・ `jq`
 
 ```sh
-./install.sh install                  # 全対象をホームへデプロイ
-./install.sh install --dry-run         # 計画のみ表示（diff のエイリアス）
-./install.sh install --target claude   # 対象を限定（カンマ/スペース区切りで複数可）
-./install.sh status                    # in-sync / drift / missing を表示
-./install.sh uninstall                 # 管理 symlink を除去し backup を復元
-./install.sh --help                    # 全コマンド・フラグ
+./install.sh install            # home/ の中身を $HOME へデプロイ
+./install.sh install --dry-run  # 計画のみ表示（diff のエイリアス）
+./install.sh status             # in-sync / drift / missing を表示
+./install.sh uninstall          # 管理 symlink を除去し、空ディレクトリを刈り取る
+./install.sh --help             # 全コマンド・フラグ
 ```
 
 リポジトリを移動すると symlink が切れるので `./install.sh install` を再実行する。
+
+### settings.fragment.json について
+
+`~/.claude/settings.json` は Claude Code 自身が書き込み、認証情報などユーザー固有の
+状態を含むため、丸ごと symlink できない。そこで azarashi が管理したい設定キー
+（権限の allowlist、`effortLevel` など）だけを `home/.claude/settings.fragment.json`
+に書いておくと、`install` 時に既存の `settings.json` へ deep-merge される。
+
+- 衝突時は**既存の値が優先**され、認証情報など保護対象のキーは書き込まれない。
+- 中身が空（`{}`）なら何もしない。現状は空 = 管理対象の設定なし。
 
 ## 開発
 

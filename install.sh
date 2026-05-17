@@ -1,11 +1,12 @@
 #!/usr/bin/env sh
-# azarashi installer — deploy repo config into the matching home directories.
+# azarashi installer — deploy the contents of home/ into $HOME.
 #
-# Each top-level ".<name>/" directory in this repo is a deploy target: its
-# contents go to "~/.<name>/". Targets are discovered automatically, so adding
-# a new ".<name>/" directory makes it deployable with no change to this script.
+# Everything under the repo's home/ directory is mirrored into $HOME
+# (home/.claude/ -> ~/.claude/, home/.agents/ -> ~/.agents/, ...).
 #
-# Files and directories are symlinked (edits in the repo are live); *.fragment.json
+# A directory is symlinked whole; but if its destination already exists as a
+# real directory, the installer steps inside and deploys each child instead, so
+# existing tool/user state is preserved. Plain files are symlinked. *.fragment.json
 # files are deep-merged into the matching settings JSON without clobbering keys.
 set -u
 
@@ -13,6 +14,7 @@ REPO_DIR=$(
   unset CDPATH
   cd -- "$(dirname -- "$0")" && pwd
 )
+HOME_SRC="$REPO_DIR/home"
 
 DRY_RUN=0
 NO_BACKUP=0
@@ -24,48 +26,24 @@ MODE=install
 
 usage() {
   cat <<'EOF'
-azarashi installer — deploy repo config into the matching home directories
+azarashi installer — deploy the contents of home/ into $HOME
 
 Usage: ./install.sh <command> [flags]
 
 Commands:
-  install            Deploy every target directory to the home directory (default)
+  install            Deploy everything under home/ into $HOME (default)
   diff               Alias for: install --dry-run
   status             Report in-sync / drift / missing per entry
-  uninstall          Remove azarashi-managed symlinks; restore backups
-  sync-instructions  Copy .claude/CLAUDE.md to .copilot/copilot-instructions.md
+  uninstall          Remove azarashi-managed symlinks; prune emptied directories
+  sync-instructions  Copy home/.claude/CLAUDE.md to home/.copilot/copilot-instructions.md
 
 Flags:
-  --target <name>    Restrict to the given target(s); repeatable or
-                     space/comma-separated (default: all discovered targets).
-                     A target "name" maps repo ".<name>/" to "~/.<name>/".
   --dry-run          Print actions without applying them
   --no-backup        Skip backups before overwriting (default: backups on)
   --force            Re-link / re-merge even when already in sync
   -h, --help         Show this help
 EOF
 }
-
-# --- target discovery ------------------------------------------------------
-
-# discover_targets — print the name of every deployable target, one per line.
-# A target is a top-level ".<name>/" directory other than ".git".
-discover_targets() {
-  for _dt in "$REPO_DIR"/.*/; do
-    [ -d "$_dt" ] || continue
-    # Strip the trailing slash and leading path with parameter expansion;
-    # basename mishandles the "/./" and "/../" entries some shells glob in.
-    _dt_name=${_dt%/}
-    _dt_name=${_dt_name##*/}
-    case $_dt_name in
-      . | .. | .git) continue ;;
-    esac
-    printf '%s\n' "${_dt_name#.}"
-  done
-}
-
-target_src() { printf '%s\n' "$REPO_DIR/.$1"; }
-target_dest() { printf '%s\n' "$HOME/.$1"; }
 
 # --- symlink helpers -------------------------------------------------------
 
@@ -118,51 +96,19 @@ link_path() {
   info "linked  : $_lp_dest"
 }
 
-# deploy_path <src> <dest> — a directory becomes a real dir with symlinked
-# children (so the user's own entries can coexist); a file is symlinked.
-deploy_path() {
-  _dp_src=$1
-  _dp_dest=$2
-  if [ -d "$_dp_src" ] && [ ! -L "$_dp_src" ]; then
-    if [ "$MODE" != status ] && [ "$DRY_RUN" -ne 1 ]; then
-      mkdir -p "$_dp_dest" || die "mkdir failed: $_dp_dest"
+remove_link() {
+  _rml=$1
+  if is_our_link "$_rml"; then
+    if [ "$DRY_RUN" -eq 1 ]; then
+      printf '  [dry-run] remove symlink %s\n' "$_rml"
+    else
+      rm -f "$_rml"
+      info "removed : $_rml"
     fi
-    for _dp_child in "$_dp_src"/*; do
-      [ -e "$_dp_child" ] || [ -L "$_dp_child" ] || continue
-      link_path "$_dp_child" "$_dp_dest/$(basename "$_dp_child")"
-    done
-  else
-    link_path "$_dp_src" "$_dp_dest"
+    restore_backup "$_rml"
+  elif [ -e "$_rml" ] || [ -L "$_rml" ]; then
+    warn "not an azarashi symlink, left untouched: $_rml"
   fi
-}
-
-# --- commands --------------------------------------------------------------
-
-process_target() { # install + status
-  _pt=$1
-  _pt_src=$(target_src "$_pt")
-  _pt_dest=$(target_dest "$_pt")
-  if [ ! -d "$_pt_src" ]; then
-    warn "no source dir, skipped: $_pt_src"
-    return 0
-  fi
-  log ""
-  log "[$_pt]  $_pt_src  ->  $_pt_dest"
-  if [ "$MODE" != status ] && [ "$DRY_RUN" -ne 1 ]; then
-    mkdir -p "$_pt_dest" || die "mkdir failed: $_pt_dest"
-  fi
-  for _pt_entry in "$_pt_src"/*; do
-    [ -e "$_pt_entry" ] || [ -L "$_pt_entry" ] || continue
-    _pt_name=$(basename "$_pt_entry")
-    case $_pt_name in
-      *.fragment.json)
-        merge_json "$_pt_entry" "$_pt_dest/${_pt_name%.fragment.json}.json"
-        ;;
-      *)
-        deploy_path "$_pt_entry" "$_pt_dest/$_pt_name"
-        ;;
-    esac
-  done
 }
 
 restore_backup() { # restore newest backup only when the target is now absent
@@ -179,56 +125,89 @@ restore_backup() { # restore newest backup only when the target is now absent
   mv "$_rb_bk" "$_rb" && info "restored: $_rb (from $(basename "$_rb_bk"))"
 }
 
-remove_link() {
-  _rml=$1
-  if is_our_link "$_rml"; then
-    if [ "$DRY_RUN" -eq 1 ]; then
-      printf '  [dry-run] remove symlink %s\n' "$_rml"
-    else
-      rm -f "$_rml"
-      info "removed : $_rml"
+# --- recursive deploy ------------------------------------------------------
+# deploy_entry and uninstall_entry recurse using only the per-call positional
+# parameters $1/$2 (which are frame-local) plus a loop variable the `for`
+# construct reassigns each iteration — so no `local` is needed.
+
+# deploy_entry <src> <dest>
+deploy_entry() {
+  case ${1##*/} in
+    *.fragment.json)
+      merge_json "$1" "${2%.fragment.json}.json"
+      return 0
+      ;;
+  esac
+
+  if [ -d "$1" ] && [ ! -L "$1" ]; then
+    if [ -d "$2" ] && [ ! -L "$2" ]; then
+      # destination is a real directory — step inside
+      for _de_child in "$1"/* "$1"/.*; do
+        [ -e "$_de_child" ] || [ -L "$_de_child" ] || continue
+        case ${_de_child##*/} in . | ..) continue ;; esac
+        deploy_entry "$_de_child" "$2/${_de_child##*/}"
+      done
+      return 0
     fi
-    restore_backup "$_rml"
-  elif [ -e "$_rml" ] || [ -L "$_rml" ]; then
-    warn "not an azarashi symlink, left untouched: $_rml"
+    # destination absent (or not a real dir) — symlink the directory whole
+    link_path "$1" "$2"
+    return 0
   fi
+
+  link_path "$1" "$2"
 }
 
-uninstall_target() {
-  _ut=$1
-  _ut_src=$(target_src "$_ut")
-  _ut_dest=$(target_dest "$_ut")
-  [ -d "$_ut_src" ] || return 0
-  log ""
-  log "[$_ut]  uninstall from  $_ut_dest"
-  for _ut_entry in "$_ut_src"/*; do
-    [ -e "$_ut_entry" ] || continue
-    _ut_name=$(basename "$_ut_entry")
-    case $_ut_name in
-      *.fragment.json)
-        info "merged JSON left in place (cannot un-merge): $_ut_dest/${_ut_name%.fragment.json}.json"
-        ;;
-      *)
-        if [ -d "$_ut_entry" ] && [ ! -L "$_ut_entry" ]; then
-          for _ut_child in "$_ut_entry"/*; do
-            [ -e "$_ut_child" ] || [ -L "$_ut_child" ] || continue
-            remove_link "$_ut_dest/$_ut_name/$(basename "$_ut_child")"
-          done
-          if [ "$DRY_RUN" -ne 1 ] && [ -d "$_ut_dest/$_ut_name" ]; then
-            rmdir "$_ut_dest/$_ut_name" 2>/dev/null &&
-              info "removed empty dir: $_ut_dest/$_ut_name" || true
-          fi
-        else
-          remove_link "$_ut_dest/$_ut_name"
-        fi
-        ;;
-    esac
+# uninstall_entry <src> <dest>
+uninstall_entry() {
+  case ${1##*/} in
+    *.fragment.json)
+      info "merged JSON left in place (cannot un-merge): ${2%.fragment.json}.json"
+      return 0
+      ;;
+  esac
+
+  if [ -d "$1" ] && [ ! -L "$1" ] && [ -d "$2" ] && [ ! -L "$2" ]; then
+    for _ue_child in "$1"/* "$1"/.*; do
+      [ -e "$_ue_child" ] || [ -L "$_ue_child" ] || continue
+      case ${_ue_child##*/} in . | ..) continue ;; esac
+      uninstall_entry "$_ue_child" "$2/${_ue_child##*/}"
+    done
+    if [ "$DRY_RUN" -ne 1 ] && [ -d "$2" ] && [ ! -L "$2" ]; then
+      rmdir "$2" 2>/dev/null && info "removed empty dir: $2" || true
+    fi
+    return 0
+  fi
+
+  remove_link "$2"
+}
+
+# --- commands --------------------------------------------------------------
+
+cmd_run() { # install / diff / status — walk each top-level entry of home/
+  [ -d "$HOME_SRC" ] || die "missing payload directory: $HOME_SRC"
+  for _top in "$HOME_SRC"/* "$HOME_SRC"/.*; do
+    [ -e "$_top" ] || [ -L "$_top" ] || continue
+    case ${_top##*/} in . | ..) continue ;; esac
+    log ""
+    log "[${_top##*/}]  $_top  ->  $HOME/${_top##*/}"
+    deploy_entry "$_top" "$HOME/${_top##*/}"
+  done
+}
+
+cmd_uninstall() {
+  [ -d "$HOME_SRC" ] || die "missing payload directory: $HOME_SRC"
+  for _top in "$HOME_SRC"/* "$HOME_SRC"/.*; do
+    [ -e "$_top" ] || continue
+    case ${_top##*/} in . | ..) continue ;; esac
+    log ""
+    log "[${_top##*/}]  uninstall from  $HOME/${_top##*/}"
+    uninstall_entry "$_top" "$HOME/${_top##*/}"
   done
 }
 
 cmd_sync_instructions() {
-  _si_src="$REPO_DIR/.claude/CLAUDE.md"
-  _si_dst="$REPO_DIR/.copilot/copilot-instructions.md"
+  _si_src="$HOME_SRC/.claude/CLAUDE.md"
+  _si_dst="$HOME_SRC/.copilot/copilot-instructions.md"
   [ -f "$_si_src" ] || die "missing source: $_si_src"
   if [ "$DRY_RUN" -eq 1 ]; then
     printf '  [dry-run] cp %s -> %s\n' "$_si_src" "$_si_dst"
@@ -241,7 +220,6 @@ cmd_sync_instructions() {
 # --- argument parsing ------------------------------------------------------
 
 CMD=""
-TARGETS=""
 
 while [ $# -gt 0 ]; do
   case $1 in
@@ -253,13 +231,6 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY_RUN=1 ;;
     --no-backup) NO_BACKUP=1 ;;
     --force) FORCE=1 ;;
-    --target)
-      shift
-      TARGETS="$TARGETS $(printf '%s' "${1:-}" | tr ',' ' ')"
-      ;;
-    --target=*)
-      TARGETS="$TARGETS $(printf '%s' "${1#--target=}" | tr ',' ' ')"
-      ;;
     -h | --help)
       usage
       exit 0
@@ -272,21 +243,6 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -n "$CMD" ] || CMD=install
-
-ALL_TARGETS=$(discover_targets)
-[ -n "$ALL_TARGETS" ] || die "no target directories found in $REPO_DIR"
-
-if [ -z "$(printf '%s' "$TARGETS" | tr -d ' ')" ]; then
-  TARGETS=$ALL_TARGETS
-fi
-
-for _t in $TARGETS; do
-  _found=0
-  for _a in $ALL_TARGETS; do
-    [ "$_t" = "$_a" ] && _found=1
-  done
-  [ "$_found" -eq 1 ] || die "unknown target: $_t (available: $(echo "$ALL_TARGETS" | tr '\n' ' '))"
-done
 
 # --- dependency check ------------------------------------------------------
 
@@ -301,18 +257,18 @@ case $CMD in
   install)
     MODE=install
     [ "$DRY_RUN" -eq 1 ] && log "(dry-run — no changes will be made)"
-    for _t in $TARGETS; do process_target "$_t"; done
+    cmd_run
     log ""
     log "Done."
     ;;
   status)
     MODE=status
-    for _t in $TARGETS; do process_target "$_t"; done
+    cmd_run
     ;;
   uninstall)
     MODE=uninstall
     [ "$DRY_RUN" -eq 1 ] && log "(dry-run — no changes will be made)"
-    for _t in $TARGETS; do uninstall_target "$_t"; done
+    cmd_uninstall
     log ""
     log "Done."
     ;;
