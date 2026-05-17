@@ -21,8 +21,8 @@ _merge_result() {
 
   if [ -f "$_mr_target" ]; then
     jq empty "$_mr_target" 2>/dev/null || die "existing target is not valid JSON: $_mr_target"
-    printf '%s' "$_mr_clean" | jq -s '.[0] * .[1]' - "$_mr_target" \
-      || die "merge failed: $_mr_target"
+    printf '%s' "$_mr_clean" | jq -s '.[0] * .[1]' - "$_mr_target" ||
+      die "merge failed: $_mr_target"
   else
     printf '%s' "$_mr_clean"
   fi
@@ -66,7 +66,7 @@ merge_json() {
   mkdir -p "$(dirname "$_mj_target")" || die "mkdir failed: $_mj_target"
   backup "$_mj_target"
   _mj_tmp="${_mj_target}.azarashi-tmp.$$"
-  printf '%s\n' "$_mj_result" > "$_mj_tmp" || die "write failed: $_mj_tmp"
+  printf '%s\n' "$_mj_result" >"$_mj_tmp" || die "write failed: $_mj_tmp"
   if ! jq empty "$_mj_tmp" 2>/dev/null; then
     rm -f "$_mj_tmp"
     die "merge produced invalid JSON, aborted: $_mj_target"

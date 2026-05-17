@@ -1,11 +1,14 @@
 # Shared helpers for install.sh. Sourced, not executed.
 # Expects the caller to define: DRY_RUN, NO_BACKUP, FORCE (0/1).
 
-log()  { printf '%s\n' "$*"; }
+log() { printf '%s\n' "$*"; }
 info() { printf '  %s\n' "$*"; }
 warn() { printf 'WARN: %s\n' "$*" >&2; }
-err()  { printf 'ERROR: %s\n' "$*" >&2; }
-die()  { err "$*"; exit 1; }
+err() { printf 'ERROR: %s\n' "$*" >&2; }
+die() {
+  err "$*"
+  exit 1
+}
 
 # backup <path> — timestamped copy of an existing file/dir/symlink.
 # No-op when the path is absent, in dry-run, or --no-backup.
@@ -31,6 +34,6 @@ backup() {
 newest_backup() {
   _nb_base=$1
   find "$(dirname "$_nb_base")" -maxdepth 1 \
-    -name "$(basename "$_nb_base").azarashi-bak.*" 2>/dev/null \
-    | sort | tail -n 1
+    -name "$(basename "$_nb_base").azarashi-bak.*" 2>/dev/null |
+    sort | tail -n 1
 }

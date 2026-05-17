@@ -1,12 +1,18 @@
 #!/usr/bin/env sh
-# azarashi installer — deploy common AI-agent rules/skills to ~/.claude and ~/.copilot.
+# azarashi installer — deploy repo config into the matching home directories.
 #
-# The repo mirrors the deploy layout: .claude/ -> ~/.claude/, .copilot/ -> ~/.copilot/.
-# Files/directories are symlinked (edits in the repo are live); *.fragment.json files
-# are deep-merged into the matching settings JSON without clobbering existing keys.
+# Each top-level ".<name>/" directory in this repo is a deploy target: its
+# contents go to "~/.<name>/". Targets are discovered automatically, so adding
+# a new ".<name>/" directory makes it deployable with no change to this script.
+#
+# Files and directories are symlinked (edits in the repo are live); *.fragment.json
+# files are deep-merged into the matching settings JSON without clobbering keys.
 set -u
 
-REPO_DIR=$(unset CDPATH; cd -- "$(dirname -- "$0")" && pwd)
+REPO_DIR=$(
+  unset CDPATH
+  cd -- "$(dirname -- "$0")" && pwd
+)
 
 DRY_RUN=0
 NO_BACKUP=0
@@ -18,41 +24,48 @@ MODE=install
 
 usage() {
   cat <<'EOF'
-azarashi installer — deploy common AI-agent config to ~/.claude and ~/.copilot
+azarashi installer — deploy repo config into the matching home directories
 
 Usage: ./install.sh <command> [flags]
 
 Commands:
-  install            Deploy .claude/ and .copilot/ to the home directories (default)
+  install            Deploy every target directory to the home directory (default)
   diff               Alias for: install --dry-run
   status             Report in-sync / drift / missing per entry
   uninstall          Remove azarashi-managed symlinks; restore backups
   sync-instructions  Copy .claude/CLAUDE.md to .copilot/copilot-instructions.md
 
 Flags:
-  --target claude|copilot   Restrict to one tool (default: both)
-  --dry-run                 Print actions without applying them
-  --no-backup               Skip backups before overwriting (default: backups on)
-  --force                   Re-link / re-merge even when already in sync
-  -h, --help                Show this help
+  --target <name>    Restrict to the given target(s); repeatable or
+                     space/comma-separated (default: all discovered targets).
+                     A target "name" maps repo ".<name>/" to "~/.<name>/".
+  --dry-run          Print actions without applying them
+  --no-backup        Skip backups before overwriting (default: backups on)
+  --force            Re-link / re-merge even when already in sync
+  -h, --help         Show this help
 EOF
 }
 
-# --- target layout ---------------------------------------------------------
+# --- target discovery ------------------------------------------------------
 
-target_src() {
-  case $1 in
-    claude)  printf '%s\n' "$REPO_DIR/.claude" ;;
-    copilot) printf '%s\n' "$REPO_DIR/.copilot" ;;
-  esac
+# discover_targets — print the name of every deployable target, one per line.
+# A target is a top-level ".<name>/" directory other than ".git".
+discover_targets() {
+  for _dt in "$REPO_DIR"/.*/; do
+    [ -d "$_dt" ] || continue
+    # Strip the trailing slash and leading path with parameter expansion;
+    # basename mishandles the "/./" and "/../" entries some shells glob in.
+    _dt_name=${_dt%/}
+    _dt_name=${_dt_name##*/}
+    case $_dt_name in
+      . | .. | .git) continue ;;
+    esac
+    printf '%s\n' "${_dt_name#.}"
+  done
 }
 
-target_dest() {
-  case $1 in
-    claude)  printf '%s\n' "$HOME/.claude" ;;
-    copilot) printf '%s\n' "$HOME/.copilot" ;;
-  esac
-}
+target_src() { printf '%s\n' "$REPO_DIR/.$1"; }
+target_dest() { printf '%s\n' "$HOME/.$1"; }
 
 # --- symlink helpers -------------------------------------------------------
 
@@ -67,7 +80,7 @@ is_our_link() {
   [ -L "$1" ] || return 1
   case "$(readlink "$1")" in
     "$REPO_DIR"/*) return 0 ;;
-    *)             return 1 ;;
+    *) return 1 ;;
   esac
 }
 
@@ -125,7 +138,7 @@ deploy_path() {
 
 # --- commands --------------------------------------------------------------
 
-process_target() {  # install + status
+process_target() { # install + status
   _pt=$1
   _pt_src=$(target_src "$_pt")
   _pt_dest=$(target_dest "$_pt")
@@ -152,7 +165,7 @@ process_target() {  # install + status
   done
 }
 
-restore_backup() {  # restore newest backup only when the target is now absent
+restore_backup() { # restore newest backup only when the target is now absent
   _rb=$1
   _rb_bk=$(newest_backup "$_rb")
   [ -n "$_rb_bk" ] || return 0
@@ -202,8 +215,8 @@ uninstall_target() {
             remove_link "$_ut_dest/$_ut_name/$(basename "$_ut_child")"
           done
           if [ "$DRY_RUN" -ne 1 ] && [ -d "$_ut_dest/$_ut_name" ]; then
-            rmdir "$_ut_dest/$_ut_name" 2>/dev/null \
-              && info "removed empty dir: $_ut_dest/$_ut_name" || true
+            rmdir "$_ut_dest/$_ut_name" 2>/dev/null &&
+              info "removed empty dir: $_ut_dest/$_ut_name" || true
           fi
         else
           remove_link "$_ut_dest/$_ut_name"
@@ -228,37 +241,58 @@ cmd_sync_instructions() {
 # --- argument parsing ------------------------------------------------------
 
 CMD=""
-TARGETS="claude copilot"
+TARGETS=""
 
 while [ $# -gt 0 ]; do
   case $1 in
-    install|status|uninstall|sync-instructions) CMD=$1 ;;
-    diff)         CMD=install; DRY_RUN=1 ;;
-    --dry-run)    DRY_RUN=1 ;;
-    --no-backup)  NO_BACKUP=1 ;;
-    --force)      FORCE=1 ;;
-    --target)     shift; TARGETS=${1:-} ;;
-    --target=*)   TARGETS=${1#--target=} ;;
-    -h|--help)    usage; exit 0 ;;
-    *)            usage >&2; die "unknown argument: $1" ;;
+    install | status | uninstall | sync-instructions) CMD=$1 ;;
+    diff)
+      CMD=install
+      DRY_RUN=1
+      ;;
+    --dry-run) DRY_RUN=1 ;;
+    --no-backup) NO_BACKUP=1 ;;
+    --force) FORCE=1 ;;
+    --target)
+      shift
+      TARGETS="$TARGETS $(printf '%s' "${1:-}" | tr ',' ' ')"
+      ;;
+    --target=*)
+      TARGETS="$TARGETS $(printf '%s' "${1#--target=}" | tr ',' ' ')"
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      die "unknown argument: $1"
+      ;;
   esac
   shift
 done
 [ -n "$CMD" ] || CMD=install
 
+ALL_TARGETS=$(discover_targets)
+[ -n "$ALL_TARGETS" ] || die "no target directories found in $REPO_DIR"
+
+if [ -z "$(printf '%s' "$TARGETS" | tr -d ' ')" ]; then
+  TARGETS=$ALL_TARGETS
+fi
+
 for _t in $TARGETS; do
-  case $_t in
-    claude|copilot) ;;
-    *) die "unknown target: $_t (expected: claude, copilot)" ;;
-  esac
+  _found=0
+  for _a in $ALL_TARGETS; do
+    [ "$_t" = "$_a" ] && _found=1
+  done
+  [ "$_found" -eq 1 ] || die "unknown target: $_t (available: $(echo "$ALL_TARGETS" | tr '\n' ' '))"
 done
-[ -n "$TARGETS" ] || die "--target requires a value (claude and/or copilot)"
 
 # --- dependency check ------------------------------------------------------
 
 for _dep in git jq; do
-  command -v "$_dep" >/dev/null 2>&1 \
-    || die "'$_dep' is required but not found. Install it (e.g. sudo apt install $_dep)."
+  command -v "$_dep" >/dev/null 2>&1 ||
+    die "'$_dep' is required but not found. Install it (e.g. sudo apt install $_dep)."
 done
 
 # --- dispatch --------------------------------------------------------------
@@ -286,6 +320,7 @@ case $CMD in
     cmd_sync_instructions
     ;;
   *)
-    usage >&2; die "unknown command: $CMD"
+    usage >&2
+    die "unknown command: $CMD"
     ;;
 esac
