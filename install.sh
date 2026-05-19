@@ -65,6 +65,17 @@ is_our_link() {
   esac
 }
 
+# is_managed_link <path> — true if <path> is a deploy symlink, i.e. it points
+# at the deploy payload under home/. Stricter than is_our_link (which matches
+# any link into the repo): only deploy-created links are eligible for pruning.
+is_managed_link() {
+  [ -L "$1" ] || return 1
+  case "$(readlink "$1")" in
+    "$HOME_SRC"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # link_path <src-abs> <dest> — symlink dest -> src, idempotent.
 link_path() {
   _lp_src=$1
@@ -185,33 +196,30 @@ uninstall_entry() {
 }
 
 # --- orphan prune ----------------------------------------------------------
-# An orphan is an azarashi symlink whose source no longer exists under home/.
+# An orphan is a deploy symlink whose source no longer exists under home/.
 # It is detected by walking the deployed ($HOME) side; prune_orphans recurses
 # with the same loop-var + positional-parameter discipline as deploy_entry.
 
-# prune_one <path> — report (status) or remove (install) one orphan.
+# prune_one <path> — report (status) or remove (install) one orphan symlink.
+# Unlike uninstall's remove_link, pruning never restores a *.azarashi-bak.*
+# backup: a deleted home/ entry is not an uninstall, so any stale backup on
+# disk is left as-is. Callers must pass an is_managed_link path.
 prune_one() {
   if [ "$MODE" = status ]; then
     info "orphan  : $1"
     return 0
   fi
-  remove_link "$1"
-}
-
-# prune_dir <src> <dest> — recurse into an unsourced real directory, then
-# rmdir it if pruning emptied it. Wrapped in its own frame so <dest> survives
-# the prune_orphans recursion that would otherwise clobber the caller's vars.
-prune_dir() {
-  prune_orphans "$1" "$2"
-  if [ "$MODE" != status ] && [ "$DRY_RUN" -ne 1 ] && [ -d "$2" ] && [ ! -L "$2" ]; then
-    rmdir "$2" 2>/dev/null && info "removed empty dir: $2" || true
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf '  [dry-run] remove orphan symlink %s\n' "$1"
+    return 0
   fi
+  rm -f "$1" && info "pruned  : $1"
 }
 
 # prune_orphans <src> <dest> — walk the real directory <dest> and prune
-# azarashi symlinks with no matching source under <src>. <src> may be absent,
+# deploy symlinks with no matching source under <src>. <src> may be absent,
 # in which case every entry below is unsourced. Real files, real directories
-# with their own content, and foreign symlinks are left untouched.
+# (whether emptied by pruning or not), and foreign symlinks are left untouched.
 prune_orphans() {
   [ -d "$2" ] && [ ! -L "$2" ] || return 0
   for _po_child in "$2"/* "$2"/.*; do
@@ -219,22 +227,22 @@ prune_orphans() {
     case ${_po_child##*/} in . | ..) continue ;; esac
     if [ -e "$1/${_po_child##*/}" ] || [ -L "$1/${_po_child##*/}" ]; then
       prune_orphans "$1/${_po_child##*/}" "$_po_child"
-    elif is_our_link "$_po_child"; then
+    elif is_managed_link "$_po_child"; then
       prune_one "$_po_child"
     elif [ -d "$_po_child" ] && [ ! -L "$_po_child" ]; then
       # unsourced real directory — recurse to catch orphan links nested inside
-      prune_dir "$1/${_po_child##*/}" "$_po_child"
+      prune_orphans "$1/${_po_child##*/}" "$_po_child"
     fi
   done
 }
 
-# prune_toplevel — prune broken azarashi symlinks directly under $HOME, i.e.
+# prune_toplevel — prune broken deploy symlinks directly under $HOME, i.e.
 # top-level whole-directory symlinks whose source was deleted from home/.
 prune_toplevel() {
   for _pt in "$HOME"/* "$HOME"/.*; do
     [ -L "$_pt" ] || continue
     case ${_pt##*/} in . | ..) continue ;; esac
-    is_our_link "$_pt" || continue
+    is_managed_link "$_pt" || continue
     [ -e "$_pt" ] && continue # still resolves — sourced, not an orphan
     prune_one "$_pt"
   done
