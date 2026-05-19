@@ -8,8 +8,9 @@ description: 'CHANGELOG 記載ルールと更新手順。changelog, 変更履歴
 ## 対象ファイル
 
 CHANGELOG のパスはプロジェクトに従う。リポジトリ内の CHANGELOG ファイルを探す
-（`CHANGELOG.md`、`docs/CHANGELOG*.md`、`CHANGELOG.*.md` 等）。見つからない・複数候補で
-迷う場合はユーザーに確認する。よくある構成は以下:
+（`CHANGELOG.md`、`docs/CHANGELOG*.md`、`CHANGELOG.*.md` 等）。**CHANGELOG が見つからない
+場合は新規作成せず、更新をスキップしてその旨を報告する**。複数候補があり対象を絞れない
+場合のみユーザーに確認する。よくある構成は以下:
 
 | ファイル | 言語 |
 |:---------|:-----|
