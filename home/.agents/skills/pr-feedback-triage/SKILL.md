@@ -47,7 +47,7 @@ PR レビュー指摘を「指摘されたから直す」のではなく**技術
 ```bash
 gh pr view <PR#> --json title,headRefName,baseRefName,url
 gh pr view <PR#> --comments                                   # review summary
-gh api repos/<owner>/<repo>/pulls/<PR#>/comments              # inline comments (本体)
+gh api --paginate repos/<owner>/<repo>/pulls/<PR#>/comments   # inline comments (本体)
 ```
 
 各 inline コメントから `id` / `path` / `line` / `body` を抽出。`user.type == "Bot"` で自動レビュアーを識別。
@@ -68,7 +68,7 @@ gh api repos/<owner>/<repo>/pulls/<PR#>/comments              # inline comments 
 ### 3. 受諾分のみ修正
 
 - A / B 判定の指摘ごとに、論理的にまとまった単位でコミット分割。
-- プロジェクトのテスト・リント（リポジトリ root の `.claude/project.json` の `ciCommand`、なければプロジェクト規約のコマンド）を**必ず**実行してグリーン確認。
+- プロジェクトのテスト・リント一式を**必ず**実行してグリーン確認（CI コマンドの判定は `pr-create` スキルの「プロジェクト固有情報の判定」に従う）。
 - CHANGELOG 判定: 「エンドユーザーの操作・設定・出力・動作が変わるか？」→ Yes なら `Unreleased` に記載、No なら何もしない（`changelog` スキル参照）。
 
 ### 4. PR コメントへ返信を投稿（必須）
