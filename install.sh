@@ -19,6 +19,7 @@ HOME_SRC="$REPO_DIR/home"
 DRY_RUN=0
 NO_BACKUP=0
 FORCE=0
+NO_PRUNE=0
 MODE=install
 
 . "$REPO_DIR/lib/common.sh"
@@ -31,9 +32,10 @@ azarashi installer — deploy the contents of home/ into $HOME
 Usage: ./install.sh <command> [flags]
 
 Commands:
-  install            Deploy everything under home/ into $HOME (default)
+  install            Deploy everything under home/ into $HOME (default);
+                     also prunes orphaned azarashi symlinks (see --no-prune)
   diff               Alias for: install --dry-run
-  status             Report in-sync / drift / missing per entry
+  status             Report in-sync / drift / missing / orphan per entry
   uninstall          Remove azarashi-managed symlinks; prune emptied directories
   sync-instructions  Copy home/.claude/CLAUDE.md to home/.copilot/copilot-instructions.md
 
@@ -41,6 +43,7 @@ Flags:
   --dry-run          Print actions without applying them
   --no-backup        Skip backups before overwriting (default: backups on)
   --force            Re-link / re-merge even when already in sync
+  --no-prune         Skip pruning orphaned azarashi symlinks on install
   -h, --help         Show this help
 EOF
 }
@@ -181,6 +184,62 @@ uninstall_entry() {
   remove_link "$2"
 }
 
+# --- orphan prune ----------------------------------------------------------
+# An orphan is an azarashi symlink whose source no longer exists under home/.
+# It is detected by walking the deployed ($HOME) side; prune_orphans recurses
+# with the same loop-var + positional-parameter discipline as deploy_entry.
+
+# prune_one <path> — report (status) or remove (install) one orphan.
+prune_one() {
+  if [ "$MODE" = status ]; then
+    info "orphan  : $1"
+    return 0
+  fi
+  remove_link "$1"
+}
+
+# prune_dir <src> <dest> — recurse into an unsourced real directory, then
+# rmdir it if pruning emptied it. Wrapped in its own frame so <dest> survives
+# the prune_orphans recursion that would otherwise clobber the caller's vars.
+prune_dir() {
+  prune_orphans "$1" "$2"
+  if [ "$MODE" != status ] && [ "$DRY_RUN" -ne 1 ] && [ -d "$2" ] && [ ! -L "$2" ]; then
+    rmdir "$2" 2>/dev/null && info "removed empty dir: $2" || true
+  fi
+}
+
+# prune_orphans <src> <dest> — walk the real directory <dest> and prune
+# azarashi symlinks with no matching source under <src>. <src> may be absent,
+# in which case every entry below is unsourced. Real files, real directories
+# with their own content, and foreign symlinks are left untouched.
+prune_orphans() {
+  [ -d "$2" ] && [ ! -L "$2" ] || return 0
+  for _po_child in "$2"/* "$2"/.*; do
+    [ -e "$_po_child" ] || [ -L "$_po_child" ] || continue
+    case ${_po_child##*/} in . | ..) continue ;; esac
+    if [ -e "$1/${_po_child##*/}" ] || [ -L "$1/${_po_child##*/}" ]; then
+      prune_orphans "$1/${_po_child##*/}" "$_po_child"
+    elif is_our_link "$_po_child"; then
+      prune_one "$_po_child"
+    elif [ -d "$_po_child" ] && [ ! -L "$_po_child" ]; then
+      # unsourced real directory — recurse to catch orphan links nested inside
+      prune_dir "$1/${_po_child##*/}" "$_po_child"
+    fi
+  done
+}
+
+# prune_toplevel — prune broken azarashi symlinks directly under $HOME, i.e.
+# top-level whole-directory symlinks whose source was deleted from home/.
+prune_toplevel() {
+  for _pt in "$HOME"/* "$HOME"/.*; do
+    [ -L "$_pt" ] || continue
+    case ${_pt##*/} in . | ..) continue ;; esac
+    is_our_link "$_pt" || continue
+    [ -e "$_pt" ] && continue # still resolves — sourced, not an orphan
+    prune_one "$_pt"
+  done
+}
+
 # --- commands --------------------------------------------------------------
 
 cmd_run() { # install / diff / status — walk each top-level entry of home/
@@ -192,6 +251,17 @@ cmd_run() { # install / diff / status — walk each top-level entry of home/
     log "[${_top##*/}]  $_top  ->  $HOME/${_top##*/}"
     deploy_entry "$_top" "$HOME/${_top##*/}"
   done
+
+  if [ "$MODE" = status ] || [ "$NO_PRUNE" -ne 1 ]; then
+    log ""
+    log "[prune]  orphaned azarashi symlinks"
+    for _top in "$HOME_SRC"/* "$HOME_SRC"/.*; do
+      [ -e "$_top" ] || [ -L "$_top" ] || continue
+      case ${_top##*/} in . | ..) continue ;; esac
+      prune_orphans "$_top" "$HOME/${_top##*/}"
+    done
+    prune_toplevel
+  fi
 }
 
 cmd_uninstall() {
@@ -231,6 +301,7 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY_RUN=1 ;;
     --no-backup) NO_BACKUP=1 ;;
     --force) FORCE=1 ;;
+    --no-prune) NO_PRUNE=1 ;;
     -h | --help)
       usage
       exit 0
