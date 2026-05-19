@@ -7,23 +7,13 @@ description: '現在のブランチから PR を作成する。develop 上なら
 
 現在のブランチから PR を作成する。ベースブランチは現在のブランチによって自動判定する。ローカル CI グリーン確認・未 push なら push・CHANGELOG 同時更新の確認をワークフローに織り込む。
 
-## プロジェクト固有情報の参照
+## プロジェクト固有情報の判定
 
-プロジェクト依存の事実はリポジトリ root の `.claude/project.json` から読む。形式:
+プロジェクト依存の事実は設定ファイルに頼らず、リポジトリから判定する。判定できない場合はユーザーに確認する。
 
-```json
-{
-  "ciCommand": "just ci",
-  "codePathGlobs": ["**/*.go", "internal/**", "cmd/**"],
-  "changelogFiles": ["CHANGELOG.md", "docs/CHANGELOG.ja.md"]
-}
-```
-
-- `ciCommand` — ローカルで実行する全テスト・リントコマンド
-- `codePathGlobs` — 「コード変更」とみなすパス（CI / CHANGELOG 判定に使う）
-- `changelogFiles` — CHANGELOG ファイル群
-
-`.claude/project.json` が無い場合は、上記をユーザーに確認してから進める。
+- **CI コマンド** — ローカルで実行する全テスト・リント一式。`justfile` に `ci` レシピがあれば `just ci`、`Makefile` の `ci` / `test` ターゲット、`package.json` の `scripts`（`npm test` 等）など、リポジトリの規約から判定する。不明ならユーザーに確認。
+- **コード変更の判定** — 「コード変更」とはソースコードファイル（各言語のソース・設定スキーマ等）の変更を指す。テスト・CI 設定・ドキュメント・lint / フォーマット設定のみの変更は含めない。CI 実行要否と CHANGELOG 判定に使う。
+- **CHANGELOG ファイル** — `changelog` スキルと同じ方法でリポジトリ内から検出する（`CHANGELOG.md`、`docs/CHANGELOG*.md` 等）。
 
 ## 大原則
 
@@ -31,7 +21,7 @@ description: '現在のブランチから PR を作成する。develop 上なら
 - **テンプレート遵守** — `.github/pull_request_template.md` があればそのセクション構成・順序を維持する。空欄を残さない (`関連 issue` / `破壊的変更の詳細` がなければ "なし" と明示)。テンプレートが無ければ「概要 / 変更点 / 動作確認」の簡潔な本文を生成する。
 - **タイトルは Conventional Commits** — `feat(scope): ...` / `fix(scope): ...` / `chore: ...` 等。`develop → main` の PR でも、バージョンアップを含む場合は `chore: release vX.Y.Z`、含まない場合（リファクタ・chore のみ）はコミット内容を集約した通常タイトルにする。
 - **スコープを超えない** — PR 作成時に発見した別件の修正を混ぜない。指摘されていない箇所のリファクタを織り込まない。
-- **ローカル CI を必ず通す** — コード変更を含む PR は、`project.json` の `ciCommand` をローカルで実行しグリーンを確認してから PR を出す。
+- **ローカル CI を必ず通す** — コード変更を含む PR は、プロジェクトの CI コマンドをローカルで実行しグリーンを確認してから PR を出す。
 
 ## ベースブランチ決定ロジック
 
@@ -63,17 +53,17 @@ esac
 
 ### 2. ローカル CI の実行 (コード変更を含む場合)
 
-変更ファイルが `project.json` の `codePathGlobs` のいずれかにマッチするなら **必ず実行**する。
+変更ファイルにコード変更が含まれるなら（「プロジェクト固有情報の判定」のコード変更の定義に従う）**必ず実行**する。
 
 ```bash
-<project.json の ciCommand>
+<判定した CI コマンド>   # 例: just ci
 ```
 
 失敗したら PR 作成を中断し、失敗内容をユーザーに報告する。
 
 ### 3. CHANGELOG 判定
 
-変更ファイルにコード（`codePathGlobs` にマッチ）が含まれるのに `changelogFiles` が未更新なら、ユーザーに次を確認する:
+変更ファイルにコード変更が含まれるのに CHANGELOG ファイルが未更新なら、ユーザーに次を確認する:
 
 > CHANGELOG が更新されていません。この変更は CHANGELOG 記載対象ですか?
 > 記載対象 (エンドユーザーの操作・設定・動作が変わる) → `changelog` スキルで先に更新してください
@@ -97,7 +87,7 @@ fi
 
 **`develop → main` のタイトル判定ロジック:**
 
-`git log origin/main..HEAD --pretty=format:'%s'` を取得し、バージョンアップコミット（`feat: release vX.Y.Z` / `chore: release vX.Y.Z` / `bump version` 等）が含まれるかを確認する。
+`git log origin/main..HEAD --pretty=format:'%s'` を取得し、リリースコミット（`chore: release vX.Y.Z` を基本とするが、プロジェクト規約により `feat: release vX.Y.Z` / `bump version` 等の場合もある）が含まれるかを確認する。
 
 | 状況 | タイトル例 |
 |:-----|:----------|
@@ -149,11 +139,8 @@ fi
 **本文は必ず `Write` ツールで一時ファイルに書き出し、`--body-file` で渡す**。
 shell heredoc (`--body "$(cat <<EOF ... EOF)"`) は使わない。
 
-理由: PR 本文は markdown なので、コードを引用するバックティック (`` ` ``)、
-変数表記の `$`、テーブル罫線の `|` などが頻出する。これらを bash heredoc に
-埋めると、引用の有無・展開の有無の判断を毎回間違える危険がある。
-`Write` ツールはファイル内容をそのままディスクに書くので、shell の引用ルール
-を 1 度も経由せず、markdown を確実にリテラル保存できる。
+理由: markdown 本文はバックティック・`$`・`|` が頻出し、heredoc に埋めると引用・展開の
+判断を誤りやすい。`Write` は内容をそのままディスクに書くので確実にリテラル保存できる。
 
 手順:
 

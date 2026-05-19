@@ -7,8 +7,9 @@ description: 'CHANGELOG 記載ルールと更新手順。changelog, 変更履歴
 
 ## 対象ファイル
 
-CHANGELOG のパスはプロジェクトに従う。リポジトリ root に `.claude/project.json` があれば
-その `changelogFiles` を対象とする。標準的な構成は以下:
+CHANGELOG のパスはプロジェクトに従う。リポジトリ内の CHANGELOG ファイルを探す
+（`CHANGELOG.md`、`docs/CHANGELOG*.md`、`CHANGELOG.*.md` 等）。見つからない・複数候補で
+迷う場合はユーザーに確認する。よくある構成は以下:
 
 | ファイル | 言語 |
 |:---------|:-----|
@@ -19,7 +20,7 @@ CHANGELOG のパスはプロジェクトに従う。リポジトリ root に `.c
 
 ## フォーマット
 
-[Keep a Changelog](https://keepachangelog.com/en/1.0.0/) に準拠。
+[Keep a Changelog](https://keepachangelog.com/en/1.0.0/) をベースにする（ただしカテゴリは下記 4 種に限定する）。
 
 - `## [Unreleased]` セクションへ追記する
 - **カテゴリ見出しは以下の 4 種類のみ使用する。この順序で並べる。他のカテゴリ（`Security` / `Deprecated` / `Docs` 等）を勝手に追加しない**
@@ -27,7 +28,7 @@ CHANGELOG のパスはプロジェクトに従う。リポジトリ root に `.c
   - 日本語: `追加` → `変更` → `修正` → `削除`
 - セキュリティ修正は独立節を作らず `Fixed` / `修正` に入れ、本文先頭に `**Security**:` / `**セキュリティ**:` の太字 prefix で severity を示す（BREAKING と同じ形式）
 - 非推奨化は独立節を作らず `Changed` / `変更` に入れ、本文先頭に `**Deprecated**:` / `**非推奨**:` の太字 prefix を付ける
-- ドキュメントのみの変更（README 書き直し、docs/ 配下の追加・修正等）はそもそも記載対象外（記載対象セクション参照）。`Docs` / `ドキュメント` のような独自カテゴリは作らない
+- ドキュメントのみの変更はそもそも記載対象外（「記載対象」節参照）。`Docs` / `ドキュメント` 等の独自カテゴリは作らない
 - 破壊的変更は独立節を作らず該当カテゴリ（多くは `Changed` / `Removed`）に入れ、本文先頭に `**BREAKING**:` 太字 prefix を付ける
 - 各エントリは動詞で始める（英語: Add / Change / Fix / Remove、日本語: 追加 / 変更 / 修正 / 削除）
 
