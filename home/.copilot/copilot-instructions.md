@@ -40,6 +40,7 @@
 - **機能は `feature/<short-name>`、修正は `fix/<short-name>` ブランチを切る** — `develop` に直接コミットしない。複数の独立した変更を 1 ブランチに混ぜない。
 - **各ブランチは `develop` をベースに PR を出す** — `main` への直接 PR は行わない（リリース時のみ `develop` → `main`）。
 - **粒度の目安**: 1 機能追加・1 バグ修正・1 リファクタリング = 1 ブランチ・1 PR。レビューしやすい粒度を優先する。
+- ブランチを切る・`develop` を取り込む・PR を作成する操作は、それぞれ `branch-start` / `sync-upstream` / `pr-create` スキルに従う。
 
 ## Git コミットのワークフロー
 
@@ -47,6 +48,7 @@
 - **Conventional Commits 形式・英語 1 文** — `feat:` / `fix:` / `docs:` / `chore:` / `refactor:` / `test:` などのプレフィックスを付ける。
 - **コミット前に `git status` で確認** — コミット漏れがないことを検証し、`working tree clean` を確認してからタスク完了を宣言する。
 - **`.gitignore` 対象のファイルはコミットしない** — `git add` 時に明示的に追加しない。`git status --ignored` で確認できる。
+- 詳細な手順は `commit` スキルに従う。
 
 ## 作業スコープの規律
 
