@@ -5,3 +5,5 @@
 
 # install.sh backups (only created under the home dir, but ignore defensively)
 *.azarashi-bak.*
+
+*.code-workspace

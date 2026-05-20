@@ -1,0 +1,59 @@
+# Auto-generated from workspace.toml — do not edit directly.
+services:
+  azarashi:
+    container_name: "${CONTAINER_SERVICE_NAME}"
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        - "IMAGE=${IMAGE}"
+        - "IMAGE_VERSION=${IMAGE_VERSION}"
+        - "USERNAME=${USERNAME}"
+    environment:
+      - "CONTAINER_SERVICE_NAME=${CONTAINER_SERVICE_NAME}"
+      - TZ=Asia/Tokyo
+    volumes:
+      - "../..:/home/${USERNAME}/workspace:cached"
+      - "local:/home/${USERNAME}/.local"
+      - "cocoon:/home/${USERNAME}/.cocoon"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "aws:/home/${USERNAME}/.aws"
+      - "claude:/home/${USERNAME}/.claude"
+      - "copilot:/home/${USERNAME}/.copilot"
+      - "deno:/home/${USERNAME}/.deno"
+      - "config:/home/${USERNAME}/.config"
+      - "go:/home/${USERNAME}/go"
+      - "cargo:/home/${USERNAME}/.cargo"
+      - "rustup:/home/${USERNAME}/.rustup"
+      - "${HOME:?HOME must be set on the host}/.claude.json:/home/${USERNAME}/.claude.json"
+    tty: true
+    init: true
+    command: sleep infinity
+    stop_grace_period: 30s
+    shm_size: 1gb
+    pids_limit: 4096
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 1048576
+volumes:
+  local:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_local"
+  cocoon:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_cocoon"
+  aws:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_aws"
+  claude:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_claude"
+  copilot:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_copilot"
+  deno:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_deno"
+  config:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_config"
+  go:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_go"
+  cargo:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_cargo"
+  rustup:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_rustup"
