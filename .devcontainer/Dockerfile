@@ -64,7 +64,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     git-lfs \
     strace \
     tmux \
-    && locale-gen en_US.UTF-8 ja_JP.UTF-8 \
+    && sed -i -E -e 's|^# *(en_US\.UTF-8 UTF-8)$|\1|' -e 's|^# *(ja_JP\.UTF-8 UTF-8)$|\1|' /etc/locale.gen \
+    && locale-gen \
     && rm -rf /tmp/* /var/tmp/*
 
 # The container user is created with a FIXED uid/gid (1000) so the committed
