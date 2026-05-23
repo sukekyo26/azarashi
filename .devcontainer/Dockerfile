@@ -1,10 +1,17 @@
 # syntax=docker/dockerfile:1.7
 # Auto-generated from workspace.toml — do not edit directly.
-ARG IMAGE=node
-ARG IMAGE_VERSION=24-bookworm-slim
+ARG IMAGE=ubuntu
+ARG IMAGE_VERSION=26.04
 FROM ${IMAGE}:${IMAGE_VERSION}
 
 ARG USERNAME
+
+# Rewrite upstream apt archive URLs to the configured [apt.mirror].url
+RUN sed -i \
+    -e 's|http://archive.ubuntu.com/ubuntu/|http://jp.archive.ubuntu.com/ubuntu/|g' \
+    -e 's|http://security.ubuntu.com/ubuntu/|http://jp.archive.ubuntu.com/ubuntu/|g' \
+    -e 's|http://ports.ubuntu.com/ubuntu-ports/|http://jp.archive.ubuntu.com/ubuntu/|g' \
+    /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -64,6 +71,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     git-lfs \
     strace \
     tmux \
+    just \
     && sed -i -E -e 's|^# *(en_US\.UTF-8 UTF-8)$|\1|' -e 's|^# *(ja_JP\.UTF-8 UTF-8)$|\1|' /etc/locale.gen \
     && locale-gen \
     && rm -rf /tmp/* /var/tmp/*
@@ -123,8 +131,8 @@ RUN echo 'autoload -Uz compinit && compinit' >> "$HOME/.zshrc" && \
 
 # Prepare volume mount directories with correct ownership
 USER root
-RUN mkdir -p /home/${USERNAME}/.aws /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.deno /home/${USERNAME}/.flutter /home/${USERNAME}/.pub-cache /home/${USERNAME}/.rustup /home/${USERNAME}/go && \
-    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.aws /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.deno /home/${USERNAME}/.flutter /home/${USERNAME}/.pub-cache /home/${USERNAME}/.rustup /home/${USERNAME}/go
+RUN mkdir -p /home/${USERNAME}/.aws /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.deno /home/${USERNAME}/.flutter /home/${USERNAME}/.npm /home/${USERNAME}/.npm-global /home/${USERNAME}/.pub-cache /home/${USERNAME}/.rustup /home/${USERNAME}/go && \
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.aws /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.deno /home/${USERNAME}/.flutter /home/${USERNAME}/.npm /home/${USERNAME}/.npm-global /home/${USERNAME}/.pub-cache /home/${USERNAME}/.rustup /home/${USERNAME}/go
 # Install Deno
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -462,6 +470,133 @@ rm /tmp/go.tar.gz
 COCOON_PLUGIN_EOF
 ENV GOPATH="/home/${USERNAME}/go"
 ENV PATH="/usr/local/go/bin:$GOPATH/bin:$PATH"
+# Install Node.js
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="24.16.0" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
+#!/usr/bin/env bash
+# Install Node.js (https://github.com/nodejs/node)
+#
+# Inputs (env):
+#   PIN              : Node.js version without leading "v" (e.g. "24.15.0"); empty = latest LTS
+#   CHECKSUM_AMD64   : sha256 of linux-x64 tarball; empty to skip verification
+#   CHECKSUM_ARM64   : sha256 of linux-arm64 tarball; empty to skip verification
+set -euo pipefail
+
+# Yellow WARNING when stderr is a TTY (and NO_COLOR is unset) or
+# FORCE_COLOR is set. NO_COLOR wins per no-color.org.
+if [ -n "${NO_COLOR:-}" ]; then
+  C_YEL=''
+  C_RST=''
+elif [ -n "${FORCE_COLOR:-}" ] || [ -t 2 ]; then
+  C_YEL=$'\033[33m'
+  C_RST=$'\033[0m'
+else
+  C_YEL=''
+  C_RST=''
+fi
+
+ARCH="$(dpkg --print-architecture)"
+case "$ARCH" in
+  amd64)
+    NODE_ARCH="x64"
+    CHECKSUM="$CHECKSUM_AMD64"
+    ;;
+  arm64)
+    NODE_ARCH="arm64"
+    CHECKSUM="$CHECKSUM_ARM64"
+    ;;
+  *)
+    NODE_ARCH="x64"
+    CHECKSUM="$CHECKSUM_AMD64"
+    ;;
+esac
+
+if [ -n "$PIN" ]; then
+  VERSION="$PIN"
+else
+  # Resolve latest LTS from dist/index.tab. The 10th column is the LTS
+  # codename ("-" for non-LTS releases); the first matching row is the
+  # newest LTS line because index.tab is sorted newest-first.
+  VERSION=$(curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+    https://nodejs.org/dist/index.tab |
+    awk -F'\t' 'NR>1 && $10 != "-" { sub(/^v/, "", $1); print $1; exit }')
+  if [ -z "$VERSION" ]; then
+    echo "Failed to resolve latest Node.js LTS version" >&2
+    exit 1
+  fi
+fi
+
+curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+  "https://nodejs.org/dist/v${VERSION}/node-v${VERSION}-linux-${NODE_ARCH}.tar.xz" -o /tmp/node.tar.xz
+
+if [ -n "$CHECKSUM" ]; then
+  echo "${CHECKSUM}  /tmp/node.tar.xz" | sha256sum -c -
+else
+  printf '%sWARNING: SHA256 verification skipped for Node.js (no checksum for node in [plugins.versions])%s\n' "$C_YEL" "$C_RST" >&2
+fi
+
+mkdir -p /usr/local/node
+tar -C /usr/local/node --strip-components=1 -xJf /tmp/node.tar.xz
+rm /tmp/node.tar.xz
+COCOON_PLUGIN_EOF
+ENV NPM_CONFIG_PREFIX="/home/${USERNAME}/.npm-global"
+ENV PATH="/usr/local/node/bin:/home/${USERNAME}/.npm-global/bin:$PATH"
+# Install OpenTofu
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
+#!/usr/bin/env bash
+# Install OpenTofu (https://github.com/opentofu/opentofu)
+#
+# Inputs (env):
+#   PIN              : OpenTofu version without leading "v" (e.g. "1.10.6"); empty = latest
+#   CHECKSUM_AMD64   : sha256 of amd64 tarball; empty to skip verification
+#   CHECKSUM_ARM64   : sha256 of arm64 tarball; empty to skip verification
+set -euo pipefail
+
+# Yellow WARNING when stderr is a TTY (and NO_COLOR is unset) or
+# FORCE_COLOR is set. NO_COLOR wins per no-color.org.
+if [ -n "${NO_COLOR:-}" ]; then
+  C_YEL=''
+  C_RST=''
+elif [ -n "${FORCE_COLOR:-}" ] || [ -t 2 ]; then
+  C_YEL=$'\033[33m'
+  C_RST=$'\033[0m'
+else
+  C_YEL=''
+  C_RST=''
+fi
+
+ARCH="$(dpkg --print-architecture)"
+case "$ARCH" in
+  amd64) CHECKSUM="$CHECKSUM_AMD64" ;;
+  arm64) CHECKSUM="$CHECKSUM_ARM64" ;;
+  *) CHECKSUM="$CHECKSUM_AMD64" ;;
+esac
+
+if [ -n "$PIN" ]; then
+  VERSION="$PIN"
+else
+  VERSION=$(curl -fsSLI --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+    -o /dev/null -w '%{url_effective}' https://github.com/opentofu/opentofu/releases/latest |
+    sed 's|.*/tag/v||')
+fi
+
+curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+  "https://github.com/opentofu/opentofu/releases/download/v${VERSION}/tofu_${VERSION}_linux_${ARCH}.tar.gz" \
+  -o /tmp/tofu.tar.gz
+
+if [ -n "$CHECKSUM" ]; then
+  echo "${CHECKSUM}  /tmp/tofu.tar.gz" | sha256sum -c -
+else
+  printf '%sWARNING: SHA256 verification skipped for OpenTofu (no checksum for opentofu in [plugins.versions])%s\n' "$C_YEL" "$C_RST" >&2
+fi
+
+tar -xzf /tmp/tofu.tar.gz -C /usr/local/bin tofu
+chmod +x /usr/local/bin/tofu
+rm /tmp/tofu.tar.gz
+COCOON_PLUGIN_EOF
 # Install ShellCheck
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -926,10 +1061,6 @@ else
   echo "eval \"\$(starship init ${shell})\"" >>"$RC_FILE"
 fi
 COCOON_PLUGIN_EOF
-
-# === user-defined dockerfile.post_plugins (from workspace.toml) ===
-RUN npm config set prefix "$HOME/.local"
-# === end dockerfile.post_plugins ===
 
 # Backup image-installed files for volume-mount resilience
 RUN if [ -d ~/.local ]; then cp -a ~/.local ~/.image-local; else mkdir -p ~/.image-local; fi

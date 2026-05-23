@@ -17,8 +17,8 @@ devcontainer = true
 [container]
 service_name = "azarashi"
 username = "tama"
-image = "node"
-image_version = "24-bookworm-slim"
+image = "ubuntu"
+image_version = "26.04"
 
 # docker_socket — /var/run/docker.sock をバインドマウントし、コンテナ内の
 #   docker クライアント (例: docker-cli プラグイン) がホスト daemon に到達できるようにする。
@@ -90,6 +90,9 @@ docker_socket = true
 #
 # env の設定例（コメントアウトを外して編集）:
 #   env = { EDITOR = "vim", PAGER = "less -R" }
+#   注: このインライン形式と [container.shell.env] サブセクション（言語ベースイメージでは
+#   `cocoon init` が自動追加することがある）は同じ env キーを定義するため、TOML としては
+#   併用できない。どちらか片方の形式に統一し、全てのキーをその 1 ブロックに追記する。
 # 注意:
 #   - EDITOR=vim / nano は apt カテゴリ `text-editors` の有効化が前提。
 #   - EDITOR=code は VS Code Dev Containers で開いたときのみ動く（`code` シムは
@@ -112,6 +115,8 @@ enable = [
     "flutter",
     "github-cli",
     "go",
+    "node",
+    "opentofu",
     "rust",
     "shellcheck",
     "shfmt",
@@ -119,16 +124,15 @@ enable = [
     "uv",
 ]
 
-# [plugins.methods] — 複数の [install.methods] を持つプラグインで、どの方式を使うか指定。
+# [plugins.methods] — 複数のインストール方式を提供するプラグインに対する選択。
 #   方式を 1 つしか持たないプラグインはこのセクションを無視。
 [plugins.methods]
 copilot-cli = "binary"
 
-# [plugins.versions] — version_capable プラグインのバージョン固定。
-#   verify = "checksum" のプラグインは checksum_amd64 / checksum_arm64（64 文字の小文字 hex）でダウンロードを検証可。
-# [plugins.versions]
-# go = { pin = "1.22.5" }
-# uv = { pin = "0.5.7", checksum_amd64 = "<sha256>" }
+# [plugins.versions] — 上で有効化したプラグインに対するバージョン固定。
+#   verify = "checksum" のプラグインは checksum_amd64 / checksum_arm64（64 文字小文字 hex）でダウンロードを検証できる。
+[plugins.versions]
+node = { pin = "24.16.0" }
 
 # [apt] — cocoon の最小ベース + 選択カテゴリに追加する apt パッケージ。
 #   カテゴリのチェックを変えるなら `cocoon init --force` を再実行、または直接このリストを編集。
@@ -168,12 +172,13 @@ packages = [
     "git-lfs",
     "strace",
     "tmux",
+    "just",
 ]
 
 # [apt.mirror] — 上流 apt URL を地域ミラーに書き換え。
 #   初回ビルドが大幅高速化。[container].os ファミリと合わせる。
-# [apt.mirror]
-# url = "http://jp.archive.ubuntu.com/ubuntu/"
+[apt.mirror]
+url = "http://jp.archive.ubuntu.com/ubuntu/"
 
 # [apt.proxy] — apt-get の HTTP/HTTPS プロキシ。
 #   イメージビルド時に /etc/apt/apt.conf.d/95proxy へ書かれる。
@@ -226,9 +231,9 @@ lang     = "ja_JP.UTF-8"
 
 # [dockerfile] — Dockerfile の所定フックポイントにカスタムフラグメントを注入。
 #   pre_user_setup は useradd の前、post_plugins はプラグイン install.sh の後に実行。
-[dockerfile]
+# [dockerfile]
 # pre_user_setup = """RUN apt-get install -y my-extra-pkg"""
-post_plugins   = """RUN npm config set prefix "$HOME/.local" """
+# post_plugins   = """RUN echo done"""
 
 # [certificates] — ~/.cocoon/certs/ からコンテナイメージへ TLS 証明書を自動取り込み (opt-in)。
 #   enable = true のとき `cocoon gen` が docker-compose の additional_contexts と Dockerfile の
