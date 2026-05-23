@@ -6,7 +6,7 @@
 	],
 	"service": "azarashi",
 	"initializeCommand": "(umask 077 && mkdir -p \"$(dirname -- \"${HOME:?HOME must be set on the host}/.claude.json\")\" && touch \"${HOME:?HOME must be set on the host}/.claude.json\")",
-	"workspaceFolder": "/home/tama/workspace",
+	"workspaceFolder": "/home/tama/work",
 	"shutdownAction": "stopCompose",
 	"remoteUser": "tama",
 	"updateRemoteUserUID": false,

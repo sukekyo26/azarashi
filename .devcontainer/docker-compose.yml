@@ -13,7 +13,7 @@ services:
       - "CONTAINER_SERVICE_NAME=${CONTAINER_SERVICE_NAME}"
       - TZ=Asia/Tokyo
     volumes:
-      - "../..:/home/${USERNAME}/workspace:cached"
+      - "../..:/home/${USERNAME}/work:cached"
       - "local:/home/${USERNAME}/.local"
       - "cocoon:/home/${USERNAME}/.cocoon"
       - "/var/run/docker.sock:/var/run/docker.sock"
@@ -21,6 +21,8 @@ services:
       - "claude:/home/${USERNAME}/.claude"
       - "copilot:/home/${USERNAME}/.copilot"
       - "deno:/home/${USERNAME}/.deno"
+      - "pub-cache:/home/${USERNAME}/.pub-cache"
+      - "flutter:/home/${USERNAME}/.flutter"
       - "config:/home/${USERNAME}/.config"
       - "go:/home/${USERNAME}/go"
       - "cargo:/home/${USERNAME}/.cargo"
@@ -49,6 +51,10 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_copilot"
   deno:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_deno"
+  pub-cache:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_pub-cache"
+  flutter:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_flutter"
   config:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_config"
   go:
