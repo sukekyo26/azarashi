@@ -7,13 +7,13 @@ set -u
 
 input=$(cat)
 
-model=$(jq -r '.model.display_name // "?"'           <<<"$input")
-cwd=$(jq -r '.workspace.current_dir // ""'           <<<"$input")
-cost=$(jq -r '.cost.total_cost_usd // 0'             <<<"$input")
-added=$(jq -r '.cost.total_lines_added // 0'         <<<"$input")
-removed=$(jq -r '.cost.total_lines_removed // 0'     <<<"$input")
+model=$(jq -r '.model.display_name // "?"' <<<"$input")
+cwd=$(jq -r '.workspace.current_dir // ""' <<<"$input")
+cost=$(jq -r '.cost.total_cost_usd // 0' <<<"$input")
+added=$(jq -r '.cost.total_lines_added // 0' <<<"$input")
+removed=$(jq -r '.cost.total_lines_removed // 0' <<<"$input")
 ctx_pct=$(jq -r '.context_window.used_percentage // empty' <<<"$input")
-style=$(jq -r '.output_style.name // ""'             <<<"$input")
+style=$(jq -r '.output_style.name // ""' <<<"$input")
 
 cwd_short="${cwd/#$HOME/'~'}"
 branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
@@ -37,21 +37,24 @@ ctx_segment=""
 if [[ -n "$ctx_pct" ]]; then
   pct_int=${ctx_pct%%.*}
   [[ "$pct_int" =~ ^[0-9]+$ ]] || pct_int=0
-  (( pct_int > 100 )) && pct_int=100
+  ((pct_int > 100)) && pct_int=100
 
   bar_width=10
-  filled=$(( pct_int * bar_width / 100 ))
-  (( filled == 0 && pct_int > 0 )) && filled=1
-  (( filled > bar_width )) && filled=$bar_width
-  empty=$(( bar_width - filled ))
+  filled=$((pct_int * bar_width / 100))
+  ((filled == 0 && pct_int > 0)) && filled=1
+  ((filled > bar_width)) && filled=$bar_width
+  empty=$((bar_width - filled))
 
-  if   (( pct_int >= 80 )); then bar_color=$C_DANGER
-  elif (( pct_int >= 60 )); then bar_color=$C_WARN
-  else                            bar_color=$C_OK
+  if ((pct_int >= 80)); then
+    bar_color=$C_DANGER
+  elif ((pct_int >= 60)); then
+    bar_color=$C_WARN
+  else
+    bar_color=$C_OK
   fi
 
   fill_str=$(printf '%*s' "$filled" '' | tr ' ' '#')
-  empty_str=$(printf '%*s' "$empty"  '' | tr ' ' '-')
+  empty_str=$(printf '%*s' "$empty" '' | tr ' ' '-')
   fill_str=${fill_str//#/█}
   empty_str=${empty_str//-/░}
 

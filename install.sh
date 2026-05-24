@@ -187,7 +187,9 @@ uninstall_entry() {
       uninstall_entry "$_ue_child" "$2/${_ue_child##*/}"
     done
     if [ "$DRY_RUN" -ne 1 ] && [ -d "$2" ] && [ ! -L "$2" ]; then
-      rmdir "$2" 2>/dev/null && info "removed empty dir: $2" || true
+      if rmdir "$2" 2>/dev/null; then
+        info "removed empty dir: $2"
+      fi
     fi
     return 0
   fi
