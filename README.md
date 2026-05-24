@@ -18,3 +18,13 @@
 - ディレクトリは丸ごと symlink。既に実ディレクトリがあれば子要素を個別 symlink。
 - `*.fragment.json` は対応する JSON へ deep-merge（既存値優先）。
 - リポジトリを移動したら再 install。
+
+## 開発
+
+devcontainer 内:
+
+```sh
+just hooks-install   # 初回のみ: pre-commit hook を git に配線
+just hooks-run       # 全ファイルに shellcheck / shfmt / gitleaks を流す
+just check           # CI と同じ shellcheck + shfmt のみ
+```
