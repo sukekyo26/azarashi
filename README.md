@@ -18,9 +18,3 @@
 - ディレクトリは丸ごと symlink。既に実ディレクトリがあれば子要素を個別 symlink。
 - `*.fragment.json` は対応する JSON へ deep-merge（既存値優先）。
 - リポジトリを移動したら再 install。
-
-## 開発
-
-```sh
-just check  # shellcheck + shfmt
-```
