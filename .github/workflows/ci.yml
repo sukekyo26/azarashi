@@ -14,6 +14,24 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - uses: mfinelli/setup-shfmt@a25fda4c1fe115aec0f85e04126610841bc3141d # v4.0.1
+
+      # Install the latest upstream shellcheck (same source as the devcontainer)
+      # so CI and local devcontainer share the same lint behavior. The ubuntu
+      # runner's preinstalled shellcheck lags upstream and emits findings that
+      # newer releases have already retracted.
+      - name: Install latest shellcheck
+        run: |
+          set -euo pipefail
+          sudo rm -f /usr/local/bin/shellcheck /usr/bin/shellcheck
+          version=$(curl -fsSLI --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+            -o /dev/null -w '%{url_effective}' https://github.com/koalaman/shellcheck/releases/latest |
+            sed 's|.*/tag/v||')
+          curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+            "https://github.com/koalaman/shellcheck/releases/download/v${version}/shellcheck-v${version}.linux.x86_64.tar.xz" \
+            | sudo tar -xJ -C /usr/local/bin --strip-components=1 "shellcheck-v${version}/shellcheck"
+          sudo chmod +x /usr/local/bin/shellcheck
+          shellcheck --version
+
       - run: just check
 
   e2e:
