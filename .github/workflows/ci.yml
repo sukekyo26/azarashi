@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  check:
+    name: shellcheck + shfmt-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v3
+      - uses: mfinelli/setup-shfmt@v3
+      - run: just check
+
+  e2e:
+    name: install.sh E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup isolated HOME
+        run: |
+          dir=$(mktemp -d)
+          echo "HOME=$dir" >> "$GITHUB_ENV"
+
+      - name: Dry-run on clean state — must not mutate HOME
+        run: |
+          ./install.sh diff
+          [ ! -e "$HOME/.claude" ]
+          [ ! -e "$HOME/.agents" ]
+          [ ! -e "$HOME/.copilot" ]
+
+      - name: First install
+        run: ./install.sh install
+
+      - name: status — assert all in-sync (no drift/missing/orphan)
+        run: |
+          ./install.sh status | tee status.out
+          ! grep -E '^[[:space:]]*(drift|missing|orphan)[[:space:]]*:' status.out
+
+      - name: Symlink sanity check
+        run: |
+          [ -L "$HOME/.claude" ]
+          [ -L "$HOME/.agents" ]
+          [ -L "$HOME/.copilot" ]
+
+      - name: Idempotency — second install must not create new links
+        run: |
+          ./install.sh install | tee install2.out
+          ! grep -E '^[[:space:]]*linked[[:space:]]*:' install2.out
+
+      - name: Uninstall
+        run: ./install.sh uninstall
+
+      - name: Cleanup verified — no symlinks remain
+        run: |
+          ./install.sh status | tee status_after.out
+          ! grep -E '^[[:space:]]*(in-sync|drift|orphan)[[:space:]]*:' status_after.out
