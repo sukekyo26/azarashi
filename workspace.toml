@@ -116,6 +116,7 @@ enable = [
     "github-cli",
     "gitleaks",
     "go",
+    "just",
     "node",
     "opentofu",
     "rust",
@@ -173,7 +174,6 @@ packages = [
     "git-lfs",
     "strace",
     "tmux",
-    "just",
 ]
 
 # [apt.mirror] — 上流 apt URL を地域ミラーに書き換え。
@@ -234,7 +234,7 @@ lang     = "ja_JP.UTF-8"
 #   pre_user_setup は useradd の前、post_plugins はプラグイン install.sh の後に実行。
 [dockerfile]
 post_plugins = '''
-# pre-commit (uses the cocoon uv plugin already enabled above)
+# pre-commit
 RUN uv tool install pre-commit
 '''
 
