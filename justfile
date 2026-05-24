@@ -31,3 +31,15 @@ shfmt-check:
 shfmt:
     shfmt -w {{shfmt_opts_posix}} install.sh lib/
     shfmt -w {{shfmt_opts_bash}} .devcontainer home
+
+# Install pre-commit hooks into .git/hooks/ (one-time setup)
+hooks-install:
+    pre-commit install --install-hooks
+
+# Run every pre-commit hook against every tracked file
+hooks-run:
+    pre-commit run --all-files
+
+# Full git history secret scan (mirrors CI)
+gitleaks-scan:
+    gitleaks git --no-banner --redact --verbose

@@ -1,0 +1,34 @@
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.11.0
+    hooks:
+      - id: shellcheck
+        alias: shellcheck-posix
+        name: shellcheck (POSIX sh)
+        files: ^(install\.sh|lib/.*\.sh)$
+        args: ["-s", "sh", "-x"]
+      - id: shellcheck
+        alias: shellcheck-bash
+        name: shellcheck (bash, shebang-driven)
+        files: \.sh$
+        exclude: ^(install\.sh|lib/.*\.sh)$
+        args: ["-x"]
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.1-1
+    hooks:
+      - id: shfmt
+        alias: shfmt-posix
+        files: ^(install\.sh|lib/.*\.sh)$
+        args: ["-d", "-ln", "posix", "-i", "2", "-ci"]
+      - id: shfmt
+        alias: shfmt-bash
+        files: ^(\.devcontainer/.*\.sh|home/.*\.sh)$
+        args: ["-d", "-i", "2", "-ci"]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
