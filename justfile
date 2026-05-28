@@ -1,4 +1,4 @@
-# azarashi — common tasks. Run `just` to see recipes.
+# dotfiles — common tasks. Run `just` to see recipes.
 
 # shfmt options shared by the format recipes
 shfmt_opts_posix := "-ln posix -i 2 -ci"
@@ -25,12 +25,12 @@ shellcheck-bash:
 # Report shell formatting issues without changing files
 shfmt-check:
     shfmt -d {{shfmt_opts_posix}} install.sh lib/
-    shfmt -d {{shfmt_opts_bash}} home
+    shfmt -d {{shfmt_opts_bash}} common
 
 # Format shell scripts in place
 shfmt:
     shfmt -w {{shfmt_opts_posix}} install.sh lib/
-    shfmt -w {{shfmt_opts_bash}} home
+    shfmt -w {{shfmt_opts_bash}} common
 
 # Install pre-commit hooks into .git/hooks/ (one-time setup)
 hooks-install:

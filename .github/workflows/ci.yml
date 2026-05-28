@@ -79,6 +79,71 @@ jobs:
           ./install.sh status | tee status_after.out
           ! grep -E '^[[:space:]]*(in-sync|drift|orphan)[[:space:]]*:' status_after.out
 
+  e2e-user:
+    name: install.sh E2E (per-user overlay)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # The overlay fixture is created on the runner only — never committed.
+      - name: Create a runtime per-user overlay fixture
+        run: |
+          mkdir -p users/citest/.claude
+          printf '#!/usr/bin/env bash\necho citest\n' >users/citest/.claude/statusline.sh
+          printf 'citest\n' >users/citest/.claude/citest-marker
+          printf '{ "statusLine": { "padding": 5 }, "citestUserKey": true }\n' \
+            >users/citest/.claude/settings.fragment.json
+
+      - name: Setup isolated HOME
+        run: |
+          dir=$(mktemp -d)
+          echo "HOME=$dir" >> "$GITHUB_ENV"
+
+      - name: Install with --user citest
+        run: ./install.sh install --user citest
+
+      - name: Override wins; non-overridden falls back to common
+        run: |
+          o=$(readlink "$HOME/.claude/statusline.sh")
+          case "$o" in */users/citest/.claude/statusline.sh) ;; *) echo "statusline.sh -> $o"; exit 1 ;; esac
+          m=$(readlink "$HOME/.claude/citest-marker")
+          case "$m" in */users/citest/.claude/citest-marker) ;; *) echo "citest-marker -> $m"; exit 1 ;; esac
+          c=$(readlink "$HOME/.claude/CLAUDE.md")
+          case "$c" in */common/.claude/CLAUDE.md) ;; *) echo "CLAUDE.md -> $c"; exit 1 ;; esac
+          a=$(readlink "$HOME/.agents")
+          case "$a" in */common/.agents) ;; *) echo ".agents -> $a"; exit 1 ;; esac
+
+      - name: Fragment merge layering (target > user > common)
+        run: |
+          jq -e '.statusLine.command == "bash ~/.claude/statusline.sh"' "$HOME/.claude/settings.json"
+          jq -e '.statusLine.padding == 5' "$HOME/.claude/settings.json"
+          jq -e '.citestUserKey == true' "$HOME/.claude/settings.json"
+
+      - name: status — assert all in-sync (no drift/missing/orphan)
+        run: |
+          ./install.sh status --user citest | tee status.out
+          ! grep -E '^[[:space:]]*(drift|missing|orphan)[[:space:]]*:' status.out
+
+      - name: Idempotency — second install must not relink or remerge
+        run: |
+          ./install.sh install --user citest | tee install2.out
+          ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
+
+      - name: Invalid --user must fail
+        run: |
+          ! ./install.sh install --user '../evil'
+
+      - name: Uninstall removes managed symlinks (merged JSON intentionally remains)
+        run: |
+          ./install.sh uninstall --user citest
+          [ ! -e "$HOME/.claude/statusline.sh" ]
+          [ ! -e "$HOME/.claude/citest-marker" ]
+          [ ! -e "$HOME/.claude/CLAUDE.md" ]
+          [ ! -L "$HOME/.agents" ]
+          [ ! -L "$HOME/.copilot" ]
+          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -f "$HOME/.claude/settings.json" ]
+
   gitleaks:
     name: gitleaks (secret scan)
     runs-on: ubuntu-latest
