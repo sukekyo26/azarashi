@@ -399,14 +399,17 @@ prune_rel() {
   done
 }
 
-# prune_toplevel — prune broken deploy symlinks directly under $HOME, i.e.
-# top-level whole-directory symlinks whose source was deleted from a layer.
+# prune_toplevel — prune top-level whole-directory deploy symlinks that the
+# active layers no longer source: the source was deleted from a layer, or the
+# link is a leftover from a previously-selected user whose entry is not in the
+# current common+user set. Keyed off effective_src, not whether the link target
+# still resolves (a previous user's target may still exist on disk).
 prune_toplevel() {
   for _pt in "$HOME"/* "$HOME"/.*; do
     [ -L "$_pt" ] || continue
     case ${_pt##*/} in . | ..) continue ;; esac
     is_managed_link "$_pt" || continue
-    [ -e "$_pt" ] && continue # still resolves — sourced, not an orphan
+    [ -n "$(effective_src "${_pt##*/}")" ] && continue # sourced by an active layer
     prune_one "$_pt"
   done
 }
