@@ -8,12 +8,12 @@
 # `gh api user`. With no user (or no matching users/<name>/ dir) only common/ is
 # deployed, identical to a single-layer install.
 #
-# A directory present in only one layer is symlinked whole; but if both layers
-# contribute, or the destination already exists as a real directory, the
-# installer steps inside and deploys each child so per-file overrides apply and
-# existing tool/user state is preserved. Plain files are symlinked. *.fragment.json
-# files are deep-merged (common then user) into the matching settings JSON
-# without clobbering existing keys.
+# Directories are always materialized as real directories and only their leaf
+# files are symlinked (user files win over common). A whole-directory symlink is
+# never created, so a tool writing into e.g. ~/.claude never writes back into
+# the repo and no symlinked directory is left behind. *.fragment.json files are
+# deep-merged (common then user) into the matching settings JSON without
+# clobbering existing keys.
 set -u
 
 REPO_DIR=$(
@@ -117,8 +117,8 @@ link_path() {
   fi
 
   if [ -e "$_lp_dest" ] || [ -L "$_lp_dest" ]; then
-    # back up only foreign content; one of our own repo links is reconstructible
-    is_link_to "$_lp_dest" "$_lp_src" || is_our_link "$_lp_dest" || backup "$_lp_dest"
+    # back up everything except a managed deploy link, which we can recreate
+    is_link_to "$_lp_dest" "$_lp_src" || is_managed_link "$_lp_dest" || backup "$_lp_dest"
     rm -rf "$_lp_dest"
   fi
   ln -s "$_lp_src" "$_lp_dest" || die "symlink failed: $_lp_dest"
@@ -226,8 +226,8 @@ any_layer_dir() {
 }
 
 # ensure_destdir <dest> — make <dest> a real directory, backing up and removing
-# a foreign file/symlink first (one of our own repo links is reconstructible, so
-# it is not backed up). No-op in status mode and (after printing) in dry-run, or
+# a foreign file/symlink first (a managed deploy link is reconstructible, so it
+# is not backed up). No-op in status mode and (after printing) in dry-run, or
 # when <dest> is already a real directory.
 ensure_destdir() {
   if [ -d "$1" ] && [ ! -L "$1" ]; then
@@ -245,7 +245,7 @@ ensure_destdir() {
     return 0
   fi
   if [ -e "$1" ] || [ -L "$1" ]; then
-    is_our_link "$1" || backup "$1"
+    is_managed_link "$1" || backup "$1"
     rm -rf "$1"
   fi
   mkdir -p "$1" || die "mkdir failed: $1"
@@ -434,16 +434,19 @@ walk_top() {
   done
 }
 
-# walk_all_top <action> — run <action> for each top-level entry name the repo
-# could ever have deployed (common/ plus every users/*/). Used by prune and
-# uninstall so a previously-selected user's leftovers are handled regardless of
-# the active user. Names may repeat across layers; prune/uninstall are
-# idempotent, so duplicates are harmless. <action> is prune | uninstall.
+# walk_all_top <action> — run <action> once for each distinct top-level entry
+# name the repo could ever have deployed (common/ plus every users/*/). Used by
+# prune and uninstall so a previously-selected user's leftovers are handled
+# regardless of the active user. Names are de-duplicated so status reports each
+# orphan once. <action> is prune | uninstall.
 walk_all_top() {
+  _wat_seen=" "
   for _wat in "$COMMON_SRC"/* "$COMMON_SRC"/.* \
     "$REPO_DIR"/users/*/* "$REPO_DIR"/users/*/.*; do
     [ -e "$_wat" ] || [ -L "$_wat" ] || continue
     case ${_wat##*/} in . | ..) continue ;; esac
+    case "$_wat_seen" in *" ${_wat##*/} "*) continue ;; esac
+    _wat_seen="$_wat_seen${_wat##*/} "
     walk_top_do "$1" "${_wat##*/}"
   done
 }
