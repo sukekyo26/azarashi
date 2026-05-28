@@ -60,24 +60,29 @@ jobs:
           ./install.sh status | tee status.out
           ! grep -E '^[[:space:]]*(drift|missing|orphan)[[:space:]]*:' status.out
 
-      - name: Symlink sanity check
+      - name: Layout sanity check
         run: |
-          [ -L "$HOME/.claude" ]
-          [ -L "$HOME/.agents" ]
-          [ -L "$HOME/.copilot" ]
+          # every directory is a real directory; only leaf files are symlinked
+          [ -d "$HOME/.agents" ] && [ ! -L "$HOME/.agents" ]
+          [ -L "$HOME/.agents/skills/changelog/SKILL.md" ]
+          [ -d "$HOME/.claude" ] && [ ! -L "$HOME/.claude" ]
+          [ -L "$HOME/.claude/CLAUDE.md" ]
+          # a fragment is merged into a real settings.json (not a symlink)
+          [ -f "$HOME/.claude/settings.json" ] && [ ! -L "$HOME/.claude/settings.json" ]
+          [ -f "$HOME/.copilot/settings.json" ] && [ ! -L "$HOME/.copilot/settings.json" ]
 
-      - name: Idempotency — second install must not create new links
+      - name: Idempotency — second install must not relink or remerge
         run: |
           ./install.sh install | tee install2.out
-          ! grep -E '^[[:space:]]*linked[[:space:]]*:' install2.out
+          ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
 
-      - name: Uninstall
-        run: ./install.sh uninstall
-
-      - name: Cleanup verified — no symlinks remain
+      - name: Uninstall removes symlinks (merged JSON intentionally remains)
         run: |
-          ./install.sh status | tee status_after.out
-          ! grep -E '^[[:space:]]*(in-sync|drift|orphan)[[:space:]]*:' status_after.out
+          ./install.sh uninstall
+          [ ! -e "$HOME/.agents" ]
+          [ ! -e "$HOME/.claude/CLAUDE.md" ]
+          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -f "$HOME/.claude/settings.json" ]
 
   e2e-user:
     name: install.sh E2E (per-user overlay)
@@ -111,11 +116,14 @@ jobs:
           case "$m" in */users/citest/.claude/citest-marker) ;; *) echo "citest-marker -> $m"; exit 1 ;; esac
           c=$(readlink "$HOME/.claude/CLAUDE.md")
           case "$c" in */common/.claude/CLAUDE.md) ;; *) echo "CLAUDE.md -> $c"; exit 1 ;; esac
-          a=$(readlink "$HOME/.agents")
-          case "$a" in */common/.agents) ;; *) echo ".agents -> $a"; exit 1 ;; esac
-          # a user-only top-level entry is a whole-dir symlink into users/citest
-          t=$(readlink "$HOME/.citest-top")
-          case "$t" in */users/citest/.citest-top) ;; *) echo ".citest-top -> $t"; exit 1 ;; esac
+          # .agents (no user override) is a real dir whose leaves link into common
+          [ -d "$HOME/.agents" ] && [ ! -L "$HOME/.agents" ]
+          a=$(readlink "$HOME/.agents/skills/changelog/SKILL.md")
+          case "$a" in */common/.agents/skills/changelog/SKILL.md) ;; *) echo ".agents leaf -> $a"; exit 1 ;; esac
+          # a user-only top-level entry is a real dir whose leaves link into users/citest
+          [ -d "$HOME/.citest-top" ] && [ ! -L "$HOME/.citest-top" ]
+          t=$(readlink "$HOME/.citest-top/marker")
+          case "$t" in */users/citest/.citest-top/marker) ;; *) echo ".citest-top/marker -> $t"; exit 1 ;; esac
 
       - name: Fragment merge layering (target > user > common)
         run: |
@@ -133,9 +141,9 @@ jobs:
           ./install.sh install --user citest | tee install2.out
           ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
 
-      - name: Switching off the user prunes its top-level overlay links
+      - name: Switching off the user prunes its top-level overlay dir
         run: |
-          [ -L "$HOME/.citest-top" ]
+          [ -d "$HOME/.citest-top" ] && [ ! -L "$HOME/.citest-top" ]
           ./install.sh install --user nobody-no-dir | tee switch.out
           [ ! -e "$HOME/.citest-top" ]
           grep -qE '^[[:space:]]*pruned[[:space:]]*:.*\.citest-top$' switch.out
@@ -147,10 +155,10 @@ jobs:
       - name: Uninstall removes managed symlinks (merged JSON intentionally remains)
         run: |
           ./install.sh uninstall --user citest
-          [ ! -e "$HOME/.claude/statusline.sh" ]
-          [ ! -e "$HOME/.claude/citest-marker" ]
           [ ! -e "$HOME/.claude/CLAUDE.md" ]
-          [ ! -L "$HOME/.agents" ]
+          # .agents had only symlinked leaves -> emptied and removed entirely
+          [ ! -e "$HOME/.agents" ]
+          # .copilot keeps its merged settings.json, so the real dir remains
           [ ! -L "$HOME/.copilot" ]
           ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
           [ -f "$HOME/.claude/settings.json" ]

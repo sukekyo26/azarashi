@@ -117,7 +117,8 @@ link_path() {
   fi
 
   if [ -e "$_lp_dest" ] || [ -L "$_lp_dest" ]; then
-    is_link_to "$_lp_dest" "$_lp_src" || backup "$_lp_dest"
+    # back up only foreign content; one of our own repo links is reconstructible
+    is_link_to "$_lp_dest" "$_lp_src" || is_our_link "$_lp_dest" || backup "$_lp_dest"
     rm -rf "$_lp_dest"
   fi
   ln -s "$_lp_src" "$_lp_dest" || die "symlink failed: $_lp_dest"
@@ -207,16 +208,10 @@ effective_src() {
   fi
 }
 
-# both_layer_dir <rel> — true if both layers have <rel> as a real directory.
-both_layer_dir() {
-  [ -n "$USER_SRC" ] || return 1
-  [ -d "$USER_SRC/$1" ] && [ ! -L "$USER_SRC/$1" ] || return 1
-  [ -d "$COMMON_SRC/$1" ] && [ ! -L "$COMMON_SRC/$1" ]
-}
-
 # ensure_destdir <dest> — make <dest> a real directory, backing up and removing
-# a foreign file/symlink first. No-op in status mode and (after printing) in
-# dry-run, or when <dest> is already a real directory.
+# a foreign file/symlink first (one of our own repo links is reconstructible, so
+# it is not backed up). No-op in status mode and (after printing) in dry-run, or
+# when <dest> is already a real directory.
 ensure_destdir() {
   if [ -d "$1" ] && [ ! -L "$1" ]; then
     return 0
@@ -233,7 +228,7 @@ ensure_destdir() {
     return 0
   fi
   if [ -e "$1" ] || [ -L "$1" ]; then
-    backup "$1"
+    is_our_link "$1" || backup "$1"
     rm -rf "$1"
   fi
   mkdir -p "$1" || die "mkdir failed: $1"
@@ -287,14 +282,12 @@ deploy_rel() {
   esac
 
   if [ -d "$_eff" ] && [ ! -L "$_eff" ]; then
-    if both_layer_dir "$1" || { [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ]; }; then
-      # both layers contribute, or a real directory already exists — step inside
-      ensure_destdir "$HOME/$1"
-      deploy_children "$1"
-      return 0
-    fi
-    # one layer, destination absent/foreign — symlink the directory whole
-    link_path "$_eff" "$HOME/$1"
+    # Directories are always materialized as real directories and only their
+    # leaf files are symlinked. A whole-directory symlink would mean a tool
+    # writing into e.g. ~/.claude writes back into the repo, and would leave a
+    # surprising symlinked directory behind — so we never do that.
+    ensure_destdir "$HOME/$1"
+    deploy_children "$1"
     return 0
   fi
 
@@ -303,55 +296,29 @@ deploy_rel() {
 
 # --- recursive uninstall ---------------------------------------------------
 
-# uninstall_children <rel> — mirror deploy_children's union walk for uninstall.
-uninstall_children() {
-  if [ -n "$USER_SRC" ] && [ -d "$USER_SRC/$1" ]; then
-    for _uc in "$USER_SRC/$1"/* "$USER_SRC/$1"/.*; do
+# uninstall_rel <rel> — walk the deployed tree at $HOME/<rel>, remove managed
+# leaf symlinks (restoring any backup), recurse real directories and drop those
+# left empty. Real files (e.g. a deep-merged settings.json) are left in place.
+# Driven by what is on disk, not the active layer set, so it cleans up whatever
+# was deployed regardless of which user is resolved now.
+uninstall_rel() {
+  if [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ]; then
+    for _uc in "$HOME/$1"/* "$HOME/$1"/.*; do
       [ -e "$_uc" ] || [ -L "$_uc" ] || continue
       case ${_uc##*/} in . | ..) continue ;; esac
       uninstall_rel "$1/${_uc##*/}"
     done
-  fi
-  [ -d "$COMMON_SRC/$1" ] || return 0
-  for _uc in "$COMMON_SRC/$1"/* "$COMMON_SRC/$1"/.*; do
-    [ -e "$_uc" ] || [ -L "$_uc" ] || continue
-    case ${_uc##*/} in . | ..) continue ;; esac
-    if [ -n "$USER_SRC" ] &&
-      { [ -e "$USER_SRC/$1/${_uc##*/}" ] || [ -L "$USER_SRC/$1/${_uc##*/}" ]; }; then
-      continue
-    fi
-    uninstall_rel "$1/${_uc##*/}"
-  done
-}
-
-# uninstall_rel <rel>
-uninstall_rel() {
-  _eff=$(effective_src "$1")
-  [ -n "$_eff" ] || return 0
-
-  case ${1##*/} in
-    *.fragment.json)
-      info "merged JSON left in place (cannot un-merge): $HOME/${1%.fragment.json}.json"
-      return 0
-      ;;
-  esac
-
-  if [ -d "$_eff" ] && [ ! -L "$_eff" ] && [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ]; then
-    uninstall_children "$1"
     if [ "$DRY_RUN" -ne 1 ] && [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ]; then
-      if rmdir "$HOME/$1" 2>/dev/null; then
-        info "removed empty dir: $HOME/$1"
-      fi
+      rmdir "$HOME/$1" 2>/dev/null && info "removed empty dir: $HOME/$1"
     fi
     return 0
   fi
-
-  remove_link "$HOME/$1"
+  [ -L "$HOME/$1" ] && remove_link "$HOME/$1"
+  return 0
 }
 
-# uninstall_toplevel — remove managed symlinks directly under $HOME that the
-# layer-driven walk did not visit (e.g. whole-directory links from a user other
-# than the currently-resolved one, so uninstall is complete regardless of user).
+# uninstall_toplevel — remove any managed symlinks directly under $HOME that the
+# layer-driven walk did not visit, so uninstall is complete regardless of user.
 uninstall_toplevel() {
   for _ut in "$HOME"/* "$HOME"/.*; do
     [ -L "$_ut" ] || continue
@@ -381,8 +348,10 @@ prune_one() {
 }
 
 # prune_rel <rel> — walk the deployed real directory $HOME/<rel> and prune
-# managed symlinks whose source is gone from both layers. Real files, real
-# directories, and foreign symlinks are left untouched.
+# managed symlinks whose source is gone from the active layers. Real files and
+# foreign symlinks are left untouched. A directory not sourced by any active
+# layer that is left empty by pruning is itself an orphan and is removed (this
+# cleans up a previously-selected user's top-level overlay directory on switch).
 prune_rel() {
   [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ] || return 0
   for _pr in "$HOME/$1"/* "$HOME/$1"/.*; do
@@ -397,6 +366,9 @@ prune_rel() {
       prune_rel "$1/${_pr##*/}"
     fi
   done
+  if [ "$MODE" != status ] && [ "$DRY_RUN" -ne 1 ] && [ -z "$(effective_src "$1")" ]; then
+    rmdir "$HOME/$1" 2>/dev/null && info "pruned  : $HOME/$1"
+  fi
 }
 
 # prune_toplevel — prune top-level whole-directory deploy symlinks that the
@@ -416,9 +388,9 @@ prune_toplevel() {
 
 # --- top-level layer walk --------------------------------------------------
 
-# walk_top <action> — run <action> for each unique top-level entry name present
-# under users/<name>/ or common/ (user names first, then common names not
-# already present in the user layer). <action> is deploy | prune | uninstall.
+# walk_top <action> — run <action> for each unique top-level entry name in the
+# active layers (user names first, then common names not present in the user
+# layer). Used by deploy. <action> is deploy | prune | uninstall.
 walk_top() {
   if [ -n "$USER_SRC" ]; then
     for _wt in "$USER_SRC"/* "$USER_SRC"/.*; do
@@ -438,6 +410,20 @@ walk_top() {
   done
 }
 
+# walk_all_top <action> — run <action> for each top-level entry name the repo
+# could ever have deployed (common/ plus every users/*/). Used by prune and
+# uninstall so a previously-selected user's leftovers are handled regardless of
+# the active user. Names may repeat across layers; prune/uninstall are
+# idempotent, so duplicates are harmless. <action> is prune | uninstall.
+walk_all_top() {
+  for _wat in "$COMMON_SRC"/* "$COMMON_SRC"/.* \
+    "$REPO_DIR"/users/*/* "$REPO_DIR"/users/*/.*; do
+    [ -e "$_wat" ] || [ -L "$_wat" ] || continue
+    case ${_wat##*/} in . | ..) continue ;; esac
+    walk_top_do "$1" "${_wat##*/}"
+  done
+}
+
 # walk_top_do <action> <name>
 walk_top_do() {
   case $1 in
@@ -447,11 +433,7 @@ walk_top_do() {
       deploy_rel "$2"
       ;;
     prune) prune_rel "$2" ;;
-    uninstall)
-      log ""
-      log "[$2]  uninstall from  $HOME/$2"
-      uninstall_rel "$2"
-      ;;
+    uninstall) uninstall_rel "$2" ;;
   esac
 }
 
@@ -464,14 +446,14 @@ cmd_run() { # install / diff / status
   if [ "$MODE" = status ] || [ "$NO_PRUNE" -ne 1 ]; then
     log ""
     log "[prune]  orphaned managed symlinks"
-    walk_top prune
+    walk_all_top prune
     prune_toplevel
   fi
 }
 
 cmd_uninstall() {
   [ -d "$COMMON_SRC" ] || die "missing payload directory: $COMMON_SRC"
-  walk_top uninstall
+  walk_all_top uninstall
   uninstall_toplevel
 }
 
