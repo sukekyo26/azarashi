@@ -21,7 +21,7 @@ backup() {
     warn "backup skipped (--no-backup): $_bk_target"
     return 0
   fi
-  _bk_dest="${_bk_target}.azarashi-bak.$(date -u +%Y%m%dT%H%M%SZ)"
+  _bk_dest="${_bk_target}.dotfiles-bak.$(date -u +%Y%m%dT%H%M%SZ)"
   if [ "$DRY_RUN" -eq 1 ]; then
     printf '  [dry-run] backup %s -> %s\n' "$_bk_target" "$_bk_dest"
     return 0
@@ -34,6 +34,6 @@ backup() {
 newest_backup() {
   _nb_base=$1
   find "$(dirname "$_nb_base")" -maxdepth 1 \
-    -name "$(basename "$_nb_base").azarashi-bak.*" 2>/dev/null |
+    -name "$(basename "$_nb_base").dotfiles-bak.*" 2>/dev/null |
     sort | tail -n 1
 }

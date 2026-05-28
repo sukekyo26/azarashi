@@ -1,30 +1,34 @@
-# jq-based deep merge of a *.fragment.json into an existing JSON settings file.
+# jq-based deep merge of one or more *.fragment.json into an existing JSON file.
 # Sourced by install.sh. Expects: DRY_RUN, NO_BACKUP, FORCE, MODE; helpers from common.sh.
 
 # Keys never written into the target, even if a fragment mistakenly contains them.
 PROTECTED_KEY_RE='credentials|token|api[_-]?key|secret|password|firstLaunchAt'
 
-# _merge_result <fragment> <target> — print the merged JSON to stdout.
-# The fragment is sanitized (protected keys removed); on conflict the existing
-# target value wins, so user state is never clobbered.
-_merge_result() {
-  _mr_frag=$1
-  _mr_target=$2
+# _merge_chain <target> <frag1> [frag2 ...] — print the merged JSON to stdout.
+# Fragments are combined left-to-right (later fragment wins, so user over common)
+# and sanitized (protected keys removed); on conflict the existing target value
+# wins, so user state is never clobbered. Precedence: target > later > earlier.
+_merge_chain() {
+  _mc_target=$1
+  shift
 
-  jq empty "$_mr_frag" 2>/dev/null || die "invalid JSON fragment: $_mr_frag"
+  for _mc_f in "$@"; do
+    jq empty "$_mc_f" 2>/dev/null || die "invalid JSON fragment: $_mc_f"
+  done
 
-  _mr_clean=$(jq --arg re "$PROTECTED_KEY_RE" \
-    'walk(if type == "object"
-          then with_entries(select(.key | test("^(" + $re + ")$"; "i") | not))
-          else . end)' \
-    "$_mr_frag") || die "failed to sanitize fragment: $_mr_frag"
+  _mc_clean=$(jq -s --arg re "$PROTECTED_KEY_RE" \
+    'reduce .[1:][] as $x (.[0]; . * $x)
+     | walk(if type == "object"
+            then with_entries(select(.key | test("^(" + $re + ")$"; "i") | not))
+            else . end)' \
+    "$@") || die "failed to merge/sanitize fragments"
 
-  if [ -f "$_mr_target" ]; then
-    jq empty "$_mr_target" 2>/dev/null || die "existing target is not valid JSON: $_mr_target"
-    printf '%s' "$_mr_clean" | jq -s '.[0] * .[1]' - "$_mr_target" ||
-      die "merge failed: $_mr_target"
+  if [ -f "$_mc_target" ]; then
+    jq empty "$_mc_target" 2>/dev/null || die "existing target is not valid JSON: $_mc_target"
+    printf '%s' "$_mc_clean" | jq -s '.[0] * .[1]' - "$_mc_target" ||
+      die "merge failed: $_mc_target"
   else
-    printf '%s' "$_mr_clean"
+    printf '%s' "$_mc_clean"
   fi
 }
 
@@ -35,12 +39,12 @@ _json_eq() {
   [ "$(printf '%s' "$1" | jq -S .)" = "$(jq -S . "$2")" ]
 }
 
-# merge_json <fragment> <target> — deploy a fragment.
+# merge_json <target> <frag1> [frag2 ...] — deploy one or more fragments.
 # In MODE=status, only reports state and makes no changes.
 merge_json() {
-  _mj_frag=$1
-  _mj_target=$2
-  _mj_result=$(_merge_result "$_mj_frag" "$_mj_target")
+  _mj_target=$1
+  shift
+  _mj_result=$(_merge_chain "$_mj_target" "$@")
 
   if [ "$MODE" = status ]; then
     if [ ! -f "$_mj_target" ]; then
@@ -59,13 +63,13 @@ merge_json() {
   fi
 
   if [ "$DRY_RUN" -eq 1 ]; then
-    printf '  [dry-run] merge %s -> %s\n' "$_mj_frag" "$_mj_target"
+    printf '  [dry-run] merge %s -> %s\n' "$*" "$_mj_target"
     return 0
   fi
 
   mkdir -p "$(dirname "$_mj_target")" || die "mkdir failed: $_mj_target"
   backup "$_mj_target"
-  _mj_tmp="${_mj_target}.azarashi-tmp.$$"
+  _mj_tmp="${_mj_target}.dotfiles-tmp.$$"
   printf '%s\n' "$_mj_result" >"$_mj_tmp" || die "write failed: $_mj_tmp"
   if ! jq empty "$_mj_tmp" 2>/dev/null; then
     rm -f "$_mj_tmp"
