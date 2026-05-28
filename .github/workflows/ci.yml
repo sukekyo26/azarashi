@@ -76,6 +76,26 @@ jobs:
           ./install.sh install | tee install2.out
           ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
 
+      - name: Prune must never touch a tool's own state under a managed dir
+        run: |
+          # directories no layer defines (here: a tool's runtime state) must be
+          # left alone by prune, including empty ones
+          mkdir -p "$HOME/.claude/session-env/sess1" "$HOME/.claude/empty-tool-dir"
+          : >"$HOME/.claude/session-env/sess1/state"
+          : >"$HOME/.claude/own-file.txt"
+          ./install.sh install
+          [ -f "$HOME/.claude/session-env/sess1/state" ]
+          [ -d "$HOME/.claude/empty-tool-dir" ]
+          [ -f "$HOME/.claude/own-file.txt" ]
+          # the same must hold for uninstall
+          ./install.sh uninstall
+          [ -f "$HOME/.claude/session-env/sess1/state" ]
+          [ -d "$HOME/.claude/empty-tool-dir" ]
+          [ -f "$HOME/.claude/own-file.txt" ]
+          # restore a clean install for the steps below
+          rm -rf "$HOME/.claude/session-env" "$HOME/.claude/empty-tool-dir" "$HOME/.claude/own-file.txt"
+          ./install.sh install
+
       - name: Uninstall removes symlinks (merged JSON intentionally remains)
         run: |
           ./install.sh uninstall

@@ -208,6 +208,23 @@ effective_src() {
   fi
 }
 
+# any_layer_dir <rel> — true if common/ or any users/*/ has <rel> as a real
+# directory. Prune/uninstall use this to confine directory recursion and rmdir
+# to the tree the repo actually manages, so a tool's own real directory under a
+# managed dir (e.g. ~/.claude/session-env) is never traversed or removed.
+any_layer_dir() {
+  if [ -d "$COMMON_SRC/$1" ] && [ ! -L "$COMMON_SRC/$1" ]; then
+    return 0
+  fi
+  for _ald in "$REPO_DIR"/users/*/; do
+    [ -d "$_ald" ] || continue
+    if [ -d "$_ald$1" ] && [ ! -L "$_ald$1" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # ensure_destdir <dest> — make <dest> a real directory, backing up and removing
 # a foreign file/symlink first (one of our own repo links is reconstructible, so
 # it is not backed up). No-op in status mode and (after printing) in dry-run, or
@@ -306,9 +323,15 @@ uninstall_rel() {
     for _uc in "$HOME/$1"/* "$HOME/$1"/.*; do
       [ -e "$_uc" ] || [ -L "$_uc" ] || continue
       case ${_uc##*/} in . | ..) continue ;; esac
-      uninstall_rel "$1/${_uc##*/}"
+      if is_managed_link "$_uc"; then
+        remove_link "$_uc"
+      elif [ -d "$_uc" ] && [ ! -L "$_uc" ] && any_layer_dir "$1/${_uc##*/}"; then
+        # recurse only into directories the repo manages — never a tool's own dir
+        uninstall_rel "$1/${_uc##*/}"
+      fi
     done
-    if [ "$DRY_RUN" -ne 1 ] && [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ]; then
+    if [ "$DRY_RUN" -ne 1 ] && any_layer_dir "$1" &&
+      [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ]; then
       rmdir "$HOME/$1" 2>/dev/null && info "removed empty dir: $HOME/$1"
     fi
     return 0
@@ -357,16 +380,17 @@ prune_rel() {
   for _pr in "$HOME/$1"/* "$HOME/$1"/.*; do
     [ -e "$_pr" ] || [ -L "$_pr" ] || continue
     case ${_pr##*/} in . | ..) continue ;; esac
-    if [ -n "$(effective_src "$1/${_pr##*/}")" ]; then
-      prune_rel "$1/${_pr##*/}"
-    elif is_managed_link "$_pr"; then
-      prune_one "$_pr"
-    elif [ -d "$_pr" ] && [ ! -L "$_pr" ]; then
-      # unsourced real directory — recurse to catch orphan links nested inside
+    if is_managed_link "$_pr"; then
+      # a managed symlink no longer sourced by an active layer is an orphan
+      [ -n "$(effective_src "$1/${_pr##*/}")" ] || prune_one "$_pr"
+    elif [ -d "$_pr" ] && [ ! -L "$_pr" ] && any_layer_dir "$1/${_pr##*/}"; then
+      # recurse only into directories the repo manages — never a tool's own dir
       prune_rel "$1/${_pr##*/}"
     fi
   done
-  if [ "$MODE" != status ] && [ "$DRY_RUN" -ne 1 ] && [ -z "$(effective_src "$1")" ]; then
+  # a managed directory not sourced by any active layer, left empty, is an orphan
+  if [ "$MODE" != status ] && [ "$DRY_RUN" -ne 1 ] &&
+    any_layer_dir "$1" && [ -z "$(effective_src "$1")" ]; then
     rmdir "$HOME/$1" 2>/dev/null && info "pruned  : $HOME/$1"
   fi
 }
