@@ -25,12 +25,12 @@ shellcheck-bash:
 # Report shell formatting issues without changing files
 shfmt-check:
     shfmt -d {{shfmt_opts_posix}} install.sh lib/
-    shfmt -d {{shfmt_opts_bash}} .devcontainer home
+    shfmt -d {{shfmt_opts_bash}} home
 
 # Format shell scripts in place
 shfmt:
     shfmt -w {{shfmt_opts_posix}} install.sh lib/
-    shfmt -w {{shfmt_opts_bash}} .devcontainer home
+    shfmt -w {{shfmt_opts_bash}} home
 
 # Install pre-commit hooks into .git/hooks/ (one-time setup)
 hooks-install:
