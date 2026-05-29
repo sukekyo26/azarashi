@@ -44,7 +44,10 @@ _json_eq() {
 merge_json() {
   _mj_target=$1
   shift
-  _mj_result=$(_merge_chain "$_mj_target" "$@")
+  # _merge_chain die()s inside this $(...) subshell, which only exits the
+  # subshell — propagate that failure so an invalid fragment/target aborts
+  # before we overwrite the target (it printed the specific error to stderr).
+  _mj_result=$(_merge_chain "$_mj_target" "$@") || exit 1
 
   if [ "$MODE" = status ]; then
     if [ ! -f "$_mj_target" ]; then
