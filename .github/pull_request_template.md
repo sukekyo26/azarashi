@@ -33,9 +33,9 @@ None
 None
 
 ## Test plan
-- [ ] `just ci` is green locally
-- [ ] (when applicable) E2E workflow (`.github/workflows/e2e.yml`) is green, or `cocoon init && cocoon gen && docker compose ...` round-trip verified manually
-- [ ] (when applicable) Affected plugins / CLI subcommands exercised manually
+- [ ] `just check` is green locally
+- [ ] (when applicable) the E2E jobs in `.github/workflows/ci.yml` are green, or a manual `./install.sh` install/status/uninstall round-trip verified
+- [ ] (when applicable) Affected CLI subcommands exercised manually
 
 ## CHANGELOG
 <!-- Rule of thumb: does this change end-user or plugin-author behavior, config, or surface? If no, mark it out-of-scope. -->
