@@ -69,11 +69,20 @@ jobs:
 
       - name: Layout sanity check
         run: |
-          # every directory is a real directory; only leaf files are symlinked
+          # dot-directories are always real directories (never symlinked)
           [ -d "$HOME/.agents" ] && [ ! -L "$HOME/.agents" ]
-          [ -L "$HOME/.agents/skills/changelog/SKILL.md" ]
           [ -d "$HOME/.claude" ] && [ ! -L "$HOME/.claude" ]
-          [ -L "$HOME/.claude/CLAUDE.md" ]
+          [ -d "$HOME/.copilot" ] && [ ! -L "$HOME/.copilot" ]
+          # canonical .agents: AGENTS.md is a leaf symlink, skills is materialized
+          [ -L "$HOME/.agents/AGENTS.md" ]
+          [ -d "$HOME/.agents/skills" ] && [ ! -L "$HOME/.agents/skills" ]
+          [ -L "$HOME/.agents/skills/changelog/SKILL.md" ]
+          # file mirrors resolve to the single canonical AGENTS.md
+          [ -L "$HOME/.claude/CLAUDE.md" ] && cmp -s "$HOME/.claude/CLAUDE.md" "$HOME/.agents/AGENTS.md"
+          [ -L "$HOME/.copilot/copilot-instructions.md" ] && cmp -s "$HOME/.copilot/copilot-instructions.md" "$HOME/.agents/AGENTS.md"
+          # the skills mirror is a single directory symlink (no folder materialized)
+          [ -L "$HOME/.claude/skills" ] && [ -d "$HOME/.claude/skills" ]
+          [ -e "$HOME/.claude/skills/changelog/SKILL.md" ]
           # a fragment is merged into a real settings.json (not a symlink)
           [ -f "$HOME/.claude/settings.json" ] && [ ! -L "$HOME/.claude/settings.json" ]
           [ -f "$HOME/.copilot/settings.json" ] && [ ! -L "$HOME/.copilot/settings.json" ]
@@ -108,6 +117,8 @@ jobs:
           ./install.sh uninstall
           [ ! -e "$HOME/.agents" ]
           [ ! -e "$HOME/.claude/CLAUDE.md" ]
+          [ ! -e "$HOME/.claude/skills" ]
+          [ ! -e "$HOME/.copilot/copilot-instructions.md" ]
           ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
           [ -f "$HOME/.claude/settings.json" ]
 
@@ -120,7 +131,8 @@ jobs:
       # The overlay fixture is created on the runner only — never committed.
       - name: Create a runtime per-user overlay fixture
         run: |
-          mkdir -p users/citest/.claude users/citest/.citest-top
+          mkdir -p users/citest/.claude users/citest/.agents users/citest/.citest-top
+          printf 'citest AGENTS\n' >users/citest/.agents/AGENTS.md
           printf '#!/usr/bin/env bash\necho citest\n' >users/citest/.claude/statusline.sh
           printf 'citest\n' >users/citest/.claude/citest-marker
           printf '{ "statusLine": { "padding": 5 }, "citestUserKey": true }\n' \
@@ -141,9 +153,19 @@ jobs:
           case "$o" in */users/citest/.claude/statusline.sh) ;; *) echo "statusline.sh -> $o"; exit 1 ;; esac
           m=$(readlink "$HOME/.claude/citest-marker")
           case "$m" in */users/citest/.claude/citest-marker) ;; *) echo "citest-marker -> $m"; exit 1 ;; esac
+          # the AGENTS.md file mirror follows the per-user override (CLAUDE.md and
+          # copilot-instructions.md both mirror users/citest/.agents/AGENTS.md)
           c=$(readlink "$HOME/.claude/CLAUDE.md")
-          case "$c" in */common/.claude/CLAUDE.md) ;; *) echo "CLAUDE.md -> $c"; exit 1 ;; esac
-          # .agents (no user override) is a real dir whose leaves link into common
+          case "$c" in */users/citest/.agents/AGENTS.md) ;; *) echo "CLAUDE.md -> $c"; exit 1 ;; esac
+          ci=$(readlink "$HOME/.copilot/copilot-instructions.md")
+          case "$ci" in */users/citest/.agents/AGENTS.md) ;; *) echo "copilot-instructions -> $ci"; exit 1 ;; esac
+          aa=$(readlink "$HOME/.agents/AGENTS.md")
+          case "$aa" in */users/citest/.agents/AGENTS.md) ;; *) echo ".agents/AGENTS.md -> $aa"; exit 1 ;; esac
+          # the skills mirror is a single dir symlink; with no user override it falls back to common
+          [ -L "$HOME/.claude/skills" ]
+          s=$(readlink "$HOME/.claude/skills")
+          case "$s" in */common/.agents/skills) ;; *) echo ".claude/skills -> $s"; exit 1 ;; esac
+          # .agents (no skills override) is a real dir whose skills leaves link into common
           [ -d "$HOME/.agents" ] && [ ! -L "$HOME/.agents" ]
           a=$(readlink "$HOME/.agents/skills/changelog/SKILL.md")
           case "$a" in */common/.agents/skills/changelog/SKILL.md) ;; *) echo ".agents leaf -> $a"; exit 1 ;; esac
@@ -183,6 +205,8 @@ jobs:
         run: |
           ./install.sh uninstall --user citest
           [ ! -e "$HOME/.claude/CLAUDE.md" ]
+          [ ! -e "$HOME/.claude/skills" ]
+          [ ! -e "$HOME/.copilot/copilot-instructions.md" ]
           # .agents had only symlinked leaves -> emptied and removed entirely
           [ ! -e "$HOME/.agents" ]
           # .copilot keeps its merged settings.json, so the real dir remains

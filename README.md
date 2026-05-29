@@ -27,6 +27,7 @@ users/<name>/     # 個人レイヤー（common/ と同構造、競合時に優�
 - ディレクトリは常に実ディレクトリとして作成し、葉（ファイル）だけを個別 symlink する。`~/.claude` などが丸ごと symlink にならないので、ツールがそこへ書き込んでもリポジトリを汚さず、symlink ディレクトリも残らない。同名ファイルはユーザー側が優先。
 - 個人レイヤーがある相対パスに**ファイル**を置くと、共通側の同パスのサブツリー全体を隠す（型はユーザー側が勝つ）。
 - `*.fragment.json` は対応する JSON へ deep-merge。優先度は既存値 > ユーザー fragment > 共通 fragment。
+- リポルートの `mirror.conf` で、1 つの正典ファイルを複数の配布先へ symlink としてミラーできる（例: `.agents/AGENTS.md` を `.claude/CLAUDE.md` と `.copilot/copilot-instructions.md` へ）。各行は `target source`（レイヤ相対・`#` はコメント）。source はレイヤ解決を通るのでユーザー上書きにも追従する。ファイルは file symlink、ディレクトリは **1 本の dir symlink**（`~/.claude` 等のドットディレクトリは常に実体なので、`skills` のような中間ディレクトリのみが対象）。
 - ユーザーを切り替える / 解除すると、前ユーザー由来の葉 symlink と空になったディレクトリは prune で除去される。
 - バックアップは上書き前に `*.dotfiles-bak.<UTC timestamp>` として作られる。
 - リポジトリを移動したら再 install。
