@@ -14,6 +14,12 @@
 # the repo and no symlinked directory is left behind. *.fragment.json files are
 # deep-merged (common then user) into the matching settings JSON without
 # clobbering existing keys.
+#
+# mirror.conf (repo root) maps extra target paths to a single canonical source
+# (e.g. .claude/CLAUDE.md and .copilot/copilot-instructions.md to
+# .agents/AGENTS.md) so shared content lives in one place; each target is
+# deployed as a symlink (a file source as a file symlink, a directory source as
+# one directory symlink).
 set -u
 
 REPO_DIR=$(
@@ -21,6 +27,7 @@ REPO_DIR=$(
   cd -- "$(dirname -- "$0")" && pwd
 )
 COMMON_SRC="$REPO_DIR/common"
+MIRROR_CONF="$REPO_DIR/mirror.conf"
 
 DRY_RUN=0
 NO_BACKUP=0
@@ -46,7 +53,6 @@ Commands:
   diff               Alias for: install --dry-run
   status             Report in-sync / drift / missing / orphan per entry
   uninstall          Remove managed symlinks; prune emptied directories
-  sync-instructions  Copy common/.claude/CLAUDE.md to common/.copilot/copilot-instructions.md
 
 Flags:
   --user <name>      Overlay users/<name>/ on top of common/ (user files win).
@@ -198,14 +204,27 @@ resolve_user() {
 # variables. A `for var in glob` list is fixed at expansion time, so reusing the
 # same loop-var name across the recursive call is safe — no `local` needed.
 
-# effective_src <rel> — print the highest-precedence layer path that has <rel>
+# layer_src <rel> — print the highest-precedence layer path that has <rel>
 # (users/ over common/), or nothing if neither layer has it.
-effective_src() {
+layer_src() {
   if [ -n "$USER_SRC" ] && { [ -e "$USER_SRC/$1" ] || [ -L "$USER_SRC/$1" ]; }; then
     printf '%s' "$USER_SRC/$1"
   elif [ -e "$COMMON_SRC/$1" ] || [ -L "$COMMON_SRC/$1" ]; then
     printf '%s' "$COMMON_SRC/$1"
   fi
+}
+
+# effective_src <rel> — layer_src for <rel>, or, when <rel> is a mirror target,
+# the layer_src of its source. A mirror source resolves against the layers only
+# (one hop), so a mirror rule can never make this recurse. Used by deploy and by
+# prune's orphan check, so a mirror target is recognized as legitimately sourced.
+effective_src() {
+  _es=$(layer_src "$1")
+  if [ -z "$_es" ]; then
+    _es_src=$(mirror_source "$1")
+    [ -n "$_es_src" ] && _es=$(layer_src "$_es_src")
+  fi
+  printf '%s' "$_es"
 }
 
 # any_layer_dir <rel> — true if common/ or any users/*/ has <rel> as a real
@@ -309,6 +328,51 @@ deploy_rel() {
   fi
 
   link_path "$_eff" "$HOME/$1"
+}
+
+# --- file mirrors ----------------------------------------------------------
+# mirror.conf maps a target path to a single canonical source; the source is
+# deployed to the target as one managed symlink (file -> file symlink, dir -> a
+# single directory symlink), so shared content lives in one place.
+
+# mirror_source <target-rel> — if <target-rel> is a mirror target, or lies under
+# a mirrored directory, print the matching source-rel; otherwise print nothing.
+mirror_source() {
+  [ -f "$MIRROR_CONF" ] || return 0
+  while read -r _ms_t _ms_s _ms_x || [ -n "$_ms_t" ]; do
+    case ${_ms_t:-} in '' | '#'*) continue ;; esac
+    [ -n "$_ms_s" ] && [ -z "$_ms_x" ] || continue
+    case "$1" in
+      "$_ms_t") printf '%s' "$_ms_s" && return 0 ;;
+      "$_ms_t"/*) printf '%s' "$_ms_s/${1#"$_ms_t"/}" && return 0 ;;
+    esac
+  done <"$MIRROR_CONF"
+}
+
+# deploy_mirror <target-rel> <source-rel> — link the source to the target as a
+# single managed symlink, materializing the target's parent directory first.
+deploy_mirror() {
+  _dm_eff=$(effective_src "$2")
+  if [ -z "$_dm_eff" ]; then
+    warn "mirror source not found, skipping: $1 <- $2"
+    return 0
+  fi
+  case $1 in
+    */*) ensure_destdir "$HOME/${1%/*}" ;;
+  esac
+  link_path "$_dm_eff" "$HOME/$1"
+}
+
+# deploy_mirrors — apply every rule in mirror.conf. Run after the main deploy so
+# each target's parent dotdir already exists as a real directory.
+deploy_mirrors() {
+  [ -f "$MIRROR_CONF" ] || return 0
+  while read -r _dms_t _dms_s _dms_x || [ -n "$_dms_t" ]; do
+    case ${_dms_t:-} in '' | '#'*) continue ;; esac
+    [ -n "$_dms_s" ] && [ -z "$_dms_x" ] ||
+      die "mirror.conf: each rule needs exactly 'target source': $_dms_t $_dms_s $_dms_x"
+    deploy_mirror "$_dms_t" "$_dms_s"
+  done <"$MIRROR_CONF"
 }
 
 # --- recursive uninstall ---------------------------------------------------
@@ -470,6 +534,12 @@ cmd_run() { # install / diff / status
   [ -d "$COMMON_SRC" ] || die "missing payload directory: $COMMON_SRC"
   walk_top deploy
 
+  if [ -f "$MIRROR_CONF" ]; then
+    log ""
+    log "[mirror]  mirror.conf targets"
+    deploy_mirrors
+  fi
+
   if [ "$MODE" = status ] || [ "$NO_PRUNE" -ne 1 ]; then
     log ""
     log "[prune]  orphaned managed symlinks"
@@ -484,25 +554,13 @@ cmd_uninstall() {
   uninstall_toplevel
 }
 
-cmd_sync_instructions() {
-  _si_src="$COMMON_SRC/.claude/CLAUDE.md"
-  _si_dst="$COMMON_SRC/.copilot/copilot-instructions.md"
-  [ -f "$_si_src" ] || die "missing source: $_si_src"
-  if [ "$DRY_RUN" -eq 1 ]; then
-    printf '  [dry-run] cp %s -> %s\n' "$_si_src" "$_si_dst"
-    return 0
-  fi
-  cp "$_si_src" "$_si_dst" || die "copy failed: $_si_dst"
-  log "synced: $_si_dst"
-}
-
 # --- argument parsing ------------------------------------------------------
 
 CMD=""
 
 while [ $# -gt 0 ]; do
   case $1 in
-    install | status | uninstall | sync-instructions) CMD=$1 ;;
+    install | status | uninstall) CMD=$1 ;;
     diff)
       CMD=install
       DRY_RUN=1
@@ -561,9 +619,6 @@ case $CMD in
     cmd_uninstall
     log ""
     log "Done."
-    ;;
-  sync-instructions)
-    cmd_sync_instructions
     ;;
   *)
     usage >&2
