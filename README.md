@@ -13,6 +13,8 @@
 ./install.sh install --no-prune   # 刈り取り抑止
 ./install.sh status               # in-sync / drift / missing / orphan
 ./install.sh uninstall            # 管理 symlink を除去
+./install.sh clean-backups        # *.dotfiles-bak.* を一覧（削除しない）
+./install.sh clean-backups --keep 3   # 各元ファイルにつき最新 3 件を残して削除
 ./install.sh --help
 ```
 
