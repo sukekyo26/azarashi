@@ -33,7 +33,7 @@ None
 None
 
 ## Test plan
-- [ ] `just check` is green locally
+- [ ] `just ci` is green locally
 - [ ] (when applicable) the E2E jobs in `.github/workflows/ci.yml` are green, or a manual `./install.sh` install/status/uninstall round-trip verified
 - [ ] (when applicable) Affected CLI subcommands exercised manually
 
