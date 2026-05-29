@@ -132,6 +132,19 @@ jobs:
           [ -L "$HOME/.claude/CLAUDE.md" ]
           rm -rf "$HOME/.claude/foo.dotfiles-bak."* "$HOME/unrelated"
 
+      - name: doctor reports broken/stale managed symlinks (read-only)
+        run: |
+          # healthy install: clean bill, exit 0
+          ./install.sh doctor >doc.out 2>&1
+          grep -q 'no broken or stale' doc.out
+          # a stale link (as if the repo had moved) must be flagged with a nonzero exit
+          ln -s /old/checkout/azarashi/common/.agents/AGENTS.md "$HOME/.claude/stale-link"
+          if ./install.sh doctor >doc.out 2>&1; then echo "doctor should have exited nonzero"; cat doc.out; exit 1; fi
+          grep -qE '^stale   : .*/\.claude/stale-link' doc.out
+          rm -f "$HOME/.claude/stale-link"
+          # healthy again
+          ./install.sh doctor >/dev/null
+
       - name: Uninstall removes symlinks (merged JSON intentionally remains)
         run: |
           ./install.sh uninstall
