@@ -112,6 +112,26 @@ jobs:
           rm -rf "$HOME/.claude/session-env" "$HOME/.claude/empty-tool-dir" "$HOME/.claude/own-file.txt"
           ./install.sh install
 
+      - name: clean-backups prunes only *.dotfiles-bak.* by retention
+        run: |
+          # seed fake backups for one original, plus one OUTSIDE the managed tree
+          for ts in 20230101T000000Z 20240101T000000Z 20250101T000000Z; do : >"$HOME/.claude/foo.dotfiles-bak.$ts"; done
+          mkdir -p "$HOME/unrelated"; : >"$HOME/unrelated/zzz.dotfiles-bak.20250101T000000Z"
+          # report-only (no flag): lists, deletes nothing, ignores unrelated/
+          ./install.sh clean-backups | tee cb.out
+          grep -q '3 backup(s) found' cb.out
+          [ -e "$HOME/.claude/foo.dotfiles-bak.20230101T000000Z" ]
+          # --keep 1 keeps the newest per original and removes the rest
+          ./install.sh clean-backups --keep 1
+          [ ! -e "$HOME/.claude/foo.dotfiles-bak.20230101T000000Z" ]
+          [ ! -e "$HOME/.claude/foo.dotfiles-bak.20240101T000000Z" ]
+          [ -e "$HOME/.claude/foo.dotfiles-bak.20250101T000000Z" ]
+          # a backup outside the managed tree is never scanned or touched
+          [ -e "$HOME/unrelated/zzz.dotfiles-bak.20250101T000000Z" ]
+          # managed symlinks are untouched
+          [ -L "$HOME/.claude/CLAUDE.md" ]
+          rm -rf "$HOME/.claude/foo.dotfiles-bak."* "$HOME/unrelated"
+
       - name: Uninstall removes symlinks (merged JSON intentionally remains)
         run: |
           ./install.sh uninstall

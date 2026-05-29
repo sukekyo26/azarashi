@@ -33,6 +33,8 @@ DRY_RUN=0
 NO_BACKUP=0
 FORCE=0
 NO_PRUNE=0
+CB_KEEP=""
+CB_OLDER=""
 MODE=install
 CLI_USER=""
 RESOLVED_USER=""
@@ -53,6 +55,8 @@ Commands:
   diff               Alias for: install --dry-run
   status             Report in-sync / drift / missing / orphan per entry
   uninstall          Remove managed symlinks; prune emptied directories
+  clean-backups      Remove *.dotfiles-bak.* backups (report only without a
+                     retention flag; see --keep / --older-than)
 
 Flags:
   --user <name>      Overlay users/<name>/ on top of common/ (user files win).
@@ -62,6 +66,8 @@ Flags:
   --no-backup        Skip backups before overwriting (default: backups on)
   --force            Re-link / re-merge even when already in sync
   --no-prune         Skip pruning orphaned symlinks on install
+  --keep <n>         clean-backups: keep the newest <n> backups per original path
+  --older-than <d>   clean-backups: remove backups older than <d> days
   -h, --help         Show this help
 EOF
 }
@@ -554,13 +560,89 @@ cmd_uninstall() {
   uninstall_toplevel
 }
 
+# --- backup gc -------------------------------------------------------------
+# Backups (*.dotfiles-bak.<UTC timestamp>) are created before overwriting
+# foreign content and otherwise accumulate forever. clean-backups removes them.
+
+# list_backups — print every *.dotfiles-bak.* under the managed top-level
+# entries: each entry's subtree, plus the entry itself backed up as a sibling.
+# Scans only the deploy tree (the dot-dirs the repo manages), never all of $HOME.
+list_backups() {
+  _lb_seen=" "
+  for _lb in "$COMMON_SRC"/* "$COMMON_SRC"/.* \
+    "$REPO_DIR"/users/*/* "$REPO_DIR"/users/*/.*; do
+    [ -e "$_lb" ] || [ -L "$_lb" ] || continue
+    _lb_n=${_lb##*/}
+    case $_lb_n in . | ..) continue ;; esac
+    case "$_lb_seen" in *" $_lb_n "*) continue ;; esac
+    _lb_seen="$_lb_seen$_lb_n "
+    for _lb_b in "$HOME/$_lb_n".dotfiles-bak.*; do
+      { [ -e "$_lb_b" ] || [ -L "$_lb_b" ]; } && printf '%s\n' "$_lb_b"
+    done
+    [ -d "$HOME/$_lb_n" ] && find "$HOME/$_lb_n" -name '*.dotfiles-bak.*' -prune -print 2>/dev/null
+  done
+}
+
+# cmd_clean_backups — report (no flag) or prune *.dotfiles-bak.* backups.
+# --keep N keeps the newest N per original path; --older-than D removes those
+# older than D days; both together remove the union. Honors --dry-run. Only
+# ever touches *.dotfiles-bak.* paths (files the tool itself created).
+cmd_clean_backups() {
+  case $CB_KEEP in '' | *[!0-9]*) [ -z "$CB_KEEP" ] || die "--keep needs a non-negative integer: $CB_KEEP" ;; esac
+  case $CB_OLDER in '' | *[!0-9]*) [ -z "$CB_OLDER" ] || die "--older-than needs a non-negative integer (days): $CB_OLDER" ;; esac
+
+  _cb_list=$(list_backups | sort -u)
+  if [ -z "$_cb_list" ]; then
+    log "no backups found under managed paths"
+    return 0
+  fi
+
+  if [ -z "$CB_KEEP" ] && [ -z "$CB_OLDER" ]; then
+    log "$(printf '%s\n' "$_cb_list" | grep -c .) backup(s) found (report only — pass --keep N or --older-than DAYS to remove):"
+    printf '%s\n' "$_cb_list" | while IFS= read -r _cb_b; do
+      [ -n "$_cb_b" ] && info "$_cb_b"
+    done
+    return 0
+  fi
+
+  _cb_rm=$(
+    if [ -n "$CB_OLDER" ]; then
+      printf '%s\n' "$_cb_list" | while IFS= read -r _cb_b; do
+        [ -n "$_cb_b" ] || continue
+        [ -n "$(find "$_cb_b" -prune -mtime +"$CB_OLDER" -print 2>/dev/null)" ] && printf '%s\n' "$_cb_b"
+      done
+    fi
+    if [ -n "$CB_KEEP" ]; then
+      printf '%s\n' "$_cb_list" | sed 's/\.dotfiles-bak\..*$//' | sort -u | while IFS= read -r _cb_base; do
+        [ -n "$_cb_base" ] || continue
+        printf '%s\n' "$_cb_list" | grep -F "$_cb_base.dotfiles-bak." | sort -r | tail -n +"$((CB_KEEP + 1))"
+      done
+    fi
+  )
+  _cb_rm=$(printf '%s\n' "$_cb_rm" | sed '/^$/d' | sort -u)
+
+  if [ -z "$_cb_rm" ]; then
+    log "nothing to remove (retention already satisfied)"
+    return 0
+  fi
+
+  printf '%s\n' "$_cb_rm" | while IFS= read -r _cb_b; do
+    [ -n "$_cb_b" ] || continue
+    if [ "$DRY_RUN" -eq 1 ]; then
+      printf '  [dry-run] remove %s\n' "$_cb_b"
+    else
+      rm -rf "$_cb_b" && info "removed : $_cb_b"
+    fi
+  done
+}
+
 # --- argument parsing ------------------------------------------------------
 
 CMD=""
 
 while [ $# -gt 0 ]; do
   case $1 in
-    install | status | uninstall) CMD=$1 ;;
+    install | status | uninstall | clean-backups) CMD=$1 ;;
     diff)
       CMD=install
       DRY_RUN=1
@@ -577,6 +659,22 @@ while [ $# -gt 0 ]; do
     --no-backup) NO_BACKUP=1 ;;
     --force) FORCE=1 ;;
     --no-prune) NO_PRUNE=1 ;;
+    --keep)
+      shift
+      [ $# -gt 0 ] || {
+        usage >&2
+        die "missing value for --keep"
+      }
+      CB_KEEP=$1
+      ;;
+    --older-than)
+      shift
+      [ $# -gt 0 ] || {
+        usage >&2
+        die "missing value for --older-than"
+      }
+      CB_OLDER=$1
+      ;;
     -h | --help)
       usage
       exit 0
@@ -619,6 +717,10 @@ case $CMD in
     cmd_uninstall
     log ""
     log "Done."
+    ;;
+  clean-backups)
+    [ "$DRY_RUN" -eq 1 ] && log "(dry-run — no changes will be made)"
+    cmd_clean_backups
     ;;
   *)
     usage >&2
