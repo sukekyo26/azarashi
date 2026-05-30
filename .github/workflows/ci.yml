@@ -145,6 +145,18 @@ jobs:
           # healthy again
           ./install.sh doctor >/dev/null
 
+      - name: A mirror rule with a missing source warns and is skipped (never fatal)
+        run: |
+          # an absent mirror source must not abort install: it is warned and
+          # skipped, leaving no (broken) target behind
+          printf '%s\n' '.codex/MISSING.md   .agents/does-not-exist.md' >>mirror.conf
+          ./install.sh install 2>err.out
+          grep -q 'mirror source not found, skipping' err.out
+          [ ! -e "$HOME/.codex/MISSING.md" ] && [ ! -L "$HOME/.codex/MISSING.md" ]
+          # the well-formed mirrors are unaffected
+          [ -L "$HOME/.codex/AGENTS.md" ]
+          git checkout -- mirror.conf
+
       - name: Uninstall removes symlinks (merged JSON intentionally remains)
         run: |
           ./install.sh uninstall
