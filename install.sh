@@ -657,9 +657,14 @@ doctor_classify() {
     return 0
   fi
   [ -e "$1" ] && return 0
-  case "$(readlink "$1")" in
-    */common/* | */users/*)
-      printf 'stale   : %s -> %s (points outside the current repo — run ./install.sh install)\n' "$1" "$(readlink "$1")"
+  # A moved-repo deploy link points at a dot-entry under common/ or users/<u>/
+  # (this repo's payload layout). Match that shape rather than a bare /common/
+  # or /users/ substring, so unrelated broken symlinks that merely contain
+  # those segments are not misreported as stale.
+  _dc_target=$(readlink "$1")
+  case "$_dc_target" in
+    */common/.* | */users/*/.*)
+      printf 'stale   : %s -> %s (points outside the current repo — run ./install.sh install)\n' "$1" "$_dc_target"
       ;;
   esac
 }
