@@ -57,6 +57,8 @@ Commands:
   uninstall          Remove managed symlinks; prune emptied directories
   clean-backups      Remove *.dotfiles-bak.* backups (report only without a
                      retention flag; see --keep / --older-than)
+  doctor             Report broken / stale / dangling managed symlinks; nonzero
+                     exit if any are found (read-only)
 
 Flags:
   --user <name>      Overlay users/<name>/ on top of common/ (user files win).
@@ -636,13 +638,80 @@ cmd_clean_backups() {
   done
 }
 
+# --- doctor ----------------------------------------------------------------
+# Read-only health check. Surfaces broken / stale / dangling managed symlinks
+# that status, prune and uninstall do not report — in particular links left
+# dangling after the repo directory is moved (their target no longer matches
+# the current repo path, so the other commands stop recognizing them).
+
+# doctor_classify <path> — print one problem line if <path> is a broken managed
+# link, a dangling repo link, or a stale link into a moved/old repo; else nothing.
+doctor_classify() {
+  [ -L "$1" ] || return 0
+  if is_managed_link "$1"; then
+    [ -e "$1" ] || printf 'broken  : %s -> %s (source no longer in the repo)\n' "$1" "$(readlink "$1")"
+    return 0
+  fi
+  if is_our_link "$1"; then
+    [ -e "$1" ] || printf 'dangling: %s -> %s (repo source missing)\n' "$1" "$(readlink "$1")"
+    return 0
+  fi
+  [ -e "$1" ] && return 0
+  # A moved-repo deploy link points at a dot-entry under common/ or users/<u>/
+  # (this repo's payload layout). Match that shape rather than a bare /common/
+  # or /users/ substring, so unrelated broken symlinks that merely contain
+  # those segments are not misreported as stale.
+  _dc_target=$(readlink "$1")
+  case "$_dc_target" in
+    */common/.* | */users/*/.*)
+      printf 'stale   : %s -> %s (points outside the current repo — run ./install.sh install)\n' "$1" "$_dc_target"
+      ;;
+  esac
+}
+
+# doctor_scan — print a problem line for every unhealthy symlink under the
+# managed top-level entries (their subtrees plus the entries themselves).
+doctor_scan() {
+  _ds_seen=" "
+  for _ds in "$COMMON_SRC"/* "$COMMON_SRC"/.* \
+    "$REPO_DIR"/users/*/* "$REPO_DIR"/users/*/.*; do
+    [ -e "$_ds" ] || [ -L "$_ds" ] || continue
+    _ds_n=${_ds##*/}
+    case $_ds_n in . | ..) continue ;; esac
+    case "$_ds_seen" in *" $_ds_n "*) continue ;; esac
+    _ds_seen="$_ds_seen$_ds_n "
+    doctor_classify "$HOME/$_ds_n"
+    [ -d "$HOME/$_ds_n" ] && [ ! -L "$HOME/$_ds_n" ] &&
+      find "$HOME/$_ds_n" -type l 2>/dev/null | while IFS= read -r _ds_l; do
+        doctor_classify "$_ds_l"
+      done
+  done
+}
+
+# cmd_doctor — report health (read-only); exit non-zero if any issue is found,
+# so it doubles as a CI/cron probe.
+cmd_doctor() {
+  _dr_problems=$(doctor_scan)
+  [ -n "$_dr_problems" ] && printf '%s\n' "$_dr_problems"
+  _dr_bk=$(list_backups | grep -c .)
+  if [ "${_dr_bk:-0}" -gt 0 ]; then
+    log "$_dr_bk backup(s) present — run './install.sh clean-backups' to review or prune them."
+  fi
+  if [ -n "$_dr_problems" ]; then
+    log "doctor: $(printf '%s' "$_dr_problems" | grep -c .) issue(s) found"
+    return 1
+  fi
+  log "doctor: no broken or stale managed symlinks found"
+  return 0
+}
+
 # --- argument parsing ------------------------------------------------------
 
 CMD=""
 
 while [ $# -gt 0 ]; do
   case $1 in
-    install | status | uninstall | clean-backups) CMD=$1 ;;
+    install | status | uninstall | clean-backups | doctor) CMD=$1 ;;
     diff)
       CMD=install
       DRY_RUN=1
@@ -721,6 +790,9 @@ case $CMD in
   clean-backups)
     [ "$DRY_RUN" -eq 1 ] && log "(dry-run — no changes will be made)"
     cmd_clean_backups
+    ;;
+  doctor)
+    cmd_doctor
     ;;
   *)
     usage >&2
