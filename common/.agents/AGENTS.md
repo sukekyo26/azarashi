@@ -38,8 +38,9 @@
 
 ## ブランチと PR のワークフロー
 
-- **作業は専用ブランチで行う** — `develop`・`main` に直接コミットしない。種別ごとに `feature/` `fix/` `refactor/` `chore/` `docs/` `test/` の prefix を付け、最新の `develop` から `<prefix>/<short-kebab-name>` を切る。複数の独立した変更を 1 ブランチに混ぜない。
-- **各ブランチは `develop` をベースに PR を出す** — `main` への直接 PR は行わない（リリース時のみ `develop` → `main`）。
+- **`main` には直接コミット・push しない** — `main` への反映はリリース時の `develop` → `main` PR 経由のみ。`main` への直接 PR も出さない。
+- **`develop` への直接コミットは許可** — 小さく低リスクな変更（ドキュメント・typo・バージョンバンプ・設定の微修正・自明な小バグ修正など）は `develop` に直接コミットしてよい。一方、レビューを要する・影響範囲が大きい・複数の独立変更を含む変更は専用ブランチ + PR を選ぶ。迷ったら PR にする。
+- **専用ブランチを切る場合** — 種別ごとに `feature/` `fix/` `refactor/` `chore/` `docs/` `test/` の prefix を付け、最新の `develop` から `<prefix>/<short-kebab-name>` を切る。複数の独立した変更を 1 ブランチに混ぜず、各ブランチは `develop` をベースに PR を出す。
 - **粒度の目安**: 1 機能追加・1 バグ修正・1 リファクタリング = 1 ブランチ・1 PR。レビューしやすい粒度を優先する。
 - `develop` の取り込み・PR 作成は `sync-upstream` / `pr-create` スキルに従う。
 
