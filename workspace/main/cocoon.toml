@@ -1,0 +1,329 @@
+# cocoon.toml — cocoon 設定 (cocoon init で生成)
+# 自由に編集してください。cocoon gen で .devcontainer/ を再生成します。
+
+# [workspace] — 生成全体の挙動。
+#   mount_root: コンテナへ見せるホスト範囲。"." = cwd のみ、".." = 親ディレクトリ（兄弟リポも見える）。
+#   dir: コンテナ内 workdir の親 (/home/<user>/ 配下)。デフォルト "workspace"。スラッシュで多段階層も可。
+#   devcontainer: VS Code Reopen-in-Container 用の devcontainer.json を生成するか。
+[workspace]
+mount_root = ".."
+dir = "work"
+devcontainer = true
+
+# [container] — イメージの素性。
+#   service_name: docker-compose の `services:` <キー>。`docker compose exec <名前>` で使う。
+#   username / image / image_version: コンテナ内ユーザー名と FROM <image>:<image_version>。
+#   image 候補 (DockerHub 正式名称): ubuntu, debian, node, python, golang, rust, denoland/deno。
+[container]
+service_name = "main"
+username = "tama"
+image = "debian"
+image_version = "12"
+
+# docker_socket — /var/run/docker.sock をバインドマウントし、コンテナ内の
+#   docker クライアント (例: docker-cli プラグイン) がホスト daemon に到達できるようにする。
+docker_socket = true
+
+# group_add — コンテナユーザーが参加する補助グループ (グループ名 または 数値 GID)。
+#   docker_socket = true のときはホストの docker グループも自動で追加される。
+# group_add = ["audio", "dialout"]
+
+# devices — ホストのデバイスをコンテナにマップ (HOST:CONTAINER[:rwm])。
+# devices = ["/dev/dri:/dev/dri"]
+
+# ipc — IPC 名前空間モード。"host" は大きな共有メモリセグメントを与える (ML 用途)。
+# ipc = "host"
+
+# gpus — GPU アクセスを要求。現状 "all" のみサポート。
+# gpus = "all"
+
+# [container.resources] — Compose のリソース上限を上書き (未設定 = 無制限)。
+#   shm_size / pids_limit / cpus / memory を指定。
+# [container.resources]
+# shm_size = "2gb"
+# pids_limit = 2048
+
+# [container.hosts] — /etc/hosts 追加エントリ。
+#   ホスト名 → IP アドレス or "host-gateway" (= ホスト機) のマップ。
+# [container.hosts]
+# "db.local"     = "host-gateway"
+# "corp.example" = "10.0.0.42"
+
+# [container.dns] — カスタム DNS リゾルバと検索ドメイン。
+#   社内 DNS や短名の自動補完に。
+# [container.dns]
+# servers = ["10.0.0.53", "1.1.1.1"]
+# search  = ["corp.example.com"]
+
+# [container.sysctls] — カーネルパラメータ (例: Elasticsearch 向け)。
+#   値は int か string、どちらも docker compose に渡される。
+# [container.sysctls]
+# "vm.max_map_count" = 262144
+
+# [container.capabilities] — 追加 / 剥奪する Linux capabilities。
+#   SYS_PTRACE はデバッガ (delve / gdb / lldb) で必要。
+# [container.capabilities]
+# add  = ["SYS_PTRACE"]
+# drop = ["AUDIT_WRITE"]
+
+# [container.security_opt] — Compose の security_opt (seccomp / apparmor / no_new_privileges)。
+#   "unconfined" でサンドボックス緩和、no_new_privileges で setuid 権限昇格を遮断。
+#   注意: no_new_privileges = true は sudo も無効化する (イメージはユーザーに passwordless sudo を付与)。
+# [container.security_opt]
+# seccomp           = "unconfined"
+# no_new_privileges = true
+
+# [container.sudo] — sudo のパスワード方針。
+#   `cocoon init --sudo password` で選択。パスワードはビルド時に .devcontainer/.env.local の
+#   SUDO_PASSWORD=... から Docker build secret として読み込む。そのファイルは gitignore 対象で
+#   コミットされない。SUDO_PASSWORD が未設定/空ならビルドは失敗する (passwordless へ暗黙に
+#   フォールバックしない)。上の no_new_privileges とは排他。
+[container.sudo]
+mode = "password"
+
+# [[container.skel]] — 新規ユーザーのホームに dotfiles を配置 (/etc/skel 経由)。
+#   source はワークスペースルート相対 (build context)、target は /etc/skel 相対。
+# [[container.skel]]
+# source = ".cocoon/skel/example.bashrc"
+# target = ".bashrc"
+
+# [container.shell] — ログインシェル + シェル別 rc 注入。
+#   default: bash | zsh | fish。生成系が ~/.bashrc / ~/.zshrc / ~/.config/fish/config.fish を選ぶ。
+#   aliases / env: イメージビルド時に rc ファイルへ追記される。
+#   bash と zsh は POSIX 記法 (alias k='v', export K=V)、fish は自動翻訳。
+#   env の値は rc を source する時にシェルが展開する。$HOME / $PATH をそのまま書ける
+#   (例: NPM_CONFIG_PREFIX = "$HOME/.local")。$(cmd) コマンド置換は bash/zsh では常に、
+#   fish では 3.4+ で動く (それ以前は fish 固有の (cmd) 記法)。リテラルの $ は値の中で
+#   \$ にする — TOML では通常文字列 "\\$RAW" かリテラル文字列 '\$RAW' と書く。
+#   alias の本文は呼び出し時まで展開されない。
+#
+# env の設定例（コメントアウトを外して編集）:
+#   env = { EDITOR = "vim", PAGER = "less -R" }
+#   注: このインライン形式と [container.shell.env] サブセクション（言語ベースイメージでは
+#   `cocoon init` が自動追加することがある）は同じ env キーを定義するため、TOML としては
+#   併用できない。どちらか片方の形式に統一し、全てのキーをその 1 ブロックに追記する。
+# 注意:
+#   - EDITOR=vim / nano は apt カテゴリ `text-editors` の有効化が前提。
+#   - EDITOR=code は VS Code Dev Containers で開いたときのみ動く（`code` シムは
+#     VS Code が注入するもので、cocoon は関与しない）。
+#   - PAGER=less / less -R は apt カテゴリ `utilities` が前提（less は cocoon の最小ベースに含まれない）。
+[container.shell]
+default = "zsh"
+aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down", dcup = "docker compose up -d", ga = "git add", gc = "git commit", gco = "git checkout", gd = "git diff", gl = "git log --oneline --graph --decorate", gp = "git push", gs = "git status", la = "ls -A", ll = "ls -lah", lt = "ls -ltrh" }
+
+# [plugins] — cocoon プラグインの有効化（一覧は `cocoon plugin list`）。
+#   再現性が必要なら enable 配列にバージョンをインライン指定（例 "go=1.23.4", "node=latest"）。`cocoon lock` で latest を凍結。
+[plugins]
+enable = [
+    "aws-cli",
+    "aws-sam-cli",
+    "claude-code",
+    "cocoon",
+    "codex",
+    "copilot-cli",
+    "docker-buildx",
+    "docker-cli",
+    "github-cli",
+    "gitleaks",
+    "go",
+    "golangci-lint",
+    "just",
+    "node",
+    "opentofu",
+    "rust",
+    "shellcheck",
+    "shfmt",
+    "starship",
+    "uv",
+    "zig",
+]
+
+# [plugins.methods] — 複数のインストール方式を提供するプラグインに対する選択。
+#   方式を 1 つしか持たないプラグインはこのセクションを無視。
+[plugins.methods]
+copilot-cli = "binary"
+
+# [plugins.options] — 上で有効化したプラグインの追加設定。
+#   バージョンは enable 配列にインラインで指定（例 "go=1.22.5", "starship=latest"）。
+#   `cocoon lock` で "latest" を凍結し checksum を cocoon.lock に記録。
+#   このテーブルは [install.extra_versions] の項目（例 android-sdk の
+#   api_level / build_tools）専用。
+# [plugins.options]
+# android-sdk = { api_level = "35", build_tools = "35.0.0" }
+
+# [apt] — cocoon の最小ベース + 選択カテゴリに追加する apt パッケージ。
+#   カテゴリのチェックを変えるなら `cocoon init --force` を再実行、または直接このリストを編集。
+[apt]
+packages = [
+    "jq",
+    "yq",
+    "ripgrep",
+    "fd-find",
+    "tree",
+    "python3",
+    "python3-pip",
+    "python3-venv",
+    "vim",
+    "nano",
+    "git",
+    "openssh-client",
+    "gnupg",
+    "less",
+    "rsync",
+    "file",
+    "bc",
+    "wget",
+    "gettext-base",
+    "uuid-runtime",
+    "zip",
+    "unzip",
+    "xz-utils",
+    "tar",
+    "gzip",
+    "bzip2",
+    "build-essential",
+    "pkg-config",
+    "make",
+    "patch",
+    "fzf",
+    "bat",
+]
+
+# [apt.mirror] — 上流 apt URL を地域ミラーに書き換え。
+#   初回ビルドが大幅高速化。[container].os ファミリと合わせる。
+# [apt.mirror]
+# url = "http://jp.archive.ubuntu.com/ubuntu/"
+
+# [apt.proxy] — apt-get の HTTP/HTTPS プロキシ。
+#   イメージビルド時に /etc/apt/apt.conf.d/95proxy へ書かれる。
+# [apt.proxy]
+# http  = "http://proxy.corp:8080"
+# https = "http://proxy.corp:8080"
+
+# [[apt.sources]] — 第三者 apt リポジトリ (signed-by GPG キー方式)。
+#   key_url からキーを取得し /etc/apt/keyrings/ に dearmor して配置。
+# [[apt.sources]]
+# name       = "fish-stable"
+# suite      = "noble"
+# components = ["main"]
+# url        = "https://download.opensuse.org/repositories/shells:fish:release:3/xUbuntu_24.04/"
+# key_url    = "https://download.opensuse.org/repositories/shells:fish:release:3/xUbuntu_24.04/Release.key"
+
+# [ports] — コンテナへフォワードするホストポート。
+#   short form: [HOST_IP:][HOST:]CONTAINER[/PROTOCOL]。範囲 (3000-3005:3000-3005)、UDP、IPv6 [::1] バインドも可。
+[ports]
+forward = [
+    "3000",
+]
+
+# [volumes] — コンテナホーム配下に追加でマウントする named volume。
+#   コンテナ再作成をまたいで状態保持。書式: <ボリューム名> = <コンテナ内パス>。
+# [volumes]
+# my-data = "/home/${USERNAME}/.my-tool"
+
+# [env] — コンテナへ渡す環境変数。
+#   ${VAR} は `cocoon gen` 実行時にホストの環境変数を解決。
+# [env]
+# OPENAI_API_KEY = "${OPENAI_API_KEY}"
+# DEBUG          = "1"
+
+# [[mounts]] — ホストからコンテナへの追加バインドマウント。
+#   SSH 鍵等の共有では readonly = true が安全。
+# [[mounts]]
+# source   = "~/.ssh"
+# target   = "/home/${USERNAME}/.ssh"
+# readonly = true
+
+# [home_files] — 単一ファイル bind mount で永続化。
+#   各パスは ~ 相対。ホストの ~/.gitconfig を bind して git identity を共有。
+[home_files]
+files = [".claude.json"]
+
+# [locale] — コンテナのタイムゾーンと言語。
+#   timezone のデフォルトはホスト準拠、lang は UTF-8 ロケール (例: "ja_JP.UTF-8")。
+[locale]
+timezone = "Asia/Tokyo"
+lang     = "ja_JP.UTF-8"
+
+# [dockerfile] — Dockerfile の所定フックポイントにカスタムフラグメントを注入。
+#   pre_user_setup は useradd の前、post_plugins はプラグイン install.<category>.sh の後に実行。
+# [dockerfile]
+# pre_user_setup = """RUN apt-get install -y my-extra-pkg"""
+# post_plugins   = """RUN echo done"""
+
+# [certificates] — ~/.cocoon/certs/ からコンテナイメージへ TLS 証明書を自動取り込み (opt-in)。
+#   enable = true のとき `cocoon gen` が docker-compose の additional_contexts と Dockerfile の
+#   RUN --mount=type=bind を配線し、ホスト側ディレクトリの *.crt / *.cer がビルド時にトラストストアへ
+#   マージされる。プライベート CA / 自己署名 CA を信頼させたいときに有効化。
+#   デフォルト off → 生成物に cert 関連の配線は一切乗らない。
+# [certificates]
+# enable = true
+
+# [services.<name>] — 同じ Compose ネットワーク上のサイドカー (例: postgres, redis)。
+#   dev コンテナからサービス名で到達可。複数定義可。
+# [services.postgres]
+# image       = "postgres:16-alpine"
+# environment = { POSTGRES_PASSWORD = "dev" }
+# ports       = ["5432:5432"]
+
+# [devcontainer.*] — VS Code Dev Container 用に devcontainer.json へマージされる設定。
+#   [workspace] devcontainer = false のときは無視。よくあるのは VS Code 拡張リスト。
+[devcontainer.customizations.vscode]
+extensions = [
+    "ms-azuretools.vscode-docker",
+    "eamodio.gitlens",
+    "github.vscode-github-actions",
+    "oderwat.indent-rainbow",
+    "shardulm94.trailing-spaces",
+    "tamasfe.even-better-toml",
+    "bierner.markdown-mermaid",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-vscode.vscode-typescript-next",
+    "golang.go",
+    "rust-lang.rust-analyzer",
+    "anthropic.claude-code",
+    "openai.chatgpt"
+]
+
+[devcontainer.customizations.settings]
+"[c]" = {"editor.tabSize" = 4}
+"[cpp]" = {"editor.tabSize" = 4}
+"[csharp]" = {"editor.tabSize" = 4}
+"[dockerfile]" = {"editor.tabSize" = 4}
+"[go]" = {"editor.insertSpaces" = false, "editor.tabSize" = 4}
+"[java]" = {"editor.tabSize" = 4}
+"[kotlin]" = {"editor.tabSize" = 4}
+"[makefile]" = {"editor.insertSpaces" = false, "editor.tabSize" = 4}
+"[php]" = {"editor.tabSize" = 4}
+"[python]" = {"editor.tabSize" = 4}
+"[rust]" = {"editor.tabSize" = 4}
+"[swift]" = {"editor.tabSize" = 4}
+"[toml]" = {"editor.tabSize" = 4}
+"editor.detectIndentation" = false
+"editor.formatOnSave" = true
+"editor.insertSpaces" = true
+"editor.tabSize" = 2
+"files.autoSave" = "afterDelay"
+"files.insertFinalNewline" = true
+"files.trimTrailingWhitespace" = true
+"github.copilot.chat.localeOverride" = "ja"
+
+# [code_workspace] — `cocoon gen workspace` が生成する VS Code .code-workspace ファイル。
+#   opt-in。サブコマンドを実行したときだけ生成される。出力先はプロジェクトルート
+#   (cocoon.toml と同階層、.devcontainer/ 配下ではない) なので `code <name>.code-workspace`
+#   でそのまま開ける。folders[].path は "~" 展開 + `.code-workspace` を書き出すディレクトリ
+#   (既定は cocoon.toml と同階層、`cocoon gen workspace --output <dir>` で上書き可) 起点の
+#   相対化に対応するので、"~/.claude" のようなエントリも VS Code が上方向に辿れる相対パスへ解決される。
+# [code_workspace]
+# name = "my-stack"                                       # 出力ファイル名 (デフォルト: プロジェクトディレクトリ basename)
+# folders = [
+#     { path = "." },                                     # プロジェクト自身
+#     { path = "~/.claude" },                             # ホーム配下; name は basename から自動導出
+#     { path = "../sibling-repo" },                       # 兄弟プロジェクト
+#     { path = "~/.config/nvim", name = "Neovim" },     # 表示名を明示
+# ]
+# [code_workspace.settings]
+# "editor.tabSize" = 2
+# [code_workspace.extensions]
+# recommendations = ["golang.go", "ms-azuretools.vscode-docker"]
