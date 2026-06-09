@@ -111,6 +111,40 @@ jobs:
           rm -f "$HOME/.claude/settings.json"
           ./install.sh install >/dev/null
 
+      - name: Force re-merge deletes keys dropped from the fragment (3-way)
+        run: |
+          # --force snapshots the applied fragment as a base next to settings.json
+          ./install.sh install --force >/dev/null
+          [ -f "$HOME/.claude/settings.fragment.base.json" ]
+          # a key recorded in the base, unchanged in the target and gone from the
+          # fragment is deleted; a user-only key (never in the base) is preserved
+          tmp=$(mktemp); jq '.userOnly = 1 | .willBeRemoved = {"a":1}' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          tmp=$(mktemp); jq '.willBeRemoved = {"a":1}' "$HOME/.claude/settings.fragment.base.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.fragment.base.json"
+          ./install.sh install --force >/dev/null
+          jq -e 'has("willBeRemoved") | not' "$HOME/.claude/settings.json" >/dev/null
+          jq -e '.userOnly == 1' "$HOME/.claude/settings.json" >/dev/null
+          # a protected key in the target is never a deletion candidate
+          tmp=$(mktemp); jq '.token = "SECRET"' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          ./install.sh install --force >/dev/null
+          jq -e '.token == "SECRET"' "$HOME/.claude/settings.json" >/dev/null
+          # --dry-run lists the deletion and changes nothing
+          tmp=$(mktemp); jq '.willGo = 1' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          tmp=$(mktemp); jq '.willGo = 1' "$HOME/.claude/settings.fragment.base.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.fragment.base.json"
+          ./install.sh install --force --dry-run | tee dry.out
+          grep -q 'delete key: willGo' dry.out
+          jq -e '.willGo == 1' "$HOME/.claude/settings.json" >/dev/null
+          # a plain install (no --force) never deletes
+          ./install.sh install >/dev/null
+          jq -e '.willGo == 1' "$HOME/.claude/settings.json" >/dev/null
+          # the base state file is invisible to status / doctor / clean-backups
+          ./install.sh status | tee st.out; ! grep -q 'fragment.base.json' st.out
+          ./install.sh doctor >/dev/null
+          ./install.sh clean-backups | tee cbase.out; ! grep -q 'fragment.base.json' cbase.out
+          # restore a clean install; the base snapshot is intentionally kept
+          rm -f "$HOME/.claude/settings.json"
+          ./install.sh install --force >/dev/null
+          [ -f "$HOME/.claude/settings.fragment.base.json" ]
+
       - name: Prune must never touch a tool's own state under a managed dir
         run: |
           # directories no layer defines (here: a tool's runtime state) must be
@@ -185,6 +219,8 @@ jobs:
           [ ! -e "$HOME/.copilot/copilot-instructions.md" ]
           ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
           [ -f "$HOME/.claude/settings.json" ]
+          # the 3-way base state file is kept too, like settings.json
+          [ -f "$HOME/.claude/settings.fragment.base.json" ]
 
   e2e-user:
     name: install.sh E2E (per-user overlay)
