@@ -140,8 +140,10 @@ jobs:
           ./install.sh status | tee st.out; ! grep -q 'fragment.base.json' st.out
           ./install.sh doctor >/dev/null
           ./install.sh clean-backups | tee cbase.out; ! grep -q 'fragment.base.json' cbase.out
-          # restore a clean install; the base snapshot is intentionally kept
-          rm -f "$HOME/.claude/settings.json"
+          # restore a clean install; the base snapshot is intentionally kept.
+          # also drop the settings.json backups these --force re-merges created,
+          # so the later clean-backups assertion counts only its own seeds.
+          rm -f "$HOME/.claude/settings.json" "$HOME/.claude/settings.json.dotfiles-bak."*
           ./install.sh install --force >/dev/null
           [ -f "$HOME/.claude/settings.fragment.base.json" ]
 
