@@ -3,5 +3,19 @@
     "type": "command",
     "command": "bash ~/.claude/statusline.sh",
     "padding": 0
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "sleep 0;   printf '%s' '{\"terminalSequence\": \"\\u0007\"}'" },
+          { "type": "command", "command": "sleep 0.3; printf '%s' '{\"terminalSequence\": \"\\u0007\"}'" },
+          { "type": "command", "command": "sleep 0.6; printf '%s' '{\"terminalSequence\": \"\\u0007\"}'" },
+          { "type": "command", "command": "sleep 0.9; printf '%s' '{\"terminalSequence\": \"\\u0007\"}'" },
+          { "type": "command", "command": "sleep 1.2; printf '%s' '{\"terminalSequence\": \"\\u0007\"}'" }
+        ]
+      }
+    ]
   }
 }
