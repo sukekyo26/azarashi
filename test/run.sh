@@ -303,6 +303,43 @@ case "$out" in
   *) ok "force 3-way: dry-run with a gone target and present base does not error" ;;
 esac
 
+# (k) several dropped keys are all deleted in a single run
+rm -f "$t" "$bf"
+printf '{"keep":1,"g1":2,"g2":3}\n' >"$bf"
+printf '{"keep":1,"g1":2,"g2":3}\n' >"$t"
+printf '{"keep":1}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: multiple dropped keys are all deleted in one run" \
+  "$(jq -Sc . "$t")" '{"keep":1}'
+
+# (l) a whole object subtree dropped from the fragment is removed atomically
+rm -f "$t" "$bf"
+printf '{"keep":1,"obj":{"x":1,"y":2}}\n' >"$bf"
+printf '{"keep":1,"obj":{"x":1,"y":2}}\n' >"$t"
+printf '{"keep":1}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: a whole object subtree is deleted atomically (no empty {})" \
+  "$(jq -Sc . "$t")" '{"keep":1}'
+
+# (m) one run overwrites a changed key, adds a new one, and deletes a dropped one
+rm -f "$t" "$bf"
+printf '{"a":1,"del":2}\n' >"$bf"
+printf '{"a":1,"del":2}\n' >"$t"
+printf '{"a":99,"new":3}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: a single run overwrites, adds, and deletes together" \
+  "$(jq -Sc . "$t")" '{"a":99,"new":3}'
+
+# (n) deletion works across layered fragments (common + user merged into the base)
+rm -f "$t" "$bf"
+printf '{"common":1,"user":2,"gone":3}\n' >"$bf"
+printf '{"common":1,"user":2,"gone":3}\n' >"$t"
+printf '{"common":1}\n' >"$WORK/f1.json"
+printf '{"user":2}\n' >"$WORK/f2.json"
+merge_json "$t" "$WORK/f1.json" "$WORK/f2.json" >/dev/null
+assert_eq "force 3-way: a key gone from the layered (common+user) fragments is deleted" \
+  "$(jq -Sc . "$t")" '{"common":1,"user":2}'
+
 rm -f "$t" "$bf"
 
 FORCE=0
