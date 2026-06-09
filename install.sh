@@ -66,7 +66,8 @@ Flags:
                      else common/ only.
   --dry-run          Print actions without applying them
   --no-backup        Skip backups before overwriting (default: backups on)
-  --force            Re-link / re-merge even when already in sync
+  --force            Re-link; re-merge fragments with the repo value winning over
+                     the existing target (protected keys are still preserved)
   --no-prune         Skip pruning orphaned symlinks on install
   --keep <n>         clean-backups: keep the newest <n> backups per original path
   --older-than <d>   clean-backups: remove backups older than <d> days

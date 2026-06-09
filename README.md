@@ -29,7 +29,7 @@ users/<name>/     # 個人レイヤー（common/ と同構造、競合時に優�
 - **ユーザーの解決順**: `--user <name>` → `git config dotfiles.user` → `gh api user` → いずれも無ければ共通のみ。`users/<name>/` が無い場合も共通のみ。
 - ディレクトリは常に実ディレクトリとして作成し、葉（ファイル）だけを個別 symlink する。`~/.claude` などが丸ごと symlink にならないので、ツールがそこへ書き込んでもリポジトリを汚さず、symlink ディレクトリも残らない。同名ファイルはユーザー側が優先。
 - 個人レイヤーがある相対パスに**ファイル**を置くと、共通側の同パスのサブツリー全体を隠す（型はユーザー側が勝つ）。
-- `*.fragment.json` は対応する JSON へ deep-merge。優先度は既存値 > ユーザー fragment > 共通 fragment。
+- `*.fragment.json` は対応する JSON へ deep-merge。優先度は既存値 > ユーザー fragment > 共通 fragment（`--force` 時はリポジトリ fragment が既存値に勝つ。保護キー（credentials/token 等）は常に温存）。
 - リポルートの `mirror.conf` で、1 つの正典ファイルを複数の配布先へ symlink としてミラーできる（例: `.agents/AGENTS.md` を `.claude/CLAUDE.md` と `.copilot/copilot-instructions.md` へ）。各行は `target source`（レイヤ相対・`#` はコメント）。source はレイヤ解決を通るのでユーザー上書きにも追従する。ファイルは file symlink、ディレクトリは **1 本の dir symlink**（`~/.claude` 等のドットディレクトリは常に実体なので、`skills` のような中間ディレクトリのみが対象）。
 - ユーザーを切り替える / 解除すると、前ユーザー由来の葉 symlink と空になったディレクトリは prune で除去される。
 - バックアップは上書き前に `*.dotfiles-bak.<UTC timestamp>` として作られる。

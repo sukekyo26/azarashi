@@ -6,8 +6,11 @@ PROTECTED_KEY_RE='credentials|token|api[_-]?key|secret|password|firstLaunchAt'
 
 # _merge_chain <target> <frag1> [frag2 ...] — print the merged JSON to stdout.
 # Fragments are combined left-to-right (later fragment wins, so user over common)
-# and sanitized (protected keys removed); on conflict the existing target value
-# wins, so user state is never clobbered. Precedence: target > later > earlier.
+# and sanitized (protected keys removed). By default the existing target value
+# wins on conflict, so user state is never clobbered (target > later > earlier);
+# with --force the fragment wins instead (later > earlier > target), so a changed
+# fragment value lands on re-install. Protected keys are stripped from the
+# fragments either way, so the target's protected keys always survive.
 _merge_chain() {
   _mc_target=$1
   shift
@@ -25,7 +28,14 @@ _merge_chain() {
 
   if [ -f "$_mc_target" ]; then
     jq empty "$_mc_target" 2>/dev/null || die "existing target is not valid JSON: $_mc_target"
-    printf '%s' "$_mc_clean" | jq -s '.[0] * .[1]' - "$_mc_target" ||
+    # stdin (clean fragments) is .[0], target file is .[1]. Default precedence is
+    # target > fragment (.[0] * .[1], right wins) so user state is never
+    # clobbered; with --force the fragment wins (.[1] * .[0]) so a changed
+    # fragment value overwrites the target. Protected keys live only in the
+    # target (stripped from _mc_clean above), so they survive either direction.
+    _mc_expr='.[0] * .[1]'
+    [ "$FORCE" -eq 1 ] && _mc_expr='.[1] * .[0]'
+    printf '%s' "$_mc_clean" | jq -s "$_mc_expr" - "$_mc_target" ||
       die "merge failed: $_mc_target"
   else
     printf '%s' "$_mc_clean"
@@ -60,13 +70,21 @@ merge_json() {
     return 0
   fi
 
-  if [ "$FORCE" -ne 1 ] && _json_eq "$_mj_result" "$_mj_target"; then
+  # Skip when already converged, even under --force: a re-merge whose result
+  # equals the target is a pure no-op, so honoring this keeps install idempotent
+  # and avoids a fresh backup on every run. --force still changes _mj_result
+  # itself (the fragment wins), so a genuinely changed fragment is never skipped.
+  if _json_eq "$_mj_result" "$_mj_target"; then
     info "in-sync : $_mj_target"
     return 0
   fi
 
   if [ "$DRY_RUN" -eq 1 ]; then
-    printf '  [dry-run] merge %s -> %s\n' "$*" "$_mj_target"
+    if [ "$FORCE" -eq 1 ]; then
+      printf '  [dry-run] merge (force: fragment overwrites target) %s -> %s\n' "$*" "$_mj_target"
+    else
+      printf '  [dry-run] merge %s -> %s\n' "$*" "$_mj_target"
+    fi
     return 0
   fi
 

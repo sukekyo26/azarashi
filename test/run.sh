@@ -136,6 +136,61 @@ esac
 assert_eq "status mode leaves the target unchanged" \
   "$(jq -Sc . "$t")" '{"a":1}'
 
+# --- json_merge.sh: merge_json under --force -------------------------------
+
+FORCE=1
+
+# the fragment value overwrites the existing target key; user>common layering is
+# kept; a target-only key/subkey absent from every fragment is preserved
+rm -f "$t"
+printf '{"statusLine":{"command":"OLD","padding":9},"mine":1}\n' >"$t"
+printf '{"statusLine":{"command":"NEW","type":"command"}}\n' >"$WORK/f1.json"
+printf '{"statusLine":{"command":"USER"}}\n' >"$WORK/f2.json"
+merge_json "$t" "$WORK/f1.json" "$WORK/f2.json" >/dev/null
+assert_eq "force: the later fragment value overwrites the target key (user > common)" \
+  "$(jq -Sc .statusLine.command "$t")" '"USER"'
+assert_eq "force: a target-only key absent from every fragment is preserved" \
+  "$(jq -Sc .mine "$t")" '1'
+assert_eq "force: a target-only subkey under an overwritten object survives" \
+  "$(jq -Sc .statusLine.padding "$t")" '9'
+
+# protected keys are kept from the target even under --force; a non-protected
+# key is still overwritten by the fragment
+rm -f "$t"
+printf '{"statusLine":{"command":"OLD"},"token":"SECRET","firstLaunchAt":"2020"}\n' >"$t"
+printf '{"statusLine":{"command":"NEW"},"token":"FROM_FRAG"}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force: protected target keys are kept, never taken from the fragment" \
+  "$(jq -Sc '{firstLaunchAt,token}' "$t")" '{"firstLaunchAt":"2020","token":"SECRET"}'
+assert_eq "force: a non-protected key is still overwritten by the fragment" \
+  "$(jq -Sc .statusLine.command "$t")" '"NEW"'
+
+# arrays: under --force the fragment array replaces the target array wholesale
+rm -f "$t"
+printf '{"hooks":[{"a":1},{"a":2}]}\n' >"$t"
+printf '{"hooks":[{"b":1},{"b":2},{"b":3}]}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force: a fragment array replaces the target array wholesale" \
+  "$(jq -Sc .hooks "$t")" '[{"b":1},{"b":2},{"b":3}]'
+
+# idempotency: a second force run converges, reports in-sync, makes no new backup
+rm -f "$t" "$t".dotfiles-bak.*
+printf '{"k":"old"}\n' >"$t"
+printf '{"k":"new"}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+bk1=$(count_glob "$t".dotfiles-bak.*)
+out=$(merge_json "$t" "$f" 2>&1)
+bk2=$(count_glob "$t".dotfiles-bak.*)
+assert_eq "force: a second run converges on the fragment value" \
+  "$(jq -Sc .k "$t")" '"new"'
+case "$out" in
+  *in-sync*) ok "force: a converged re-merge reports in-sync (no rewrite)" ;;
+  *) ng "force: a converged re-merge should report in-sync (got: $out)" ;;
+esac
+assert_eq "force: a converged re-merge adds no new backup" "$bk2" "$bk1"
+
+FORCE=0
+
 # --- json_merge.sh: _json_eq -----------------------------------------------
 
 printf '{"b":2,"a":1}\n' >"$t"
