@@ -92,6 +92,61 @@ jobs:
           ./install.sh install | tee install2.out
           ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
 
+      - name: Force re-merge — the repo fragment value wins over an edited target
+        run: |
+          # simulate a user-edited value, then let the repo fragment win under --force
+          tmp=$(mktemp); jq '.statusLine.padding = 99' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          jq -e '.statusLine.padding == 99' "$HOME/.claude/settings.json" >/dev/null
+          ./install.sh install --force | tee force.out
+          grep -qE '^[[:space:]]*merged[[:space:]]*:.*/\.claude/settings\.json$' force.out
+          jq -e '.statusLine.padding == 0' "$HOME/.claude/settings.json" >/dev/null
+          # a manually-added key absent from every fragment is preserved
+          tmp=$(mktemp); jq '.myManualKey = true' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          ./install.sh install --force >/dev/null
+          jq -e '.myManualKey == true' "$HOME/.claude/settings.json" >/dev/null
+          # nothing changed since: a second force run is an idempotent no-op
+          ./install.sh install --force | tee force2.out
+          ! grep -qE '^[[:space:]]*merged[[:space:]]*:' force2.out
+          # restore a clean install for the steps below
+          rm -f "$HOME/.claude/settings.json"
+          ./install.sh install >/dev/null
+
+      - name: Force re-merge deletes keys dropped from the fragment (3-way)
+        run: |
+          # --force snapshots the applied fragment as a base next to settings.json
+          ./install.sh install --force >/dev/null
+          [ -f "$HOME/.claude/settings.fragment.base.json" ]
+          # a key recorded in the base, unchanged in the target and gone from the
+          # fragment is deleted; a user-only key (never in the base) is preserved
+          tmp=$(mktemp); jq '.userOnly = 1 | .willBeRemoved = {"a":1}' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          tmp=$(mktemp); jq '.willBeRemoved = {"a":1}' "$HOME/.claude/settings.fragment.base.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.fragment.base.json"
+          ./install.sh install --force >/dev/null
+          jq -e 'has("willBeRemoved") | not' "$HOME/.claude/settings.json" >/dev/null
+          jq -e '.userOnly == 1' "$HOME/.claude/settings.json" >/dev/null
+          # a protected key in the target is never a deletion candidate
+          tmp=$(mktemp); jq '.token = "SECRET"' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          ./install.sh install --force >/dev/null
+          jq -e '.token == "SECRET"' "$HOME/.claude/settings.json" >/dev/null
+          # --dry-run lists the deletion and changes nothing
+          tmp=$(mktemp); jq '.willGo = 1' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          tmp=$(mktemp); jq '.willGo = 1' "$HOME/.claude/settings.fragment.base.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.fragment.base.json"
+          ./install.sh install --force --dry-run | tee dry.out
+          grep -q 'delete key: willGo' dry.out
+          jq -e '.willGo == 1' "$HOME/.claude/settings.json" >/dev/null
+          # a plain install (no --force) never deletes
+          ./install.sh install >/dev/null
+          jq -e '.willGo == 1' "$HOME/.claude/settings.json" >/dev/null
+          # the base state file is invisible to status / doctor / clean-backups
+          ./install.sh status | tee st.out; ! grep -q 'fragment.base.json' st.out
+          ./install.sh doctor >/dev/null
+          ./install.sh clean-backups | tee cbase.out; ! grep -q 'fragment.base.json' cbase.out
+          # restore a clean install; the base snapshot is intentionally kept.
+          # also drop the settings.json backups these --force re-merges created,
+          # so the later clean-backups assertion counts only its own seeds.
+          rm -f "$HOME/.claude/settings.json" "$HOME/.claude/settings.json.dotfiles-bak."*
+          ./install.sh install --force >/dev/null
+          [ -f "$HOME/.claude/settings.fragment.base.json" ]
+
       - name: Prune must never touch a tool's own state under a managed dir
         run: |
           # directories no layer defines (here: a tool's runtime state) must be
@@ -166,6 +221,8 @@ jobs:
           [ ! -e "$HOME/.copilot/copilot-instructions.md" ]
           ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
           [ -f "$HOME/.claude/settings.json" ]
+          # the 3-way base state file is kept too, like settings.json
+          [ -f "$HOME/.claude/settings.fragment.base.json" ]
 
   e2e-user:
     name: install.sh E2E (per-user overlay)
@@ -224,6 +281,21 @@ jobs:
           jq -e '.statusLine.command == "bash ~/.claude/statusline.sh"' "$HOME/.claude/settings.json"
           jq -e '.statusLine.padding == 5' "$HOME/.claude/settings.json"
           jq -e '.citestUserKey == true' "$HOME/.claude/settings.json"
+
+      - name: Force 3-way delete honors the layered (user) fragment
+        run: |
+          # --force snapshots the merged common+user fragment as the base
+          ./install.sh install --user citest --force >/dev/null
+          [ -f "$HOME/.claude/settings.fragment.base.json" ]
+          jq -e '.citestUserKey == true' "$HOME/.claude/settings.json" >/dev/null
+          # drop a key from the USER fragment, then force-sync again
+          printf '{ "statusLine": { "padding": 5 } }\n' >users/citest/.claude/settings.fragment.json
+          ./install.sh install --user citest --force >/dev/null
+          # the key removed from the user fragment is deleted from settings.json
+          jq -e 'has("citestUserKey") | not' "$HOME/.claude/settings.json" >/dev/null
+          # values still defined by the user/common fragments are kept
+          jq -e '.statusLine.padding == 5' "$HOME/.claude/settings.json" >/dev/null
+          jq -e '.statusLine.command == "bash ~/.claude/statusline.sh"' "$HOME/.claude/settings.json" >/dev/null
 
       - name: status — assert all in-sync (no drift/missing/orphan)
         run: |
