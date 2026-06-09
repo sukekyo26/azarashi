@@ -281,6 +281,28 @@ case "$out" in
 esac
 assert_eq "force 3-way: a converged delete adds no new backup" "$bk2" "$bk1"
 
+# (i) a manual structural change (object -> scalar) under a deleted key is kept,
+# and never aborts the merge with a getpath error
+rm -f "$t" "$bf"
+printf '{"n":{"x":1,"y":2}}\n' >"$bf"
+printf '{"n":5}\n' >"$t"
+printf '{"n":{"x":1}}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: a manual structural change does not abort the merge" \
+  "$(jq -Sc .n "$t")" '{"x":1}'
+
+# (j) --dry-run no-ops cleanly when the base exists but the target is gone
+rm -f "$t" "$bf"
+printf '{"keep":1,"gone":2}\n' >"$bf"
+printf '{"keep":1}\n' >"$f"
+DRY_RUN=1
+out=$(merge_json "$t" "$f" 2>&1)
+DRY_RUN=0
+case "$out" in
+  *"Could not open"* | *"No such file"*) ng "force 3-way: dry-run with a gone target must not error (got: $out)" ;;
+  *) ok "force 3-way: dry-run with a gone target and present base does not error" ;;
+esac
+
 rm -f "$t" "$bf"
 
 FORCE=0

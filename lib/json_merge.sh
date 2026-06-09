@@ -23,10 +23,13 @@ def absent($o; $p): walk_ok($o; $p) | .ok | not;
 def parentObj($o; $p): walk_ok($o; $p[0:-1]) | (.ok and (.cur | type == "object"));
 ($base[0]) as $b | ($target[0]) as $t | ($clean) as $f
 | [ $b | [paths] as $all | $all[] as $p
+    # compare via walk_ok, not getpath: if the target diverged structurally from
+    # the base (a manual edit turned an object into a scalar/array), treat it as a
+    # mismatch and keep the key, rather than letting getpath abort the whole merge.
     | select(($p | length) > 0
              and parentObj($f; $p)
              and absent($f; $p)
-             and (($t | getpath($p)) == ($b | getpath($p))))
+             and (walk_ok($t; $p) as $tw | $tw.ok and ($tw.cur == ($b | getpath($p)))))
     | $p ] as $del
 | if $mode == "list" then ($del[] | map(tostring) | join("."))
   else (($t * $f) | delpaths($del)) end
@@ -97,7 +100,9 @@ _save_base() {
 # _show_deleted_keys <frag1> [frag2 ...] — under --force --dry-run, print the
 # dotted path of each key the 3-way merge would remove. No-op without a base.
 _show_deleted_keys() {
-  [ -n "${BASE_FILE:-}" ] && [ -f "$BASE_FILE" ] || return 0
+  # no-op unless both the base snapshot and the target exist: with a missing
+  # target there is nothing to delete, and slurping it into jq would error.
+  [ -n "${BASE_FILE:-}" ] && [ -f "$BASE_FILE" ] && [ -f "$_mj_target" ] || return 0
   jq empty "$BASE_FILE" 2>/dev/null || return 0
   _sdk_clean=$(_clean_fragment "$@") || exit 1
   jq -rn --arg mode list --argjson clean "$_sdk_clean" \
