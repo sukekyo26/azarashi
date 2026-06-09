@@ -340,6 +340,17 @@ merge_json "$t" "$WORK/f1.json" "$WORK/f2.json" >/dev/null
 assert_eq "force 3-way: a key gone from the layered (common+user) fragments is deleted" \
   "$(jq -Sc . "$t")" '{"common":1,"user":2}'
 
+# (o) --force --dry-run never rewrites the base snapshot (dry-run has no side effects)
+rm -f "$t" "$bf"
+printf '{"keep":1,"OLD":1}\n' >"$bf"
+printf '{"keep":1}\n' >"$t"
+printf '{"keep":1}\n' >"$f"
+DRY_RUN=1
+merge_json "$t" "$f" >/dev/null 2>&1
+DRY_RUN=0
+assert_eq "force 3-way: --dry-run does not rewrite the base snapshot" \
+  "$(jq -Sc . "$bf")" '{"OLD":1,"keep":1}'
+
 rm -f "$t" "$bf"
 
 FORCE=0

@@ -150,9 +150,10 @@ merge_json() {
   # itself (the fragment wins), so a genuinely changed fragment is never skipped.
   if _json_eq "$_mj_result" "$_mj_target"; then
     info "in-sync : $_mj_target"
-    # Refresh the base even when unchanged, so a later fragment edit diffs
-    # against the fragment actually in effect now (keeps 3-way delete accurate).
-    [ "$FORCE" -eq 1 ] && _save_base "$@"
+    # Refresh the base even when unchanged (a later fragment edit then diffs
+    # against the fragment in effect now), but never under --dry-run: writing the
+    # base is a side effect, and a stale-vs-fresh base would change later deletes.
+    [ "$FORCE" -eq 1 ] && [ "$DRY_RUN" -ne 1 ] && _save_base "$@"
     return 0
   fi
 
