@@ -92,6 +92,25 @@ jobs:
           ./install.sh install | tee install2.out
           ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
 
+      - name: Force re-merge — the repo fragment value wins over an edited target
+        run: |
+          # simulate a user-edited value, then let the repo fragment win under --force
+          tmp=$(mktemp); jq '.statusLine.padding = 99' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          jq -e '.statusLine.padding == 99' "$HOME/.claude/settings.json" >/dev/null
+          ./install.sh install --force | tee force.out
+          grep -qE '^[[:space:]]*merged[[:space:]]*:.*/\.claude/settings\.json$' force.out
+          jq -e '.statusLine.padding == 0' "$HOME/.claude/settings.json" >/dev/null
+          # a manually-added key absent from every fragment is preserved
+          tmp=$(mktemp); jq '.myManualKey = true' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          ./install.sh install --force >/dev/null
+          jq -e '.myManualKey == true' "$HOME/.claude/settings.json" >/dev/null
+          # nothing changed since: a second force run is an idempotent no-op
+          ./install.sh install --force | tee force2.out
+          ! grep -qE '^[[:space:]]*merged[[:space:]]*:' force2.out
+          # restore a clean install for the steps below
+          rm -f "$HOME/.claude/settings.json"
+          ./install.sh install >/dev/null
+
       - name: Prune must never touch a tool's own state under a managed dir
         run: |
           # directories no layer defines (here: a tool's runtime state) must be
