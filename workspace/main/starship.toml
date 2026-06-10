@@ -21,7 +21,6 @@ $character"""
 right_format = "$time"
 
 [cmd_duration]
-min_time = 2_000
 format = "[⏱️ $duration]($style) "
 style = "yellow"
 
