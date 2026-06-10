@@ -15,7 +15,7 @@ services:
       - "CONTAINER_SERVICE_NAME=${CONTAINER_SERVICE_NAME}"
       - "TZ=Asia/Tokyo"
     volumes:
-      - "../..:/home/${USERNAME}/work:cached"
+      - "../../../..:/home/${USERNAME}/work:cached"
       - "local:/home/${USERNAME}/.local"
       - "cocoon:/home/${USERNAME}/.cocoon"
       - "/var/run/docker.sock:/var/run/docker.sock"

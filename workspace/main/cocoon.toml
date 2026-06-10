@@ -6,7 +6,7 @@
 #   dir: コンテナ内 workdir の親 (/home/<user>/ 配下)。デフォルト "workspace"。スラッシュで多段階層も可。
 #   devcontainer: VS Code Reopen-in-Container 用の devcontainer.json を生成するか。
 [workspace]
-mount_root = ".."
+mount_root = "../../.."
 dir = "work"
 devcontainer = true
 
