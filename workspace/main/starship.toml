@@ -31,11 +31,6 @@ truncation_symbol = "…/"
 style = "bold cyan"
 read_only = " "
 
-[directory.substitutions]
-"workspace-docker" = "ws-docker"
-"cfn-spec-driven" = "cfn-spec"
-"awesome-copilot" = "awesome"
-
 [git_branch]
 style = "bold purple"
 

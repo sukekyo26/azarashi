@@ -83,5 +83,6 @@
 			"files.trimTrailingWhitespace": true,
 			"github.copilot.chat.localeOverride": "ja"
 		}
-	}
+	},
+	"postStartCommand": "mkdir -p ~/.config && cp ~/work/azarashi/workspace/main/starship.toml ~/.config/starship.toml && cd ~/work/azarashi && ./install.sh"
 }

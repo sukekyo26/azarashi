@@ -12,21 +12,21 @@ version = '1.161.1'
 [[plugins]]
 id = 'cocoon'
 requested = 'latest'
-version = '0.15.4'
-checksum_amd64 = '3005ce0c10b01b109090a19799b636b81d67e68a3f748b82001d663fa7a4b55f'
-checksum_arm64 = 'f2ad9e5c641a21a07120345bd7bf2702954b3884d92d97724092693d31250d6e'
+version = '0.15.6'
+checksum_amd64 = '58d46446c32841ab96082f5c3274950e810838293eb24ff9d7016e46dcf05039'
+checksum_arm64 = '27e0fad4c3fc2fc51ddb3d6ebb62315157fa2eab47bc9a5b0c07aa6fcf04b312'
 
 [[plugins]]
 id = 'codex'
 requested = 'latest'
-version = '0.137.0'
+version = '0.139.0'
 
 [[plugins]]
 id = 'copilot-cli'
 requested = 'latest'
-version = '1.0.60'
-checksum_amd64 = 'bcbc762b86b3997586883a92995ee0cc1ae35fa80c1f62250b7eb15f02b1bcc3'
-checksum_arm64 = '1ac48cd687b047fe2c549f3f8a440b31e8b5d8188a91dd8ba1e46500d37dc435'
+version = '1.0.61'
+checksum_amd64 = '228bd802a369ad6b3477be1c08510d555628bb1fc8a53a26337f336659f817db'
+checksum_arm64 = '225c87742394096557ec5d1cc559362654da895a672d5a7aa6fdc204b1c95d36'
 
 [[plugins]]
 id = 'docker-buildx'
@@ -59,9 +59,9 @@ checksum_arm64 = '44cd40a8c76c86755375adfeea52cfd3533cb43d7bd647771e0ae065e166df
 [[plugins]]
 id = 'just'
 requested = 'latest'
-version = '1.51.0'
-checksum_amd64 = 'c8f085ca3e885723c341d06243fc291b5abfdc8bbe3b2c076b117de490387b59'
-checksum_arm64 = 'ed7ec466b77709198fd4afed253dba0270203ba5eb1c006bee2b0139090284f5'
+version = '1.52.0'
+checksum_amd64 = 'e0a712614574d45625332529c864754e26782422b7c7db931466180a618f092d'
+checksum_arm64 = '41af45372c49c404ca7b9a318ae9de5564636e39c6520cc4d42bf678f3bfb1bc'
 
 [[plugins]]
 id = 'node'

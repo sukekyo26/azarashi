@@ -133,7 +133,7 @@ RUN mkdir -p /home/${USERNAME}/.aws /home/${USERNAME}/.cargo /home/${USERNAME}/.
 # Install cocoon
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.15.4" CHECKSUM_AMD64="3005ce0c10b01b109090a19799b636b81d67e68a3f748b82001d663fa7a4b55f" CHECKSUM_ARM64="f2ad9e5c641a21a07120345bd7bf2702954b3884d92d97724092693d31250d6e" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.15.6" CHECKSUM_AMD64="58d46446c32841ab96082f5c3274950e810838293eb24ff9d7016e46dcf05039" CHECKSUM_ARM64="27e0fad4c3fc2fc51ddb3d6ebb62315157fa2eab47bc9a5b0c07aa6fcf04b312" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install the cocoon binary from its GitHub Pages mirror rather than the
 # GitHub Releases CDN. Pages-only by design — no fallback to the
@@ -211,7 +211,7 @@ COCOON_PLUGIN_EOF
 # Install OpenAI Codex CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.137.0" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.139.0" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install OpenAI Codex CLI (https://github.com/openai/codex)
 #
@@ -610,7 +610,7 @@ COCOON_PLUGIN_EOF
 # Install just
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.51.0" CHECKSUM_AMD64="c8f085ca3e885723c341d06243fc291b5abfdc8bbe3b2c076b117de490387b59" CHECKSUM_ARM64="ed7ec466b77709198fd4afed253dba0270203ba5eb1c006bee2b0139090284f5" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.52.0" CHECKSUM_AMD64="e0a712614574d45625332529c864754e26782422b7c7db931466180a618f092d" CHECKSUM_ARM64="41af45372c49c404ca7b9a318ae9de5564636e39c6520cc4d42bf678f3bfb1bc" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install just (https://github.com/casey/just)
 #
@@ -1307,7 +1307,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Install GitHub Copilot CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.0.60" CHECKSUM_AMD64="bcbc762b86b3997586883a92995ee0cc1ae35fa80c1f62250b7eb15f02b1bcc3" CHECKSUM_ARM64="1ac48cd687b047fe2c549f3f8a440b31e8b5d8188a91dd8ba1e46500d37dc435" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.0.61" CHECKSUM_AMD64="228bd802a369ad6b3477be1c08510d555628bb1fc8a53a26337f336659f817db" CHECKSUM_ARM64="225c87742394096557ec5d1cc559362654da895a672d5a7aa6fdc204b1c95d36" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install GitHub Copilot CLI from the GitHub Releases binary tarball
 # (https://github.com/github/copilot-cli/releases). Picked when gh.io is
