@@ -1,4 +1,7 @@
 {
+  "language": "japanese",
+  "showTurnDuration": true,
+  "spinnerTipsEnabled": false,
   "statusLine": {
     "type": "command",
     "command": "bash ~/.claude/statusline.sh",
