@@ -269,7 +269,13 @@ lang     = "ja_JP.UTF-8"
 # [devcontainer.*] — VS Code Dev Container 用に devcontainer.json へマージされる設定。
 #   [workspace] devcontainer = false のときは無視。よくあるのは VS Code 拡張リスト。
 [devcontainer]
-postStartCommand = "mkdir -p ~/.config && cp ~/work/azarashi/workspace/main/starship.toml ~/.config/starship.toml && cd ~/work/azarashi && ./install.sh"
+postStartCommand = """
+set -e
+mkdir -p ~/.config
+cp ~/work/azarashi/workspace/main/starship.toml ~/.config/starship.toml
+cd ~/work/azarashi
+./install.sh
+"""
 
 [devcontainer.customizations.vscode]
 extensions = [

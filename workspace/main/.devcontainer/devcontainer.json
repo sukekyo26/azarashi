@@ -84,5 +84,5 @@
 			"github.copilot.chat.localeOverride": "ja"
 		}
 	},
-	"postStartCommand": "mkdir -p ~/.config && cp ~/work/azarashi/workspace/main/starship.toml ~/.config/starship.toml && cd ~/work/azarashi && ./install.sh"
+	"postStartCommand": "set -e\nmkdir -p ~/.config\ncp ~/work/azarashi/workspace/main/starship.toml ~/.config/starship.toml\ncd ~/work/azarashi\n./install.sh\n"
 }
