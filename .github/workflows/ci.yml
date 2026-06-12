@@ -278,7 +278,10 @@ jobs:
 
       - name: Fragment merge layering (target > user > common)
         run: |
-          jq -e '.statusLine.command == "bash ~/.claude/statusline.sh"' "$HOME/.claude/settings.json"
+          # command is not overridden by the user fragment: the common value falls through
+          common_cmd=$(jq -r '.statusLine.command' common/.claude/settings.fragment.json)
+          jq -e --arg c "$common_cmd" '.statusLine.command == $c' "$HOME/.claude/settings.json"
+          # padding=5 comes from the user fixture and must beat common's value
           jq -e '.statusLine.padding == 5' "$HOME/.claude/settings.json"
           jq -e '.citestUserKey == true' "$HOME/.claude/settings.json"
 
@@ -295,7 +298,8 @@ jobs:
           jq -e 'has("citestUserKey") | not' "$HOME/.claude/settings.json" >/dev/null
           # values still defined by the user/common fragments are kept
           jq -e '.statusLine.padding == 5' "$HOME/.claude/settings.json" >/dev/null
-          jq -e '.statusLine.command == "bash ~/.claude/statusline.sh"' "$HOME/.claude/settings.json" >/dev/null
+          common_cmd=$(jq -r '.statusLine.command' common/.claude/settings.fragment.json)
+          jq -e --arg c "$common_cmd" '.statusLine.command == $c' "$HOME/.claude/settings.json" >/dev/null
 
       - name: status — assert all in-sync (no drift/missing/orphan)
         run: |
