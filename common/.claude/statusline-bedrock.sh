@@ -28,8 +28,8 @@ if [[ -n "$transcript" && -r "$transcript" ]]; then
   size=$(stat -c %s "$transcript" 2>/dev/null || echo 0)
   cache_file="${TMPDIR:-/tmp}/claude-statusline-cost-$(md5sum <<<"$transcript" | cut -d' ' -f1)"
 
-  if [[ -r "$cache_file" ]] && read -r cached_size cached_cost cached_mark <"$cache_file" \
-     && [[ "$cached_size" == "$size" ]]; then
+  if [[ -r "$cache_file" ]] && read -r cached_size cached_cost cached_mark <"$cache_file" &&
+    [[ "$cached_size" == "$size" ]]; then
     if [[ -n "$cached_mark" ]]; then
       cost=$cached_cost
       cost_mark="~"
