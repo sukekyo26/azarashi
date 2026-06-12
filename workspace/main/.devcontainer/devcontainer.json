@@ -28,7 +28,6 @@
 				"ms-vscode.vscode-typescript-next",
 				"golang.go",
 				"rust-lang.rust-analyzer",
-				"anthropic.claude-code",
 				"openai.chatgpt"
 			]
 		},
