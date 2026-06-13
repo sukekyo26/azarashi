@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "context-mode": {
+      "type": "local",
+      "command": "context-mode",
+      "args": [],
+      "tools": ["*"]
+    }
+  }
+}

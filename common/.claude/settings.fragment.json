@@ -21,5 +21,16 @@
       }
     ]
   },
-  "autoInstallIdeExtension": false
+  "autoInstallIdeExtension": false,
+  "extraKnownMarketplaces": {
+    "context-mode": {
+      "source": {
+        "source": "github",
+        "repo": "mksglu/context-mode"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "context-mode@context-mode": true
+  }
 }
