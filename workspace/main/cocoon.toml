@@ -117,6 +117,7 @@ aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down",
 enable = [
     "aws-cli",
     "aws-sam-cli",
+    "bun",
     "claude-code",
     "cocoon",
     "codex",

@@ -128,8 +128,8 @@ RUN echo 'autoload -Uz compinit && compinit' >> "$HOME/.zshrc" && \
 
 # Prepare volume mount directories with correct ownership
 USER root
-RUN mkdir -p /home/${USERNAME}/.aws /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.codex /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.npm /home/${USERNAME}/.npm-global /home/${USERNAME}/.rustup /home/${USERNAME}/go && \
-    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.aws /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.codex /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.npm /home/${USERNAME}/.npm-global /home/${USERNAME}/.rustup /home/${USERNAME}/go
+RUN mkdir -p /home/${USERNAME}/.aws /home/${USERNAME}/.bun /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.codex /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.npm /home/${USERNAME}/.npm-global /home/${USERNAME}/.rustup /home/${USERNAME}/go && \
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.aws /home/${USERNAME}/.bun /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.codex /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.npm /home/${USERNAME}/.npm-global /home/${USERNAME}/.rustup /home/${USERNAME}/go
 # Install cocoon
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -1292,6 +1292,41 @@ unzip aws-sam-cli.zip -d sam-installation
 sudo ./sam-installation/install
 rm -rf sam-installation aws-sam-cli.zip
 COCOON_PLUGIN_EOF
+# Install bun
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="" bash <<'COCOON_PLUGIN_EOF'
+#!/usr/bin/env bash
+# Install bun (all-in-one JavaScript runtime & toolkit) (https://github.com/oven-sh/bun)
+#
+# Inputs (env):
+#   PIN       : bun version without leading "v" (e.g. "1.3.3"); empty = latest
+#   RC_FILE   : absolute path to the user's login-shell rc file
+#   RC_SYNTAX : "posix" (bash/zsh) or "fish"
+set -euo pipefail
+
+if [ -n "$PIN" ]; then
+  curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+    https://bun.com/install | bash -s "bun-v${PIN}"
+else
+  curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+    https://bun.sh/install | bash
+fi
+
+if [ "${RC_SYNTAX:-posix}" = "fish" ]; then
+  # shellcheck disable=SC2016
+  echo 'set -gx BUN_INSTALL $HOME/.bun' >>"$RC_FILE"
+  # shellcheck disable=SC2016
+  echo 'set -gx PATH $BUN_INSTALL/bin $PATH' >>"$RC_FILE"
+else
+  # shellcheck disable=SC2016
+  echo 'export BUN_INSTALL="$HOME/.bun"' >>"$RC_FILE"
+  # shellcheck disable=SC2016
+  echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >>"$RC_FILE"
+fi
+COCOON_PLUGIN_EOF
+ENV BUN_INSTALL="/home/${USERNAME}/.bun"
+ENV PATH="$BUN_INSTALL/bin:$PATH"
 # Install Claude Code
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \

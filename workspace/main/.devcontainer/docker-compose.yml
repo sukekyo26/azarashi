@@ -20,6 +20,7 @@ services:
       - "cocoon:/home/${USERNAME}/.cocoon"
       - "/var/run/docker.sock:/var/run/docker.sock"
       - "aws:/home/${USERNAME}/.aws"
+      - "bun:/home/${USERNAME}/.bun"
       - "claude:/home/${USERNAME}/.claude"
       - "codex:/home/${USERNAME}/.codex"
       - "copilot:/home/${USERNAME}/.copilot"
@@ -49,6 +50,8 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_cocoon"
   aws:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_aws"
+  bun:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_bun"
   claude:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_claude"
   codex:
