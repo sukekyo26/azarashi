@@ -106,31 +106,6 @@ C_DANGER=$'\e[1;31m'
 C_DIM=$'\e[2m'
 C_RESET=$'\e[0m'
 
-# Print line 1, right-aligning the version tag when COLUMNS is known.
-# Claude Code exports COLUMNS before running the statusline (v2.1.153+); older
-# versions get the inline fallback. ANSI codes are stripped for the width math.
-print_line1() {
-  local line=$1 ver=$2
-  [[ -z "$ver" ]] && {
-    printf '%s\n' "$line"
-    return
-  }
-  local ver_txt="v${ver}"
-  if [[ -n "${COLUMNS:-}" ]]; then
-    local esc visible bare lw pad
-    esc=$(printf '\033')
-    visible=$(printf '%s' "$line" | sed "s/${esc}\[[0-9;]*m//g")
-    bare=${visible//🧠/}
-    lw=$((${#visible} + ${#visible} - ${#bare})) # 🧠 renders 2 cells, counts as 1
-    # Leave 1 column so Claude Code's built-in spacing never clips the tag.
-    pad=$((COLUMNS - lw - ${#ver_txt} - 1))
-    ((pad < 1)) && pad=1
-    printf '%s%*s%s%s%s\n' "$line" "$pad" "" "$C_DIM" "$ver_txt" "$C_RESET"
-  else
-    printf '%s %s%s%s\n' "$line" "$C_DIM" "$ver_txt" "$C_RESET"
-  fi
-}
-
 style_tag=""
 if [[ -n "$style" && "$style" != "default" ]]; then
   style_tag=" ${C_DIM}{$style}${C_RESET}"
@@ -186,25 +161,28 @@ fi
 
 worktree_tag=""
 [[ -n "$worktree" ]] && worktree_tag=" ${C_DIM}⑂${worktree}${C_RESET}"
+version_tag=""
+[[ -n "$version" ]] && version_tag=" ${C_DIM}v${version}${C_RESET}"
 
-line1=$(
-  printf '%s%s%s%s%s%s | %s%s%s' \
-    "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
-    "$C_DIR" "$cwd_short" "$C_RESET"
-  [[ -n "$branch" ]] && printf ' %s(%s)%s%s' "$C_BRANCH" "$branch" "$C_RESET" "$worktree_tag"
-  printf ' | %s%s$%.3f%s %s+%s/-%s%s%s' \
-    "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
-    "$C_DIM" "$added" "$removed" "$C_RESET" \
-    "$cache_segment"
-)
-
-# Right-align the Claude Code version. COLUMNS is set by Claude Code (v2.1.153+);
-# fall back to an inline tag when it's unavailable.
-print_line1 "$line1" "$version"
+printf '%s%s%s%s%s%s | %s%s%s' \
+  "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
+  "$C_DIR" "$cwd_short" "$C_RESET"
+[[ -n "$branch" ]] && printf ' %s(%s)%s%s' "$C_BRANCH" "$branch" "$C_RESET" "$worktree_tag"
+printf ' | %s%s$%.3f%s %s+%s/-%s%s%s%s\n' \
+  "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
+  "$C_DIM" "$added" "$removed" "$C_RESET" \
+  "$cache_segment" "$version_tag"
 
 # context-mode status line (2nd line). Reuse the plugin's own renderer so our
-# numbers never drift from `ctx_stats`; degrade silently when absent.
+# numbers never drift from `ctx_stats`; degrade silently when absent. The plugin
+# disables ANSI when stdout isn't a TTY (as here), so colorize its output
+# ourselves: brand the label and tint the status dot.
 ctxmode_mjs=$(printf '%s\n' "$HOME"/.claude/plugins/cache/context-mode/context-mode/*/bin/statusline.mjs | sort -V | tail -1)
 if [[ -f "$ctxmode_mjs" ]] && command -v node >/dev/null 2>&1; then
-  CLAUDE_SESSION_ID="$session_id" node "$ctxmode_mjs" <<<"$input" 2>/dev/null
+  ctxmode_out=$(CLAUDE_SESSION_ID="$session_id" node "$ctxmode_mjs" <<<"$input" 2>/dev/null)
+  if [[ -n "$ctxmode_out" ]]; then
+    ctxmode_out=${ctxmode_out//context-mode/${C_MODEL}context-mode${C_RESET}}
+    ctxmode_out=${ctxmode_out//●/${C_OK}●${C_RESET}}
+    printf '%s' "$ctxmode_out"
+  fi
 fi
