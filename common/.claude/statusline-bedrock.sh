@@ -159,6 +159,31 @@ if ((total_cache > 0)); then
   cache_segment=" ${C_DIM}cache${C_RESET} ${cache_color}${hit}%${C_RESET}"
 fi
 
+# Cache TTL countdown. The transcript mtime ≈ the last API request, which resets
+# the cache timer; counting down from it shows how long the cache stays warm.
+# TTL: STATUSLINE_CACHE_TTL overrides; FORCE_PROMPT_CACHING_5M pins 5m;
+# ENABLE_PROMPT_CACHING_1H opts into 1h; otherwise 5m.
+cache_ttl_segment=""
+if [[ -r "$transcript" ]]; then
+  if [[ -n "${STATUSLINE_CACHE_TTL:-}" ]]; then
+    ttl=$STATUSLINE_CACHE_TTL
+  elif [[ "${FORCE_PROMPT_CACHING_5M:-}" == "1" ]]; then
+    ttl=300
+  elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == "1" ]]; then
+    ttl=3600
+  else
+    ttl=300
+  fi
+  mtime=$(stat -c %Y "$transcript" 2>/dev/null || echo 0)
+  remaining=$((ttl - ($(date +%s) - mtime)))
+  if ((remaining > 0)); then
+    ((remaining <= 60)) && ttl_color=$C_WARN || ttl_color=$C_OK
+    cache_ttl_segment=$(printf ' %s⏳%d:%02d%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" "$C_RESET")
+  else
+    cache_ttl_segment=" ${C_DANGER}❄cold${C_RESET}"
+  fi
+fi
+
 worktree_tag=""
 [[ -n "$worktree" ]] && worktree_tag=" ${C_DIM}⑂${worktree}${C_RESET}"
 version_tag=""
@@ -168,10 +193,10 @@ printf '%s%s%s%s%s%s | %s%s%s' \
   "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
   "$C_DIR" "$cwd_short" "$C_RESET"
 [[ -n "$branch" ]] && printf ' %s(%s)%s%s' "$C_BRANCH" "$branch" "$C_RESET" "$worktree_tag"
-printf ' | %s%s$%.3f%s %s+%s%s/%s-%s%s%s%s\n' \
+printf ' | %s%s$%.3f%s %s+%s%s/%s-%s%s%s%s%s\n' \
   "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
   "$C_OK" "$added" "$C_RESET" "$C_DANGER" "$removed" "$C_RESET" \
-  "$cache_segment" "$version_tag"
+  "$cache_segment" "$cache_ttl_segment" "$version_tag"
 
 # context-mode status line (2nd line). Reuse the plugin's own renderer so our
 # numbers never drift from `ctx_stats`; degrade silently when absent. The plugin
