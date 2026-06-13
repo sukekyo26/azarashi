@@ -110,6 +110,7 @@ ctxmode_mjs=$(printf '%s\n' "$HOME"/.claude/plugins/cache/context-mode/context-m
 if [[ -f "$ctxmode_mjs" ]] && command -v node >/dev/null 2>&1; then
   ctxmode_out=$(CLAUDE_SESSION_ID="$session_id" node "$ctxmode_mjs" <<<"$input" 2>/dev/null)
   if [[ -n "$ctxmode_out" ]]; then
+    ctxmode_out=${ctxmode_out//  / } # tighten the plugin's 2-space separators
     ctxmode_out=${ctxmode_out//context-mode/${C_MODEL}context-mode${C_RESET}}
     ctxmode_out=${ctxmode_out//●/${C_OK}●${C_RESET}}
     printf '%s' "$ctxmode_out"
