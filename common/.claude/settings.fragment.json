@@ -4,8 +4,7 @@
   "spinnerTipsEnabled": false,
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.claude/statusline-bedrock.sh",
-    "padding": 0
+    "command": "bash ~/.claude/statusline-bedrock.sh"
   },
   "hooks": {
     "PreToolUse": [
