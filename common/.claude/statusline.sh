@@ -15,6 +15,7 @@ removed=$(jq -r '.cost.total_lines_removed // 0' <<<"$input")
 ctx_pct=$(jq -r '.context_window.used_percentage // empty' <<<"$input")
 style=$(jq -r '.output_style.name // ""' <<<"$input")
 effort=$(jq -r '.effort.level // empty' <<<"$input")
+thinking=$(jq -r '.thinking.enabled // false' <<<"$input")
 worktree=$(jq -r '.workspace.git_worktree // empty' <<<"$input")
 version=$(jq -r '.version // empty' <<<"$input")
 cache_read=$(jq -r '.context_window.current_usage.cache_read_input_tokens // 0' <<<"$input")
@@ -70,6 +71,7 @@ fi
 
 meta_segment=""
 [[ -n "$effort" && "$effort" != "null" ]] && meta_segment=" ${C_DIM}${effort}${C_RESET}"
+[[ "$thinking" == "true" ]] && meta_segment="${meta_segment} ${C_DIM}🧠${C_RESET}"
 
 # Prompt-cache health: read/(read+create) ratio for the last turn. A sharp
 # drop (red) means the prefix changed and the cache was rebuilt this turn.
