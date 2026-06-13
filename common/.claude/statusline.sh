@@ -51,7 +51,8 @@ print_line1() {
     visible=$(printf '%s' "$line" | sed "s/${esc}\[[0-9;]*m//g")
     bare=${visible//🧠/}
     lw=$((${#visible} + ${#visible} - ${#bare})) # 🧠 renders 2 cells, counts as 1
-    pad=$((COLUMNS - lw - ${#ver_txt}))
+    # Leave 1 column so Claude Code's built-in spacing never clips the tag.
+    pad=$((COLUMNS - lw - ${#ver_txt} - 1))
     ((pad < 1)) && pad=1
     printf '%s%*s%s%s%s\n' "$line" "$pad" "" "$C_DIM" "$ver_txt" "$C_RESET"
   else
