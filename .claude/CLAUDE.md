@@ -1,0 +1,66 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## 概要
+
+`azarashi` は dotfiles 管理リポジトリ。`common/` 配下を `$HOME` へ symlink でデプロイし、任意で `users/<name>/` の個人レイヤーを重ねる。本体は POSIX sh の `install.sh` と `lib/` のライブラリのみ。依存は `git` と `jq`（`gh` は任意）。
+
+## コマンド
+
+開発は devcontainer 内で `just` を使う（`just` 単体でレシピ一覧）。
+
+```sh
+just ci             # ローカル全スイート = check + test（CI と同一）
+just check          # shellcheck + shfmt-check のみ
+just test           # lib のユニットテスト（sh test/run.sh、jq のみに依存）
+just shfmt          # shfmt でフォーマット適用（in-place）
+just hooks-install  # 初回のみ: pre-commit hook を git に配線
+just hooks-run      # 全ファイルに shellcheck / shfmt / gitleaks
+just gitleaks-scan  # git 履歴全体のシークレットスキャン
+```
+
+単一テストの実行: `test/run.sh` は lib 全体を検査する単一ランナー。個別ケースだけを走らせる仕組みはないので、`sh test/run.sh` で全件実行する。
+
+install.sh の主要サブコマンド:
+
+```sh
+./install.sh install              # デプロイ + orphan symlink 刈り取り
+./install.sh install --user alice # users/alice/ を common/ に重ねる
+./install.sh diff                 # = install --dry-run（計画のみ）
+./install.sh status               # in-sync / drift / missing / orphan を報告
+./install.sh doctor               # 壊れた / 移動跡の管理 symlink を検査（read-only、異常時 nonzero）
+./install.sh uninstall            # 管理 symlink を除去（マージ済み JSON は残す）
+./install.sh clean-backups        # *.dotfiles-bak.* を一覧（--keep / --older-than 指定時のみ削除）
+```
+
+## アーキテクチャ
+
+**2 レイヤーのミラーリング**: `common/`（全員）の上に `users/<name>/`（個人、同構造、競合時に優先）を重ねる。ユーザー解決順は `--user` → `git config dotfiles.user` → `gh api user` → いずれも無ければ common のみ。
+
+**ディレクトリは実体・葉だけ symlink**: ディレクトリは常に実ディレクトリとして作成し、ファイル（葉）のみを個別 symlink する。`~/.claude` などが丸ごと symlink にならないため、ツールがそこへ書き込んでもリポジトリを汚さない。これが設計の中核制約 — ディレクトリ全体の symlink は作らない。
+
+**`*.fragment.json` の deep-merge**: fragment は対応する settings JSON へ deep-merge される。優先度は 既存値 > ユーザー fragment > 共通 fragment（`--force` 時のみリポジトリ fragment が既存値に勝つ）。credentials/token 等の保護キーは常に温存。`--force` では **3-way 削除** を行い、前回適用 fragment を `<settings>.fragment.base.json` に記録して、fragment から消えたキーを（手動変更が無ければ）同期削除する。
+
+**`mirror.conf`**（リポルート）: 1 つの正典ファイルを複数配布先へ symlink でミラーする宣言。各行は `target source`（レイヤ相対、`#` はコメント）。source はレイヤ解決を通るのでユーザー上書きに追従する。例: `.agents/AGENTS.md` を `.claude/CLAUDE.md` と `.copilot/copilot-instructions.md` へ。ソースが見つからない行は警告してスキップ（fatal にしない）。
+
+### 主要ファイル
+
+- `install.sh` — エントリポイント。POSIX sh。`lib/common.sh` と `lib/json_merge.sh` を source。
+- `lib/common.sh` — ログ（`log`/`info`/`warn`/`err`/`die`）、`backup`、`newest_backup`、symlink ヘルパー（`is_our_link` / `is_managed_link` / `link_path`）。
+- `lib/json_merge.sh` — fragment マージのコア（`merge_json` ほか）。
+- `test/run.sh` — `lib/` のユニットテスト。グローバルはハーネスがケースごとに所有。
+- `common/` — 配布ペイロード（`.agents/`, `.claude/`, `.copilot/` の設定・statusline・hooks）。
+
+## リント / フォーマットの分割（重要）
+
+shellcheck と shfmt は **POSIX sh** と **bash** で別扱い。新規スクリプトを足すときはどちらのレイヤーかで対象パスが変わる:
+
+- **POSIX sh** 扱い: `install.sh` と `lib/*.sh`（shellcheck `-s sh`、shfmt `-ln posix`）。
+- **bash** 扱い: それ以外の `*.sh`（特に `common/`、shebang 駆動）。
+
+`.pre-commit-config.yaml` と `justfile` の両方にこの分割が反映されている。スクリプト追加時は対象 glob を両方で確認すること。
+
+## CI
+
+`.github/workflows/ci.yml` が `just check`（lint）、`sh test/run.sh`（lib テスト）、`install.sh` の E2E（クリーン HOME での install / status / 冪等性 / `--force` 再マージと 3-way 削除 / prune 安全性 / clean-backups / doctor / uninstall / per-user overlay）を実行する。`just ci` がローカルでこの中核を再現する。
