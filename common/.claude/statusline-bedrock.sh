@@ -103,6 +103,8 @@ C_COST=$'\e[35m'
 C_OK=$'\e[1;32m'
 C_WARN=$'\e[1;33m'
 C_DANGER=$'\e[1;31m'
+C_ADD=$'\e[32m'
+C_DEL=$'\e[31m'
 C_DIM=$'\e[2m'
 C_RESET=$'\e[0m'
 
@@ -168,9 +170,9 @@ printf '%s%s%s%s%s%s | %s%s%s' \
   "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
   "$C_DIR" "$cwd_short" "$C_RESET"
 [[ -n "$branch" ]] && printf ' %s(%s)%s%s' "$C_BRANCH" "$branch" "$C_RESET" "$worktree_tag"
-printf ' | %s%s$%.3f%s %s+%s/-%s%s%s%s\n' \
+printf ' | %s%s$%.3f%s %s+%s%s/%s-%s%s%s%s\n' \
   "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
-  "$C_DIM" "$added" "$removed" "$C_RESET" \
+  "$C_ADD" "$added" "$C_RESET" "$C_DEL" "$removed" "$C_RESET" \
   "$cache_segment" "$version_tag"
 
 # context-mode status line (2nd line). Reuse the plugin's own renderer so our
