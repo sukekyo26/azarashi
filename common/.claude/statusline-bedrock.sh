@@ -199,16 +199,19 @@ worktree_tag=""
 version_tag=""
 [[ -n "$version" ]] && version_tag=" ${C_DIM}v${version}${C_RESET}"
 
-printf '%s%s%s%s%s%s | %s%s%s' \
-  "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
-  "$C_DIR" "$cwd_short" "$C_RESET"
+# Stack three lines so the bar stays readable in a narrow terminal:
+# 1) project (cwd + branch), 2) model + context + cost + cache, 3) context-mode.
+printf '%s%s%s' "$C_DIR" "$cwd_short" "$C_RESET"
 [[ -n "$branch" ]] && printf ' %s(%s)%s%s' "$C_BRANCH" "$branch" "$C_RESET" "$worktree_tag"
-printf ' | %s%s$%.3f%s %s+%s%s/%s-%s%s%s%s%s\n' \
+printf '\n'
+
+printf '%s%s%s%s%s%s %s%s$%.3f%s %s+%s%s/%s-%s%s%s%s%s\n' \
+  "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
   "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
   "$C_OK" "$added" "$C_RESET" "$C_DANGER" "$removed" "$C_RESET" \
   "$cache_segment" "$cache_ttl_segment" "$version_tag"
 
-# context-mode status line (2nd line). Reuse the plugin's own renderer so our
+# context-mode status line (3rd line). Reuse the plugin's own renderer so our
 # numbers never drift from `ctx_stats`; degrade silently when absent. The plugin
 # disables ANSI when stdout isn't a TTY (as here), so colorize its output
 # ourselves: brand the label and tint the status dot.
