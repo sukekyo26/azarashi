@@ -89,8 +89,11 @@ if ((total_cache > 0)); then
   cache_segment=" ${C_DIM}cache${C_RESET} ${cache_color}${hit}%${C_RESET}"
 fi
 
-# Cache TTL countdown. The transcript mtime ≈ the last API request, which resets
-# the cache timer; counting down from it shows how long the cache stays warm.
+# Cache TTL countdown — how long the prompt cache stays warm after the last API
+# request (which resets the timer). Anchor on the last assistant turn's timestamp,
+# NOT the file mtime: Claude Code appends mode/permission-mode bookkeeping lines on
+# session resume (claude --continue), bumping mtime to "now" without any request
+# having warmed the cache — that would falsely restart the countdown at 5:00.
 # TTL: STATUSLINE_CACHE_TTL overrides; FORCE_PROMPT_CACHING_5M pins 5m;
 # ENABLE_PROMPT_CACHING_1H opts into 1h; otherwise 5m.
 cache_ttl_segment=""
@@ -104,8 +107,14 @@ if [[ -r "$transcript" ]]; then
   else
     ttl=300
   fi
-  mtime=$(stat -c %Y "$transcript" 2>/dev/null || echo 0)
-  remaining=$((ttl - ($(date +%s) - mtime)))
+  last_req=$(tail -n 200 "$transcript" 2>/dev/null |
+    jq -r 'select(.type == "assistant" and .timestamp) | .timestamp' 2>/dev/null | tail -1)
+  if [[ -n "$last_req" ]]; then
+    last_req=$(date -d "$last_req" +%s 2>/dev/null || stat -c %Y "$transcript" 2>/dev/null || echo 0)
+  else
+    last_req=$(stat -c %Y "$transcript" 2>/dev/null || echo 0) # no assistant turn yet
+  fi
+  remaining=$((ttl - ($(date +%s) - last_req)))
   if ((remaining > 0)); then
     ((remaining <= 60)) && ttl_color=$C_WARN || ttl_color=$C_OK
     cache_ttl_segment=$(printf ' %s⏳%d:%02d%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" "$C_RESET")
