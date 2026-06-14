@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Cancel an in-progress run when a newer commit lands on the same ref, so rapid
+# pushes don't pile up redundant runs. push and pull_request use different refs,
+# so a PR's checks still run alongside the branch push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     name: shellcheck + shfmt-check
