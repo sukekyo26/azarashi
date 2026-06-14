@@ -154,7 +154,11 @@ ctxmode_out=""
 if command -v context-mode >/dev/null 2>&1; then
   ctxmode_out=$(CLAUDE_SESSION_ID="$session_id" context-mode statusline <<<"$input" 2>/dev/null)
 elif command -v node >/dev/null 2>&1; then
-  ctxmode_mjs=$(printf '%s\n' "$HOME"/.claude/plugins/cache/context-mode/context-mode/*/bin/statusline.mjs | sort -V | tail -1)
+  ctxmode_mjs="" # newest cached renderer by mtime; sort -V isn't portable to BSD/BusyBox
+  for _m in "$HOME"/.claude/plugins/cache/context-mode/context-mode/*/bin/statusline.mjs; do
+    [[ -f "$_m" ]] || continue
+    [[ -z "$ctxmode_mjs" || "$_m" -nt "$ctxmode_mjs" ]] && ctxmode_mjs="$_m"
+  done
   [[ -f "$ctxmode_mjs" ]] && ctxmode_out=$(CLAUDE_SESSION_ID="$session_id" node "$ctxmode_mjs" <<<"$input" 2>/dev/null)
 fi
 if [[ -n "$ctxmode_out" ]]; then
