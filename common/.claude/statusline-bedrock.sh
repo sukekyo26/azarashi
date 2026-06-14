@@ -202,13 +202,21 @@ printf ' | %s%s$%.3f%s %s+%s%s/%s-%s%s%s%s%s\n' \
 # numbers never drift from `ctx_stats`; degrade silently when absent. The plugin
 # disables ANSI when stdout isn't a TTY (as here), so colorize its output
 # ourselves: brand the label and tint the status dot.
-ctxmode_mjs=$(printf '%s\n' "$HOME"/.claude/plugins/cache/context-mode/context-mode/*/bin/statusline.mjs | sort -V | tail -1)
-if [[ -f "$ctxmode_mjs" ]] && command -v node >/dev/null 2>&1; then
-  ctxmode_out=$(CLAUDE_SESSION_ID="$session_id" node "$ctxmode_mjs" <<<"$input" 2>/dev/null)
-  if [[ -n "$ctxmode_out" ]]; then
-    ctxmode_out=${ctxmode_out//  / } # tighten the plugin's 2-space separators
-    ctxmode_out=${ctxmode_out//context-mode/${C_MODEL}context-mode${C_RESET}}
-    ctxmode_out=${ctxmode_out//●/${C_OK}●${C_RESET}}
-    printf '%s' "$ctxmode_out"
-  fi
+#
+# Prefer the npm-global `context-mode` CLI: it ships the compiled build/ that the
+# plugin's git checkout omits (.gitignore'd), so its renderer reports real
+# savings instead of the static "~98%" fallback. Fall back to the plugin-cache
+# renderer (node on the bundled mjs) when the global CLI isn't installed.
+ctxmode_out=""
+if command -v context-mode >/dev/null 2>&1; then
+  ctxmode_out=$(CLAUDE_SESSION_ID="$session_id" context-mode statusline <<<"$input" 2>/dev/null)
+elif command -v node >/dev/null 2>&1; then
+  ctxmode_mjs=$(printf '%s\n' "$HOME"/.claude/plugins/cache/context-mode/context-mode/*/bin/statusline.mjs | sort -V | tail -1)
+  [[ -f "$ctxmode_mjs" ]] && ctxmode_out=$(CLAUDE_SESSION_ID="$session_id" node "$ctxmode_mjs" <<<"$input" 2>/dev/null)
+fi
+if [[ -n "$ctxmode_out" ]]; then
+  ctxmode_out=${ctxmode_out//  / } # tighten the plugin's 2-space separators
+  ctxmode_out=${ctxmode_out//context-mode/${C_MODEL}context-mode${C_RESET}}
+  ctxmode_out=${ctxmode_out//●/${C_OK}●${C_RESET}}
+  printf '%s' "$ctxmode_out"
 fi
