@@ -99,19 +99,17 @@ jobs:
           ./install.sh install | tee install2.out
           ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
 
-      - name: Force re-merge — the repo fragment value wins over an edited target
+      - name: Force preserves a manually-added key and converges
         run: |
-          # simulate a user-edited value, then let the repo fragment win under --force
-          tmp=$(mktemp); jq '.statusLine.padding = 99' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
-          jq -e '.statusLine.padding == 99' "$HOME/.claude/settings.json" >/dev/null
-          ./install.sh install --force | tee force.out
-          grep -qE '^[[:space:]]*merged[[:space:]]*:.*/\.claude/settings\.json$' force.out
-          jq -e '.statusLine.padding == 0' "$HOME/.claude/settings.json" >/dev/null
-          # a manually-added key absent from every fragment is preserved
+          # Don't assert on any shipped-fragment key here: the real fragment changes
+          # often, so a baked-in key/value would break this test on every edit. The
+          # "fragment value beats an edited target" case runs in the per-user job
+          # against a dedicated fixture key instead.
+          # A manually-added key absent from every fragment must survive --force.
           tmp=$(mktemp); jq '.myManualKey = true' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
           ./install.sh install --force >/dev/null
           jq -e '.myManualKey == true' "$HOME/.claude/settings.json" >/dev/null
-          # nothing changed since: a second force run is an idempotent no-op
+          # nothing else changed, so a second force run is an idempotent no-op
           ./install.sh install --force | tee force2.out
           ! grep -qE '^[[:space:]]*merged[[:space:]]*:' force2.out
           # restore a clean install for the steps below
@@ -291,6 +289,16 @@ jobs:
           # padding=5 comes from the user fixture and must beat common's value
           jq -e '.statusLine.padding == 5' "$HOME/.claude/settings.json"
           jq -e '.citestUserKey == true' "$HOME/.claude/settings.json"
+
+      - name: Force re-merge — the fragment value wins over an edited target
+        run: |
+          # Assert on citestUserKey, a key owned by the test fixture, so this never
+          # depends on what the shipped fragment happens to contain.
+          tmp=$(mktemp); jq '.citestUserKey = "edited"' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          jq -e '.citestUserKey == "edited"' "$HOME/.claude/settings.json" >/dev/null
+          ./install.sh install --user citest --force | tee force.out
+          grep -qE '^[[:space:]]*merged[[:space:]]*:.*/\.claude/settings\.json$' force.out
+          jq -e '.citestUserKey == true' "$HOME/.claude/settings.json" >/dev/null
 
       - name: Force 3-way delete honors the layered (user) fragment
         run: |
