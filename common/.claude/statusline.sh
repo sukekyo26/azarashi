@@ -120,6 +120,7 @@ if [[ -r "$transcript" ]]; then
     cache_ttl_segment=$(printf ' %s⏳%d:%02d%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" "$C_RESET")
   else
     cache_ttl_segment=" ${C_DANGER}❄cold${C_RESET}"
+    cache_segment="" # cold: the per-turn hit% is a pre-idle snapshot, drop it
   fi
 fi
 
