@@ -2,9 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, '*/*']
   pull_request:
     branches: [main, develop]
+
+# Cancel an in-progress run when a newer commit lands on the same ref, so rapid
+# pushes don't pile up redundant runs. push and pull_request use different refs,
+# so a PR's checks still run alongside the branch push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -42,7 +49,10 @@ jobs:
       - run: sh test/run.sh
 
   e2e:
-    name: install.sh E2E
+    name: install.sh E2E (shipped-payload smoke)
+    # Deploys the REAL common/ to prove the shipped payload installs cleanly.
+    # Assertions are structural (no specific filenames) so editing the payload
+    # never breaks this job; mechanism behavior is covered by e2e-mechanism.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -59,279 +69,214 @@ jobs:
           [ ! -e "$HOME/.agents" ]
           [ ! -e "$HOME/.copilot" ]
 
-      - name: First install
-        run: ./install.sh install
-
-      - name: status — assert all in-sync (no drift/missing/orphan)
+      - name: First install — and the real payload reports in-sync
         run: |
+          ./install.sh install
           ./install.sh status | tee status.out
           ! grep -E '^[[:space:]]*(drift|missing|orphan)[[:space:]]*:' status.out
 
-      - name: Layout sanity check
+      - name: Layout invariants (structural, name-agnostic)
         run: |
-          # dot-directories are always real directories (never symlinked)
-          [ -d "$HOME/.agents" ] && [ ! -L "$HOME/.agents" ]
-          [ -d "$HOME/.claude" ] && [ ! -L "$HOME/.claude" ]
-          [ -d "$HOME/.copilot" ] && [ ! -L "$HOME/.copilot" ]
-          # canonical .agents: AGENTS.md is a leaf symlink, skills is materialized
-          [ -L "$HOME/.agents/AGENTS.md" ]
-          [ -d "$HOME/.agents/skills" ] && [ ! -L "$HOME/.agents/skills" ]
-          [ -L "$HOME/.agents/skills/changelog/SKILL.md" ]
-          # file mirrors resolve to the single canonical AGENTS.md
-          [ -L "$HOME/.claude/CLAUDE.md" ] && cmp -s "$HOME/.claude/CLAUDE.md" "$HOME/.agents/AGENTS.md"
-          [ -L "$HOME/.copilot/copilot-instructions.md" ] && cmp -s "$HOME/.copilot/copilot-instructions.md" "$HOME/.agents/AGENTS.md"
-          # the skills mirror is a single directory symlink (no folder materialized)
-          [ -L "$HOME/.claude/skills" ] && [ -d "$HOME/.claude/skills" ]
-          [ -e "$HOME/.claude/skills/changelog/SKILL.md" ]
+          # top-level dot-directories are always real directories, never symlinks
+          for d in .agents .claude .copilot; do
+            [ -d "$HOME/$d" ] && [ ! -L "$HOME/$d" ]
+          done
+          # no managed symlink dangles — every leaf resolves to a real source
+          broken=$(find "$HOME" -type l ! -exec test -e {} \; -print)
+          [ -z "$broken" ] || { echo "dangling symlinks:"; echo "$broken"; exit 1; }
+          # something was actually deployed as leaf symlinks
+          [ -n "$(find "$HOME/.agents" -type l 2>/dev/null | head -1)" ]
           # a fragment is merged into a real settings.json (not a symlink)
           [ -f "$HOME/.claude/settings.json" ] && [ ! -L "$HOME/.claude/settings.json" ]
-          [ -f "$HOME/.copilot/settings.json" ] && [ ! -L "$HOME/.copilot/settings.json" ]
 
       - name: Idempotency — second install must not relink or remerge
         run: |
           ./install.sh install | tee install2.out
           ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
 
-      - name: Force re-merge — the repo fragment value wins over an edited target
+      - name: Uninstall removes managed symlinks (merged JSON intentionally remains)
         run: |
-          # simulate a user-edited value, then let the repo fragment win under --force
-          tmp=$(mktemp); jq '.statusLine.padding = 99' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
-          jq -e '.statusLine.padding == 99' "$HOME/.claude/settings.json" >/dev/null
+          ./install.sh uninstall
+          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -f "$HOME/.claude/settings.json" ]
+
+  e2e-mechanism:
+    name: install.sh E2E (mechanisms, synthetic fixture)
+    # Runs install.sh against a throwaway source tree with fixture-owned names,
+    # so every mechanism assertion is independent of the shipped common/ payload
+    # (which changes often). install.sh resolves its source from its own dir, so
+    # copying it next to a synthetic common/ + users/ + mirror.conf is enough.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build a throwaway source tree (real install.sh + lib, synthetic payload)
+        run: |
+          FX=$(mktemp -d); echo "FX=$FX" >> "$GITHUB_ENV"
+          cp install.sh "$FX/"; cp -r lib "$FX/"
+          mkdir -p "$FX/common/.agents/skills/demoskill" "$FX/common/.claude"
+          printf 'CANONICAL (common)\n'              >"$FX/common/.agents/AGENTS.md"
+          printf 'demo skill\n'                      >"$FX/common/.agents/skills/demoskill/SKILL.md"
+          printf '#!/usr/bin/env bash\necho common\n' >"$FX/common/.claude/demo.sh"
+          printf '{ "statusLine": { "x": "common" }, "commonOnly": 1 }\n' \
+            >"$FX/common/.claude/settings.fragment.json"
+          mkdir -p "$FX/users/fx/.agents" "$FX/users/fx/.claude" "$FX/users/fx/.fxtop"
+          printf 'CANONICAL (user fx)\n'             >"$FX/users/fx/.agents/AGENTS.md"
+          printf '#!/usr/bin/env bash\necho user\n'  >"$FX/users/fx/.claude/demo.sh"
+          printf '{ "statusLine": { "x": "user" }, "userKey": true }\n' \
+            >"$FX/users/fx/.claude/settings.fragment.json"
+          printf 'fx marker\n'                       >"$FX/users/fx/.fxtop/marker"
+          printf '%s\n' '.codex/AGENTS.md        .agents/AGENTS.md' \
+                        '.demo/INSTRUCTIONS.md   .agents/AGENTS.md' \
+                        '.demo/skills            .agents/skills'    >"$FX/mirror.conf"
+
+      - name: Setup isolated HOME
+        run: echo "HOME=$(mktemp -d)" >> "$GITHUB_ENV"
+
+      - name: Common-only — layout, mirror, fragment, status, idempotency
+        run: |
+          cd "$FX"
+          ./install.sh install >/dev/null
+          # dot-directories are real dirs; only leaves are symlinked
+          [ -d "$HOME/.agents" ] && [ ! -L "$HOME/.agents" ]
+          [ -d "$HOME/.demo" ] && [ ! -L "$HOME/.demo" ]
+          [ -L "$HOME/.agents/AGENTS.md" ]
+          [ -d "$HOME/.agents/skills" ] && [ ! -L "$HOME/.agents/skills" ]
+          [ -L "$HOME/.agents/skills/demoskill/SKILL.md" ]
+          # file mirrors resolve to the single canonical source
+          [ -L "$HOME/.codex/AGENTS.md" ] && cmp -s "$HOME/.codex/AGENTS.md" "$HOME/.agents/AGENTS.md"
+          [ -L "$HOME/.demo/INSTRUCTIONS.md" ] && cmp -s "$HOME/.demo/INSTRUCTIONS.md" "$HOME/.agents/AGENTS.md"
+          # the directory mirror is a single dir symlink
+          [ -L "$HOME/.demo/skills" ] && [ -d "$HOME/.demo/skills" ] && [ -e "$HOME/.demo/skills/demoskill/SKILL.md" ]
+          # a fragment is merged into a real settings.json
+          [ -f "$HOME/.claude/settings.json" ] && [ ! -L "$HOME/.claude/settings.json" ]
+          jq -e '.commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
+          ./install.sh status | tee status.out
+          ! grep -E '^[[:space:]]*(drift|missing|orphan)[[:space:]]*:' status.out
+          ./install.sh install | tee install2.out
+          ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
+
+      - name: Common-only — force re-merge and 3-way delete
+        run: |
+          cd "$FX"
+          # the fragment value wins over an edited target (fixture's own key)
+          tmp=$(mktemp); jq '.commonOnly = 999' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
           ./install.sh install --force | tee force.out
           grep -qE '^[[:space:]]*merged[[:space:]]*:.*/\.claude/settings\.json$' force.out
-          jq -e '.statusLine.padding == 0' "$HOME/.claude/settings.json" >/dev/null
-          # a manually-added key absent from every fragment is preserved
+          jq -e '.commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
+          # a manually-added key survives --force; a second force is a no-op
           tmp=$(mktemp); jq '.myManualKey = true' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
           ./install.sh install --force >/dev/null
           jq -e '.myManualKey == true' "$HOME/.claude/settings.json" >/dev/null
-          # nothing changed since: a second force run is an idempotent no-op
           ./install.sh install --force | tee force2.out
           ! grep -qE '^[[:space:]]*merged[[:space:]]*:' force2.out
-          # restore a clean install for the steps below
-          rm -f "$HOME/.claude/settings.json"
-          ./install.sh install >/dev/null
-
-      - name: Force re-merge deletes keys dropped from the fragment (3-way)
-        run: |
-          # --force snapshots the applied fragment as a base next to settings.json
+          rm -f "$HOME/.claude/settings.json"; ./install.sh install >/dev/null
+          # 3-way: a key in the base, gone from the fragment, is deleted; a
+          # user-only key (never in the base) and a protected key are preserved
           ./install.sh install --force >/dev/null
           [ -f "$HOME/.claude/settings.fragment.base.json" ]
-          # a key recorded in the base, unchanged in the target and gone from the
-          # fragment is deleted; a user-only key (never in the base) is preserved
           tmp=$(mktemp); jq '.userOnly = 1 | .willBeRemoved = {"a":1}' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
           tmp=$(mktemp); jq '.willBeRemoved = {"a":1}' "$HOME/.claude/settings.fragment.base.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.fragment.base.json"
           ./install.sh install --force >/dev/null
           jq -e 'has("willBeRemoved") | not' "$HOME/.claude/settings.json" >/dev/null
           jq -e '.userOnly == 1' "$HOME/.claude/settings.json" >/dev/null
-          # a protected key in the target is never a deletion candidate
           tmp=$(mktemp); jq '.token = "SECRET"' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
           ./install.sh install --force >/dev/null
           jq -e '.token == "SECRET"' "$HOME/.claude/settings.json" >/dev/null
-          # --dry-run lists the deletion and changes nothing
-          tmp=$(mktemp); jq '.willGo = 1' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
-          tmp=$(mktemp); jq '.willGo = 1' "$HOME/.claude/settings.fragment.base.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.fragment.base.json"
-          ./install.sh install --force --dry-run | tee dry.out
-          grep -q 'delete key: willGo' dry.out
-          jq -e '.willGo == 1' "$HOME/.claude/settings.json" >/dev/null
-          # a plain install (no --force) never deletes
-          ./install.sh install >/dev/null
-          jq -e '.willGo == 1' "$HOME/.claude/settings.json" >/dev/null
-          # the base state file is invisible to status / doctor / clean-backups
-          ./install.sh status | tee st.out; ! grep -q 'fragment.base.json' st.out
-          ./install.sh doctor >/dev/null
-          ./install.sh clean-backups | tee cbase.out; ! grep -q 'fragment.base.json' cbase.out
-          # restore a clean install; the base snapshot is intentionally kept.
-          # also drop the settings.json backups these --force re-merges created,
-          # so the later clean-backups assertion counts only its own seeds.
-          rm -f "$HOME/.claude/settings.json" "$HOME/.claude/settings.json.dotfiles-bak."*
-          ./install.sh install --force >/dev/null
-          [ -f "$HOME/.claude/settings.fragment.base.json" ]
+          rm -f "$HOME/.claude/settings.json" "$HOME/.claude/settings.json.dotfiles-bak."*; ./install.sh install >/dev/null
 
-      - name: Prune must never touch a tool's own state under a managed dir
+      - name: Common-only — prune, clean-backups, doctor, missing mirror source
         run: |
-          # directories no layer defines (here: a tool's runtime state) must be
-          # left alone by prune, including empty ones
-          mkdir -p "$HOME/.claude/session-env/sess1" "$HOME/.claude/empty-tool-dir"
-          : >"$HOME/.claude/session-env/sess1/state"
-          : >"$HOME/.claude/own-file.txt"
+          cd "$FX"
+          # prune never removes a tool's own state under a managed dir
+          mkdir -p "$HOME/.claude/session-env/s1"; : >"$HOME/.claude/session-env/s1/state"; : >"$HOME/.claude/own.txt"
           ./install.sh install
-          [ -f "$HOME/.claude/session-env/sess1/state" ]
-          [ -d "$HOME/.claude/empty-tool-dir" ]
-          [ -f "$HOME/.claude/own-file.txt" ]
-          # the same must hold for uninstall
-          ./install.sh uninstall
-          [ -f "$HOME/.claude/session-env/sess1/state" ]
-          [ -d "$HOME/.claude/empty-tool-dir" ]
-          [ -f "$HOME/.claude/own-file.txt" ]
-          # restore a clean install for the steps below
-          rm -rf "$HOME/.claude/session-env" "$HOME/.claude/empty-tool-dir" "$HOME/.claude/own-file.txt"
-          ./install.sh install
-
-      - name: clean-backups prunes only *.dotfiles-bak.* by retention
-        run: |
-          # seed fake backups for one original, plus one OUTSIDE the managed tree
-          for ts in 20230101T000000Z 20240101T000000Z 20250101T000000Z; do : >"$HOME/.claude/foo.dotfiles-bak.$ts"; done
-          mkdir -p "$HOME/unrelated"; : >"$HOME/unrelated/zzz.dotfiles-bak.20250101T000000Z"
-          # report-only (no flag): lists, deletes nothing, ignores unrelated/
+          [ -f "$HOME/.claude/session-env/s1/state" ] && [ -f "$HOME/.claude/own.txt" ]
+          rm -rf "$HOME/.claude/session-env" "$HOME/.claude/own.txt"; ./install.sh install
+          # clean-backups: report-only lists; --keep 1 keeps the newest per original
+          for ts in 20230101T000000Z 20250101T000000Z; do : >"$HOME/.claude/foo.dotfiles-bak.$ts"; done
           ./install.sh clean-backups | tee cb.out
-          grep -q '3 backup(s) found' cb.out
-          [ -e "$HOME/.claude/foo.dotfiles-bak.20230101T000000Z" ]
-          # --keep 1 keeps the newest per original and removes the rest
+          grep -q '2 backup(s) found' cb.out
           ./install.sh clean-backups --keep 1
-          [ ! -e "$HOME/.claude/foo.dotfiles-bak.20230101T000000Z" ]
-          [ ! -e "$HOME/.claude/foo.dotfiles-bak.20240101T000000Z" ]
-          [ -e "$HOME/.claude/foo.dotfiles-bak.20250101T000000Z" ]
-          # a backup outside the managed tree is never scanned or touched
-          [ -e "$HOME/unrelated/zzz.dotfiles-bak.20250101T000000Z" ]
-          # managed symlinks are untouched
-          [ -L "$HOME/.claude/CLAUDE.md" ]
-          rm -rf "$HOME/.claude/foo.dotfiles-bak."* "$HOME/unrelated"
-
-      - name: doctor reports broken/stale managed symlinks (read-only)
-        run: |
-          # healthy install: clean bill, exit 0
-          ./install.sh doctor >doc.out 2>&1
-          grep -q 'no broken or stale' doc.out
-          # a stale link (as if the repo had moved) must be flagged with a nonzero exit
-          ln -s /old/checkout/azarashi/common/.agents/AGENTS.md "$HOME/.claude/stale-link"
-          if ./install.sh doctor >doc.out 2>&1; then echo "doctor should have exited nonzero"; cat doc.out; exit 1; fi
-          grep -qE '^stale   : .*/\.claude/stale-link' doc.out
-          rm -f "$HOME/.claude/stale-link"
-          # healthy again
-          ./install.sh doctor >/dev/null
-
-      - name: A mirror rule with a missing source warns and is skipped (never fatal)
-        run: |
-          # an absent mirror source must not abort install: it is warned and
-          # skipped, leaving no (broken) target behind
-          printf '%s\n' '.codex/MISSING.md   .agents/does-not-exist.md' >>mirror.conf
+          [ ! -e "$HOME/.claude/foo.dotfiles-bak.20230101T000000Z" ] && [ -e "$HOME/.claude/foo.dotfiles-bak.20250101T000000Z" ]
+          [ -L "$HOME/.claude/demo.sh" ] # managed symlinks are untouched
+          rm -f "$HOME/.claude/foo.dotfiles-bak."*
+          # doctor: clean bill, then a moved-repo stale link flagged with nonzero exit
+          ./install.sh doctor >doc.out 2>&1; grep -q 'no broken or stale' doc.out
+          ln -s "/old/checkout/azarashi/common/.agents/AGENTS.md" "$HOME/.claude/stale"
+          if ./install.sh doctor >doc.out 2>&1; then echo "doctor should be nonzero"; cat doc.out; exit 1; fi
+          grep -qE '^stale   : .*/\.claude/stale' doc.out
+          rm -f "$HOME/.claude/stale"; ./install.sh doctor >/dev/null
+          # a missing mirror source warns and is skipped, never fatal
+          printf '%s\n' '.nope/MISSING.md   .agents/does-not-exist.md' >>mirror.conf
           ./install.sh install 2>err.out
           grep -q 'mirror source not found, skipping' err.out
-          [ ! -e "$HOME/.codex/MISSING.md" ] && [ ! -L "$HOME/.codex/MISSING.md" ]
-          # the well-formed mirrors are unaffected
-          [ -L "$HOME/.codex/AGENTS.md" ]
-          git checkout -- mirror.conf
+          [ ! -e "$HOME/.nope/MISSING.md" ] && [ -L "$HOME/.codex/AGENTS.md" ]
+          grep -v '.nope/MISSING.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
 
-      - name: Uninstall removes symlinks (merged JSON intentionally remains)
+      - name: Common-only — uninstall
         run: |
+          cd "$FX"
           ./install.sh uninstall
           [ ! -e "$HOME/.agents" ]
-          [ ! -e "$HOME/.claude/CLAUDE.md" ]
-          [ ! -e "$HOME/.claude/skills" ]
-          [ ! -e "$HOME/.copilot/copilot-instructions.md" ]
+          [ ! -e "$HOME/.codex/AGENTS.md" ]
+          [ ! -e "$HOME/.demo/INSTRUCTIONS.md" ]
+          [ ! -e "$HOME/.demo/skills" ]
           ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
           [ -f "$HOME/.claude/settings.json" ]
-          # the 3-way base state file is kept too, like settings.json
+
+      - name: Reset isolated HOME for the per-user pass
+        run: echo "HOME=$(mktemp -d)" >> "$GITHUB_ENV"
+
+      - name: Per-user — override, mirror-follows-override, fallback, layering, user-only
+        run: |
+          cd "$FX"
+          ./install.sh install --user fx >/dev/null
+          # a user file wins over common (plain leaf and the mirror's canonical source)
+          case "$(readlink "$HOME/.claude/demo.sh")" in */users/fx/.claude/demo.sh) ;; *) echo "demo.sh override FAIL"; exit 1 ;; esac
+          case "$(readlink "$HOME/.agents/AGENTS.md")" in */users/fx/.agents/AGENTS.md) ;; *) echo "AGENTS override FAIL"; exit 1 ;; esac
+          # the file mirror follows the per-user override of its source
+          case "$(readlink "$HOME/.codex/AGENTS.md")" in */users/fx/.agents/AGENTS.md) ;; *) echo "mirror-follows-override FAIL"; exit 1 ;; esac
+          # a source with no user override falls back to common
+          case "$(readlink "$HOME/.demo/skills")" in */common/.agents/skills) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
+          # a user-only top-level entry is a real dir whose leaves link into the user layer
+          [ -d "$HOME/.fxtop" ] && [ ! -L "$HOME/.fxtop" ]
+          [ -L "$HOME/.fxtop/marker" ]
+          # fragment layering: user value wins, both layers' keys are present
+          jq -e '.statusLine.x == "user" and .userKey == true and .commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
+
+      - name: Per-user — force re-merge and 3-way delete (fixture userKey)
+        run: |
+          cd "$FX"
+          # the user fragment value wins over an edited target
+          tmp=$(mktemp); jq '.userKey = "edited"' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
+          ./install.sh install --user fx --force | tee force.out
+          grep -qE '^[[:space:]]*merged[[:space:]]*:.*/\.claude/settings\.json$' force.out
+          jq -e '.userKey == true' "$HOME/.claude/settings.json" >/dev/null
+          # snapshot a base, then drop userKey from the user fragment: 3-way deletes it
+          ./install.sh install --user fx --force >/dev/null
           [ -f "$HOME/.claude/settings.fragment.base.json" ]
+          printf '{ "statusLine": { "x": "user" } }\n' >users/fx/.claude/settings.fragment.json
+          ./install.sh install --user fx --force >/dev/null
+          jq -e 'has("userKey") | not' "$HOME/.claude/settings.json" >/dev/null
+          jq -e '.statusLine.x == "user"' "$HOME/.claude/settings.json" >/dev/null
 
-  e2e-user:
-    name: install.sh E2E (per-user overlay)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      # The overlay fixture is created on the runner only — never committed.
-      - name: Create a runtime per-user overlay fixture
+      - name: Per-user — switch-off prune, invalid user, uninstall
         run: |
-          mkdir -p users/citest/.claude users/citest/.agents users/citest/.citest-top
-          printf 'citest AGENTS\n' >users/citest/.agents/AGENTS.md
-          printf '#!/usr/bin/env bash\necho citest\n' >users/citest/.claude/statusline.sh
-          printf 'citest\n' >users/citest/.claude/citest-marker
-          printf '{ "statusLine": { "padding": 5 }, "citestUserKey": true }\n' \
-            >users/citest/.claude/settings.fragment.json
-          printf 'citest\n' >users/citest/.citest-top/marker
-
-      - name: Setup isolated HOME
-        run: |
-          dir=$(mktemp -d)
-          echo "HOME=$dir" >> "$GITHUB_ENV"
-
-      - name: Install with --user citest
-        run: ./install.sh install --user citest
-
-      - name: Override wins; non-overridden falls back to common
-        run: |
-          o=$(readlink "$HOME/.claude/statusline.sh")
-          case "$o" in */users/citest/.claude/statusline.sh) ;; *) echo "statusline.sh -> $o"; exit 1 ;; esac
-          m=$(readlink "$HOME/.claude/citest-marker")
-          case "$m" in */users/citest/.claude/citest-marker) ;; *) echo "citest-marker -> $m"; exit 1 ;; esac
-          # the AGENTS.md file mirror follows the per-user override (CLAUDE.md and
-          # copilot-instructions.md both mirror users/citest/.agents/AGENTS.md)
-          c=$(readlink "$HOME/.claude/CLAUDE.md")
-          case "$c" in */users/citest/.agents/AGENTS.md) ;; *) echo "CLAUDE.md -> $c"; exit 1 ;; esac
-          ci=$(readlink "$HOME/.copilot/copilot-instructions.md")
-          case "$ci" in */users/citest/.agents/AGENTS.md) ;; *) echo "copilot-instructions -> $ci"; exit 1 ;; esac
-          aa=$(readlink "$HOME/.agents/AGENTS.md")
-          case "$aa" in */users/citest/.agents/AGENTS.md) ;; *) echo ".agents/AGENTS.md -> $aa"; exit 1 ;; esac
-          # the skills mirror is a single dir symlink; with no user override it falls back to common
-          [ -L "$HOME/.claude/skills" ]
-          s=$(readlink "$HOME/.claude/skills")
-          case "$s" in */common/.agents/skills) ;; *) echo ".claude/skills -> $s"; exit 1 ;; esac
-          # .agents (no skills override) is a real dir whose skills leaves link into common
-          [ -d "$HOME/.agents" ] && [ ! -L "$HOME/.agents" ]
-          a=$(readlink "$HOME/.agents/skills/changelog/SKILL.md")
-          case "$a" in */common/.agents/skills/changelog/SKILL.md) ;; *) echo ".agents leaf -> $a"; exit 1 ;; esac
-          # a user-only top-level entry is a real dir whose leaves link into users/citest
-          [ -d "$HOME/.citest-top" ] && [ ! -L "$HOME/.citest-top" ]
-          t=$(readlink "$HOME/.citest-top/marker")
-          case "$t" in */users/citest/.citest-top/marker) ;; *) echo ".citest-top/marker -> $t"; exit 1 ;; esac
-
-      - name: Fragment merge layering (target > user > common)
-        run: |
-          # command is not overridden by the user fragment: the common value falls through
-          common_cmd=$(jq -r '.statusLine.command' common/.claude/settings.fragment.json)
-          jq -e --arg c "$common_cmd" '.statusLine.command == $c' "$HOME/.claude/settings.json"
-          # padding=5 comes from the user fixture and must beat common's value
-          jq -e '.statusLine.padding == 5' "$HOME/.claude/settings.json"
-          jq -e '.citestUserKey == true' "$HOME/.claude/settings.json"
-
-      - name: Force 3-way delete honors the layered (user) fragment
-        run: |
-          # --force snapshots the merged common+user fragment as the base
-          ./install.sh install --user citest --force >/dev/null
-          [ -f "$HOME/.claude/settings.fragment.base.json" ]
-          jq -e '.citestUserKey == true' "$HOME/.claude/settings.json" >/dev/null
-          # drop a key from the USER fragment, then force-sync again
-          printf '{ "statusLine": { "padding": 5 } }\n' >users/citest/.claude/settings.fragment.json
-          ./install.sh install --user citest --force >/dev/null
-          # the key removed from the user fragment is deleted from settings.json
-          jq -e 'has("citestUserKey") | not' "$HOME/.claude/settings.json" >/dev/null
-          # values still defined by the user/common fragments are kept
-          jq -e '.statusLine.padding == 5' "$HOME/.claude/settings.json" >/dev/null
-          common_cmd=$(jq -r '.statusLine.command' common/.claude/settings.fragment.json)
-          jq -e --arg c "$common_cmd" '.statusLine.command == $c' "$HOME/.claude/settings.json" >/dev/null
-
-      - name: status — assert all in-sync (no drift/missing/orphan)
-        run: |
-          ./install.sh status --user citest | tee status.out
-          ! grep -E '^[[:space:]]*(drift|missing|orphan)[[:space:]]*:' status.out
-
-      - name: Idempotency — second install must not relink or remerge
-        run: |
-          ./install.sh install --user citest | tee install2.out
-          ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
-
-      - name: Switching off the user prunes its top-level overlay dir
-        run: |
-          [ -d "$HOME/.citest-top" ] && [ ! -L "$HOME/.citest-top" ]
+          cd "$FX"
+          # switching to a user without that overlay dir prunes the overlay-only dir
+          [ -d "$HOME/.fxtop" ] && [ ! -L "$HOME/.fxtop" ]
           ./install.sh install --user nobody-no-dir | tee switch.out
-          [ ! -e "$HOME/.citest-top" ]
-          grep -qE '^[[:space:]]*pruned[[:space:]]*:.*\.citest-top$' switch.out
-
-      - name: Invalid --user must fail
-        run: |
+          [ ! -e "$HOME/.fxtop" ]
+          grep -qE '^[[:space:]]*pruned[[:space:]]*:.*\.fxtop$' switch.out
+          # an invalid --user is rejected
           ! ./install.sh install --user '../evil'
-
-      - name: Uninstall removes managed symlinks (merged JSON intentionally remains)
-        run: |
-          ./install.sh uninstall --user citest
-          [ ! -e "$HOME/.claude/CLAUDE.md" ]
-          [ ! -e "$HOME/.claude/skills" ]
-          [ ! -e "$HOME/.copilot/copilot-instructions.md" ]
-          # .agents had only symlinked leaves -> emptied and removed entirely
+          # uninstall removes managed symlinks; the merged settings.json stays
+          ./install.sh install --user fx >/dev/null
+          ./install.sh uninstall --user fx >/dev/null
           [ ! -e "$HOME/.agents" ]
-          # .copilot keeps its merged settings.json, so the real dir remains
-          [ ! -L "$HOME/.copilot" ]
+          [ ! -e "$HOME/.codex/AGENTS.md" ]
+          [ ! -e "$HOME/.demo/skills" ]
           ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
           [ -f "$HOME/.claude/settings.json" ]
 

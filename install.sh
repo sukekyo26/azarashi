@@ -386,6 +386,32 @@ deploy_mirrors() {
   done <"$MIRROR_CONF"
 }
 
+# uninstall_mirrors — remove every mirror target, then drop any mirror-only
+# top-level dot-dir left empty. The layer-driven walk (walk_all_top) only visits
+# dot-dirs present in common/ or users/, so a mirror whose target dot-dir exists
+# in no layer (e.g. .codex from `.codex/AGENTS.md`) would otherwise be left
+# behind. Idempotent: a target the walk already removed is skipped.
+uninstall_mirrors() {
+  [ -f "$MIRROR_CONF" ] || return 0
+  _um_tops=" "
+  while read -r _um_t _um_s _um_x || [ -n "$_um_t" ]; do
+    case ${_um_t:-} in '' | '#'*) continue ;; esac
+    [ -n "$_um_s" ] && [ -z "$_um_x" ] || continue
+    is_managed_link "$HOME/$_um_t" && remove_link "$HOME/$_um_t"
+    _um_top=${_um_t%%/*}
+    case "$_um_tops" in *" $_um_top "*) ;; *) _um_tops="$_um_tops$_um_top " ;; esac
+  done <"$MIRROR_CONF"
+  [ "$DRY_RUN" -eq 1 ] && return 0
+  # prune emptied mirror-only top-level dirs; a layer-owned dot-dir is left to
+  # the layer-driven walk, which alone knows whether the repo still defines it.
+  for _um_top in $_um_tops; do
+    any_layer_dir "$_um_top" && continue
+    if [ -d "$HOME/$_um_top" ] && [ ! -L "$HOME/$_um_top" ]; then
+      rmdir "$HOME/$_um_top" 2>/dev/null && info "removed empty dir: $HOME/$_um_top"
+    fi
+  done
+}
+
 # --- recursive uninstall ---------------------------------------------------
 
 # uninstall_rel <rel> — walk the deployed tree at $HOME/<rel>, remove managed
@@ -562,6 +588,7 @@ cmd_run() { # install / diff / status
 cmd_uninstall() {
   [ -d "$COMMON_SRC" ] || die "missing payload directory: $COMMON_SRC"
   walk_all_top uninstall
+  uninstall_mirrors
   uninstall_toplevel
 }
 
