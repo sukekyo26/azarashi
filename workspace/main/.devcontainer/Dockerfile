@@ -133,7 +133,7 @@ RUN mkdir -p /home/${USERNAME}/.aws /home/${USERNAME}/.bun /home/${USERNAME}/.ca
 # Install cocoon
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.15.6" CHECKSUM_AMD64="58d46446c32841ab96082f5c3274950e810838293eb24ff9d7016e46dcf05039" CHECKSUM_ARM64="27e0fad4c3fc2fc51ddb3d6ebb62315157fa2eab47bc9a5b0c07aa6fcf04b312" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.15.7" CHECKSUM_AMD64="bba16f01c69574ae604255f00980f57b6d88bd874e309b3e4507a735f84b5e4d" CHECKSUM_ARM64="ad6651c16b8dc575d21ad344607ff632502c67d4f1acef5e145781d8d08464c8" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install the cocoon binary from its GitHub Pages mirror rather than the
 # GitHub Releases CDN. Pages-only by design — no fallback to the
@@ -758,7 +758,7 @@ ENV PATH="/usr/local/node/bin:/home/${USERNAME}/.npm-global/bin:$PATH"
 # Install OpenTofu
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.12.1" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.12.2" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install OpenTofu (https://github.com/opentofu/opentofu)
 #
@@ -1234,7 +1234,7 @@ COCOON_PLUGIN_EOF
 # Install AWS SAM CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="1.161.1" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="1.162.1" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install AWS SAM CLI (https://github.com/aws/aws-sam-cli)
 #
@@ -1295,7 +1295,7 @@ COCOON_PLUGIN_EOF
 # Install bun
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="1.3.14" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install bun (all-in-one JavaScript runtime & toolkit) (https://github.com/oven-sh/bun)
 #
@@ -1462,7 +1462,7 @@ ENV PATH="/home/${USERNAME}/.cargo/bin:$PATH"
 # Install uv
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="0.11.19" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="0.11.21" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install uv (fast Python package and project manager) (https://github.com/astral-sh/uv)
 #
