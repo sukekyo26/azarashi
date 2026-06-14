@@ -130,15 +130,15 @@ version_tag=""
 [[ -n "$version" ]] && version_tag=" ${C_DIM}v${version}${C_RESET}"
 
 # Stack three lines so the bar stays readable in a narrow terminal:
-# 1) project (cwd + branch), 2) model + context + cost + cache, 3) context-mode.
+# 1) project (cwd + branch + lines changed), 2) model + context + cost + cache,
+# 3) context-mode. The +/- edit counts sit with the branch as a git-style diff stat.
 printf '%s%s%s' "$C_DIR" "$cwd_short" "$C_RESET"
 [[ -n "$branch" ]] && printf ' %s(%s)%s%s' "$C_BRANCH" "$branch" "$C_RESET" "$worktree_tag"
-printf '\n'
+printf ' %s+%s%s/%s-%s%s\n' "$C_OK" "$added" "$C_RESET" "$C_DANGER" "$removed" "$C_RESET"
 
-printf '%s%s%s%s%s%s %s$%.3f%s %s+%s%s/%s-%s%s%s%s%s\n' \
+printf '%s%s%s%s%s%s %s$%.3f%s%s%s%s\n' \
   "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
   "$C_COST" "$cost" "$C_RESET" \
-  "$C_OK" "$added" "$C_RESET" "$C_DANGER" "$removed" "$C_RESET" \
   "$cache_segment" "$cache_ttl_segment" "$version_tag"
 
 # context-mode status line (3rd line). Reuse the plugin's own renderer so our
