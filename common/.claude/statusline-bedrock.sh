@@ -179,18 +179,19 @@ if [[ -r "$transcript" ]]; then
   fi
   last_req=$(tail -n 200 "$transcript" 2>/dev/null |
     jq -r 'select(.type == "assistant" and .timestamp) | .timestamp' 2>/dev/null | tail -1)
+  # No assistant turn yet (e.g. right after /new): no request has warmed the
+  # cache, so there is nothing to count down. Skip the segment entirely rather
+  # than falling back to mtime, which would show a bogus near-full timer.
   if [[ -n "$last_req" ]]; then
-    last_req=$(date -d "$last_req" +%s 2>/dev/null || stat -c %Y "$transcript" 2>/dev/null || echo 0)
-  else
-    last_req=$(stat -c %Y "$transcript" 2>/dev/null || echo 0) # no assistant turn yet
-  fi
-  remaining=$((ttl - ($(date +%s) - last_req)))
-  if ((remaining > 0)); then
-    ((remaining <= 60)) && ttl_color=$C_WARN || ttl_color=$C_OK
-    cache_ttl_segment=$(printf ' %s⏳%d:%02d%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" "$C_RESET")
-  else
-    cache_ttl_segment=" ${C_DANGER}❄cold${C_RESET}"
-    cache_segment="" # cold: the per-turn hit% is a pre-idle snapshot, drop it
+    last_req=$(date -d "$last_req" +%s 2>/dev/null || echo 0)
+    remaining=$((ttl - ($(date +%s) - last_req)))
+    if ((remaining > 0)); then
+      ((remaining <= 60)) && ttl_color=$C_WARN || ttl_color=$C_OK
+      cache_ttl_segment=$(printf ' %s⏳%d:%02d%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" "$C_RESET")
+    else
+      cache_ttl_segment=" ${C_DANGER}❄cold${C_RESET}"
+      cache_segment="" # cold: the per-turn hit% is a pre-idle snapshot, drop it
+    fi
   fi
 fi
 
