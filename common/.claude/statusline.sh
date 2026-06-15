@@ -107,12 +107,27 @@ if [[ -r "$transcript" ]]; then
   else
     ttl=300
   fi
-  last_req=$(tail -n 200 "$transcript" 2>/dev/null |
-    jq -r 'select(.type == "assistant" and .timestamp) | .timestamp' 2>/dev/null | tail -1)
-  # No assistant turn yet (e.g. right after /new): no request has warmed the
-  # cache, so there is nothing to count down. Skip the segment entirely rather
-  # than falling back to mtime, which would show a bogus near-full timer.
-  if [[ -n "$last_req" ]]; then
+  # Classify the cache state from the transcript tail (newest compact_boundary
+  # vs newest assistant turn):
+  #   warm <ts> — an assistant turn (the API request that warmed the cache) is
+  #               the most recent of the two; count TTL down from its timestamp.
+  #   compact   — a /compact boundary is newer, with no assistant turn after it.
+  #               /compact swaps the messages prefix for a summary, so the next
+  #               request rebuilds the conversation cache (tools/system survive,
+  #               messages do not). Flag it instead of counting down a cache that
+  #               no longer matches — and it guards against /new'ing it away.
+  #   none      — no assistant turn at all (e.g. right after /new): nothing has
+  #               warmed the cache, so show nothing rather than a bogus timer.
+  IFS=$'\t' read -r cache_state last_req <<<"$(tail -n 200 "$transcript" 2>/dev/null | jq -rs '
+    (([.[] | (.type == "system" and .subtype == "compact_boundary")] | rindex(true)) // -1) as $cb
+    | (([.[] | (.type == "assistant" and (.timestamp != null))] | rindex(true)) // -1) as $at
+    | if $cb > $at then "compact\t"
+      elif $at >= 0 then "warm\t" + .[$at].timestamp
+      else "none\t" end' 2>/dev/null)"
+  if [[ "$cache_state" == "compact" ]]; then
+    cache_ttl_segment=" ${C_WARN}📦compact${C_RESET}"
+    cache_segment="" # compact: messages cache is rebuilt next turn, pre-compact hit% is stale
+  elif [[ -n "$last_req" ]]; then
     last_req=$(date -d "$last_req" +%s 2>/dev/null || echo 0)
     remaining=$((ttl - ($(date +%s) - last_req)))
     if ((remaining > 0)); then
