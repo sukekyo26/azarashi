@@ -21,14 +21,59 @@ if (typeof command !== 'string' || command.trim() === '') {
   allow();
 }
 
-// 実際に起動されるコマンドの「先頭」を取り出す。先頭の `cd <path> &&`、
-// 環境変数代入、sudo/env を剥がす。これで `git commit -m "...pytest..."` の
-// ように引用符内にキーワードを含むだけのコマンドを誤検知しない。
-function commandHead(cmd) {
-  let s = cmd.trim();
+// コマンドを「実際に起動される単位」へ分割する。`&&` `||` `;` `|` `&` 改行で
+// 区切るが、クォート内の区切り文字は無視する。これにより
+// `foo && make test` の 2 つ目以降のコマンドも検知でき、かつ
+// `git commit -m "...make test..."` のようにクォート内へキーワードを含むだけの
+// コマンドは 1 セグメントに閉じ込められ、セグメント先頭に来ないため誤検知しない。
+function splitSegments(cmd) {
+  const segments = [];
+  let current = '';
+  let quote = null; // "'" or '"'
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (quote) {
+      current += c;
+      // ダブルクォート内のみバックスラッシュでエスケープが効く（次の 1 文字を温存）。
+      if (c === '\\' && quote === '"' && i + 1 < cmd.length) {
+        current += cmd[++i];
+      } else if (c === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      current += c;
+      continue;
+    }
+    if (c === '\\' && i + 1 < cmd.length) {
+      current += c + cmd[++i];
+      continue;
+    }
+    const two = cmd.slice(i, i + 2);
+    if (two === '&&' || two === '||') {
+      segments.push(current);
+      current = '';
+      i++;
+      continue;
+    }
+    if (c === ';' || c === '|' || c === '&' || c === '\n') {
+      segments.push(current);
+      current = '';
+      continue;
+    }
+    current += c;
+  }
+  segments.push(current);
+  return segments;
+}
+
+// 1 セグメントの「先頭」を取り出す。先頭の環境変数代入と sudo/command/env を剥がす。
+function commandHead(seg) {
+  let s = seg.trim();
   for (;;) {
     const before = s;
-    s = s.replace(/^cd\s+[^&;|]+(?:&&|;)\s*/, '');
     s = s.replace(/^\w+=\S+\s+/, '');
     s = s.replace(/^(?:sudo|command|env)\s+/, '');
     if (s === before) break;
@@ -36,13 +81,8 @@ function commandHead(cmd) {
   return s;
 }
 
-const head = commandHead(command);
-
 // 対話・watch・UI モードは退避対象外（プロセスが終了せずサンドボックスで詰まる）。
 const EXCLUDE = /(--watch|--watchAll|--ui|--debug|--headed)\b|pytest-watch|\bptw\b/;
-if (EXCLUDE.test(head)) {
-  allow();
-}
 
 // 一括実行で長い出力が出る、退避する価値のあるコマンド群。先頭一致で判定する。
 const TEST_PATTERNS = [
@@ -56,7 +96,13 @@ const TEST_PATTERNS = [
   /^cargo\s+test\b/,
 ];
 
-if (!TEST_PATTERNS.some((re) => re.test(head))) {
+function isRedirectTarget(head) {
+  if (head === '' || EXCLUDE.test(head)) return false;
+  return TEST_PATTERNS.some((re) => re.test(head));
+}
+
+const heads = splitSegments(command).map(commandHead);
+if (!heads.some(isRedirectTarget)) {
   allow();
 }
 
