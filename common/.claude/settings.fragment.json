@@ -8,6 +8,14 @@
     "refreshInterval": 10
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "bash \"$HOME/.claude/hooks/warn-cold-cache-cost.sh\"" }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
