@@ -169,14 +169,16 @@ fi
 # picks the cache TTL per request, so the transcript is the source of truth, not 5m.
 cache_ttl_segment=""
 if [[ -r "$transcript" ]]; then
+  # Read the tail once; reused by the tier check and the cache-state classifier.
+  tail=$(tail -n 200 "$transcript" 2>/dev/null)
   if [[ -n "${STATUSLINE_CACHE_TTL:-}" ]]; then
     ttl=$STATUSLINE_CACHE_TTL
   elif [[ "${FORCE_PROMPT_CACHING_5M:-}" == "1" ]]; then
     ttl=300
   elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == "1" ]]; then
     ttl=3600
-  elif [[ "$(tail -n 200 "$transcript" 2>/dev/null | jq -rs '[.[] | select(.type == "assistant" and .message.usage?)] | last
-      | (.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) > 0' 2>/dev/null)" == "true" ]]; then
+  elif [[ "$(jq -rs '[.[] | select(.type == "assistant" and .message.usage?)] | last
+      | (if .message.usage.cache_creation? then (.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) else 0 end) > 0' <<<"$tail" 2>/dev/null)" == "true" ]]; then
     ttl=3600
   else
     ttl=300
@@ -192,12 +194,12 @@ if [[ -r "$transcript" ]]; then
   #               no longer matches — and it guards against /new'ing it away.
   #   none      — no assistant turn at all (e.g. right after /new): nothing has
   #               warmed the cache, so show nothing rather than a bogus timer.
-  IFS=$'\t' read -r cache_state last_req <<<"$(tail -n 200 "$transcript" 2>/dev/null | jq -rs '
+  IFS=$'\t' read -r cache_state last_req <<<"$(jq -rs '
     (([.[] | (.type == "system" and .subtype == "compact_boundary")] | rindex(true)) // -1) as $cb
     | (([.[] | (.type == "assistant" and (.timestamp != null))] | rindex(true)) // -1) as $at
     | if $cb > $at then "compact\t"
       elif $at >= 0 then "warm\t" + .[$at].timestamp
-      else "none\t" end' 2>/dev/null)"
+      else "none\t" end' <<<"$tail" 2>/dev/null)"
   if [[ "$cache_state" == "compact" ]]; then
     cache_ttl_segment=" ${C_WARN}📦compact${C_RESET}"
     cache_segment="" # compact: messages cache is rebuilt next turn, pre-compact hit% is stale

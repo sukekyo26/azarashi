@@ -47,7 +47,7 @@ elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == "1" ]]; then
   tier=1h
 else
   newest_1h=$(jq -rs '[.[] | select(.type == "assistant" and .message.usage?)] | last
-    | (.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) > 0' <<<"$tail" 2>/dev/null)
+    | (if .message.usage.cache_creation? then (.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) else 0 end) > 0' <<<"$tail" 2>/dev/null)
   [[ "$newest_1h" == "true" ]] && tier=1h
 fi
 if [[ "$tier" == "1h" ]]; then
