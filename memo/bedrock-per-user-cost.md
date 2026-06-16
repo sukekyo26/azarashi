@@ -5,11 +5,11 @@ Bedrock の `InvokeModel` などのコストを、利用者(IAM プリンシパ�
 ログには**トークン数しか無く金額は無い**ので、按分はこうなる:
 
 ```
-ユーザーのコスト = 今月の Bedrock 実請求額 × そのユーザーのトークン比率
+ユーザーのコスト = 集計期間の Bedrock 実請求額 × そのユーザーのトークン比率
 ```
 
 - **トークン比率** … model invocation logging から取る(下のコマンド)。
-- **実請求額** … 請求書 / Cost Explorer 画面で見える「今月の Bedrock 合計額」という 1 つの数字を、コマンドに直接書くだけ。
+- **実請求額** … 請求書 / Cost Explorer 画面で見える「集計期間の Bedrock 合計額」という 1 つの数字を、コマンドに直接書くだけ。
 
 前提: model invocation logging は有効化済みで、CloudWatch Logs にレコードが蓄積されている。レコードには `identity.arn`(呼び出し元) と `input.inputTokenCount` / `output.outputTokenCount`(トークン数) が含まれる。
 
@@ -20,20 +20,26 @@ Bedrock の `InvokeModel` などのコストを、利用者(IAM プリンシパ�
 モデルごとに単価が大きく違うため、按分は**対象モデルを 1 つに絞って**行う(別モデルを混ぜない)。`filter modelId like /.../` で対象モデルを指定し、`awk` の `total` にはそのモデルの実請求額(USD)を入れる。複数モデルを使っているなら、`filter` と `total` を変えてモデルごとに実行する。集計期間は `--start-time` / `--end-time`(例: `2026-06-01`〜`2026-07-01`)、ロググループは `--log-group-name` を環境に合わせる。
 
 ```sh
+START_TIME=2026-06-01    # 集計開始(この日を含む)
+END_TIME=2026-07-01      # 集計終了(この日を含まない)
+MODEL_ID=claude-sonnet-4 # 対象モデル(filter modelId like で部分一致)
+TOTAL_USD=300.00         # 上の期間における対象モデルの実請求額(USD)
+
 QID=$(aws logs start-query \
   --log-group-name /bedrock/model-invocations \
-  --start-time $(date -u -d 2026-06-01 +%s) --end-time $(date -u -d 2026-07-01 +%s) \
-  --query-string 'fields identity.arn as principal, input.inputTokenCount as inTok, output.outputTokenCount as outTok
-    | filter modelId like /claude-sonnet-4/
+  --start-time $(date -u -d "$START_TIME" +%s) --end-time $(date -u -d "$END_TIME" +%s) \
+  --limit 10000 \
+  --query-string "fields identity.arn as principal, input.inputTokenCount as inTok, output.outputTokenCount as outTok
+    | filter modelId like /$MODEL_ID/
     | stats sum(inTok) as input_tokens, sum(outTok) as output_tokens by principal
-    | sort input_tokens desc' \
+    | sort input_tokens desc" \
   --query 'queryId' --output text)
 
 until [ "$(aws logs get-query-results --query-id "$QID" --query 'status' --output text)" = "Complete" ]; do sleep 2; done
 
 aws logs get-query-results --query-id "$QID" --output json \
   | jq -r '.results[] | [(.[]|.value)] | @tsv' \
-  | awk -v total=300.00 '
+  | awk -v total="$TOTAL_USD" '
       { u[NR]=$1; t[NR]=$2+$3; sum+=$2+$3 }
       END { for (i=1;i<=NR;i++) printf "%-48s %7.2f%%  $%.2f\n", u[i], 100*t[i]/sum, total*t[i]/sum }'
 ```
