@@ -164,8 +164,9 @@ fi
 # NOT the file mtime: Claude Code appends mode/permission-mode bookkeeping lines on
 # session resume (claude --continue), bumping mtime to "now" without any request
 # having warmed the cache — that would falsely restart the countdown at 5:00.
-# TTL: STATUSLINE_CACHE_TTL overrides; FORCE_PROMPT_CACHING_5M pins 5m;
-# ENABLE_PROMPT_CACHING_1H opts into 1h; otherwise 5m.
+# TTL: STATUSLINE_CACHE_TTL overrides; FORCE_PROMPT_CACHING_5M / ENABLE_PROMPT_CACHING_1H
+# pin the tier; otherwise auto-detect from the newest turn's write slot. Claude Code
+# picks the cache TTL per request, so the transcript is the source of truth, not 5m.
 cache_ttl_segment=""
 if [[ -r "$transcript" ]]; then
   if [[ -n "${STATUSLINE_CACHE_TTL:-}" ]]; then
@@ -173,6 +174,9 @@ if [[ -r "$transcript" ]]; then
   elif [[ "${FORCE_PROMPT_CACHING_5M:-}" == "1" ]]; then
     ttl=300
   elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == "1" ]]; then
+    ttl=3600
+  elif [[ "$(tail -n 200 "$transcript" 2>/dev/null | jq -rs '[.[] | select(.type == "assistant" and .message.usage?)] | last
+      | (.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) > 0' 2>/dev/null)" == "true" ]]; then
     ttl=3600
   else
     ttl=300
