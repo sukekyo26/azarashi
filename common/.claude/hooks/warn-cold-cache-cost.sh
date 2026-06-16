@@ -70,7 +70,9 @@ IFS=$'\t' read -r cache_state last_req <<<"$(jq -rs '
     else "none\t" end' <<<"$tail" 2>/dev/null)"
 
 [[ "$cache_state" == "warm" && -n "$last_req" ]] || exit 0
-last_req=$(date -d "$last_req" +%s 2>/dev/null || echo 0)
+# If the timestamp can't be parsed (unexpected format, BSD date), skip silently
+# rather than treating it as epoch 0 — that would look permanently cold.
+last_req=$(date -d "$last_req" +%s 2>/dev/null) || exit 0
 ((ttl - ($(date +%s) - last_req) <= 0)) || exit 0
 
 # Estimate the rebuild cost: the newest assistant turn's input + cache_read +
@@ -122,14 +124,16 @@ if [[ "$level" != "warn" ]]; then
 fi
 
 # At/above the threshold: block once, then let an immediate re-submit through. The
-# sentinel keys on session + the cold anchor (last_req), so re-submitting at the
-# same cold point proceeds, but a fresh idle gap (new anchor) blocks again.
-sentinel="${TMPDIR:-/tmp}/claude-coldwarn-${session_id:-nosession}"
-if [[ -n "$session_id" && "$(cat "$sentinel" 2>/dev/null)" == "$last_req" ]]; then
+# sentinel keys on session_id (falling back to the transcript path, which is also
+# per-session) plus the cold anchor (last_req), so re-submitting at the same cold
+# point proceeds, but a fresh idle gap (new anchor) blocks again.
+key=$(printf '%s' "${session_id:-$transcript}" | md5sum | cut -d' ' -f1)
+sentinel="${TMPDIR:-/tmp}/claude-coldwarn-${key}"
+if [[ "$(cat "$sentinel" 2>/dev/null)" == "$last_req" ]]; then
   rm -f "$sentinel"
   exit 0 # second submit at the same cold point — proceed
 fi
-[[ -n "$session_id" ]] && printf '%s\n' "$last_req" >"$sentinel"
+printf '%s\n' "$last_req" >"$sentinel"
 
 reason=$(printf '⚠️ プロンプトキャッシュが cold です。\nこのまま続けると履歴（約 %dk tokens）の再構築に約 $%.2f かかります。続けるにはもう一度送信してください。/clear で新規セッションにすればこのコストを避けられます。' \
   "$prefix_k" "$cost")
