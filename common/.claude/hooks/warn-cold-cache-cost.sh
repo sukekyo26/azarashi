@@ -13,8 +13,10 @@
 # Only the idle warm->cold case is flagged; /compact (deliberate, and whose
 # post-summary size is unknown here) is left alone.
 #
-# cold always prints. Below WARN_COLD_CACHE_WARN_USD it's a low-key FYI (just the
-# amount); at or above it escalates to a warning that suggests /clear.
+# On cold, it prints whenever a cost can be estimated (model is in the price table
+# below); unknown-price models print nothing. Below WARN_COLD_CACHE_WARN_USD it's a
+# low-key FYI (just the amount); at or above it escalates to a warning that suggests
+# /clear.
 #
 # The cache tier (5m/1h) is auto-detected from the newest turn's write slot and
 # sets both the cold TTL and the write multiplier; env vars override it.
