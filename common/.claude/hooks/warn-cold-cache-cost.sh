@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
-# UserPromptSubmit hook — warn (don't block) when the prompt cache has gone cold.
+# UserPromptSubmit hook — warn (or block, above a cost threshold) when the prompt cache has gone cold.
 #
 # An idle gap past the cache TTL drops the prompt cache to "cold": the NEXT
 # request rebuilds the whole conversation prefix as a cache *write* (input*1.25
 # for a 5m cache, input*2 for a 1h cache) instead of a cheap cache *read*
 # (input*0.1). Rebuilding can't be avoided by continuing — only by NOT continuing
-# this session (e.g. /clear into a fresh, short one). So this hook surfaces the
-# rebuild cost as a `systemMessage` and lets the user decide; it never blocks the
-# prompt.
+# this session (e.g. /clear into a fresh, short one). Below the cost threshold this
+# hook just surfaces the estimate as a `systemMessage`; at or above it blocks the
+# submit once so the user can reconsider, and a re-submit goes through.
 #
 # Mirrors the cold detection and Bedrock price table of statusline-bedrock.sh.
 # Only the idle warm->cold case is flagged; /compact (deliberate, and whose
 # post-summary size is unknown here) is left alone.
 #
-# On cold, it prints whenever a cost can be estimated (model is in the price table
-# below); unknown-price models print nothing. Below WARN_COLD_CACHE_WARN_USD it's a
-# low-key FYI (just the amount); at or above it escalates to a warning that suggests
-# /clear.
+# On cold, it acts whenever a cost can be estimated (model is in the price table
+# below); unknown-price models do nothing. Below WARN_COLD_CACHE_WARN_USD it's a
+# low-key FYI (`systemMessage`, just the amount); at or above it BLOCKS the prompt
+# once (`decision: block`) and a re-submit at the same cold point proceeds — a
+# sentinel keyed on session + cold anchor enforces the one-shot block.
 #
 # The cache tier (5m/1h) is auto-detected from the newest turn's write slot and
 # sets both the cold TTL and the write multiplier; env vars override it.
@@ -29,6 +30,7 @@ set -u
 
 input=$(cat)
 transcript=$(jq -r '.transcript_path // empty' <<<"$input")
+session_id=$(jq -r '.session_id // empty' <<<"$input")
 [[ -n "$transcript" && -r "$transcript" ]] || exit 0
 
 # Read the tail once; feed it to the tier check, the cold check, and the estimate.
@@ -111,11 +113,24 @@ est=$(jq -rs --arg warn "$warn_usd" --arg write "$write_mult" '
 IFS=$'\t' read -r prefix cost level <<<"$est"
 prefix_k=$((prefix / 1000))
 
-if [[ "$level" == "warn" ]]; then
-  msg=$(printf '⚠️ プロンプトキャッシュが cold です。このまま続けると履歴（約 %dk tokens）の再構築に約 $%.2f かかります。新しい話題なら /clear で新規セッションにするとこのコストを避けられます。' \
-    "$prefix_k" "$cost")
-else
+# Below the threshold: FYI only, never block.
+if [[ "$level" != "warn" ]]; then
   msg=$(printf 'ℹ️ プロンプトキャッシュが cold です。\nこの再開での履歴の再構築コストは約 $%.2f です。' \
     "$cost")
+  jq -n --arg m "$msg" '{systemMessage: $m}'
+  exit 0
 fi
-jq -n --arg m "$msg" '{systemMessage: $m}'
+
+# At/above the threshold: block once, then let an immediate re-submit through. The
+# sentinel keys on session + the cold anchor (last_req), so re-submitting at the
+# same cold point proceeds, but a fresh idle gap (new anchor) blocks again.
+sentinel="${TMPDIR:-/tmp}/claude-coldwarn-${session_id:-nosession}"
+if [[ -n "$session_id" && "$(cat "$sentinel" 2>/dev/null)" == "$last_req" ]]; then
+  rm -f "$sentinel"
+  exit 0 # second submit at the same cold point — proceed
+fi
+[[ -n "$session_id" ]] && printf '%s\n' "$last_req" >"$sentinel"
+
+reason=$(printf '⚠️ プロンプトキャッシュが cold です。\nこのまま続けると履歴（約 %dk tokens）の再構築に約 $%.2f かかります。続けるにはもう一度送信してください。/clear で新規セッションにすればこのコストを避けられます。' \
+  "$prefix_k" "$cost")
+jq -n --arg r "$reason" '{decision: "block", reason: $r}'
