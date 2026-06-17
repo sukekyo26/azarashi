@@ -33,6 +33,7 @@ DRY_RUN=0
 NO_BACKUP=0
 FORCE=0
 NO_PRUNE=0
+DOCTOR_FIX=0
 CB_KEEP=""
 CB_OLDER=""
 MODE=install
@@ -58,7 +59,8 @@ Commands:
   clean-backups      Remove *.dotfiles-bak.* backups (report only without a
                      retention flag; see --keep / --older-than)
   doctor             Report broken / stale / dangling managed symlinks; nonzero
-                     exit if any are found (read-only)
+                     exit if any are found (read-only). With --fix, repair them:
+                     re-link stale links to the current repo, drop dead ones.
 
 Flags:
   --user <name>      Overlay users/<name>/ on top of common/ (user files win).
@@ -71,6 +73,7 @@ Flags:
                      defines (only if unchanged since the last apply; manual edits
                      and protected keys are preserved)
   --no-prune         Skip pruning orphaned symlinks on install
+  --fix              doctor: repair the problems it finds (honors --dry-run)
   --keep <n>         clean-backups: keep the newest <n> backups per original path
   --older-than <d>   clean-backups: remove backups older than <d> days
   -h, --help         Show this help
@@ -754,10 +757,55 @@ doctor_scan() {
   done
 }
 
+# doctor_unlink <path> — remove a symlink doctor flagged as a problem, honoring
+# --dry-run. Unlike remove_link it neither requires is_our_link (a stale link
+# points outside the current repo) nor restores a backup (a dead link is not an
+# uninstall). Callers must pass a path doctor already classified as a problem.
+doctor_unlink() {
+  [ -L "$1" ] || return 0
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf '  [dry-run] remove %s\n' "$1"
+    return 0
+  fi
+  rm -f "$1" && info "removed : $1"
+}
+
+# doctor_fix_one <problem-line> — repair a single problem reported by
+# doctor_classify. The line shape is "<kind>...: <path> -> <target> (...)".
+doctor_fix_one() {
+  _dfx_kind=${1%% *}
+  _dfx_rest=${1#*: }
+  _dfx_path=${_dfx_rest%% -> *}
+  case $_dfx_kind in
+    stale)
+      # the repo was moved; re-point to the current source if it still exists,
+      # otherwise the link is dead and is dropped
+      _dfx_src=$(effective_src "${_dfx_path#"$HOME"/}")
+      doctor_unlink "$_dfx_path"
+      [ -n "$_dfx_src" ] && link_path "$_dfx_src" "$_dfx_path"
+      ;;
+    *) # broken | dangling — the source is gone, so the only repair is removal
+      doctor_unlink "$_dfx_path"
+      ;;
+  esac
+}
+
 # cmd_doctor — report health (read-only); exit non-zero if any issue is found,
-# so it doubles as a CI/cron probe.
+# so it doubles as a CI/cron probe. With --fix, repair each problem instead.
 cmd_doctor() {
   _dr_problems=$(doctor_scan)
+  if [ "$DOCTOR_FIX" -eq 1 ]; then
+    if [ -z "$_dr_problems" ]; then
+      log "doctor: nothing to fix"
+      return 0
+    fi
+    [ "$DRY_RUN" -eq 1 ] && log "(dry-run — no changes will be made)"
+    printf '%s\n' "$_dr_problems" | while IFS= read -r _dr_line; do
+      [ -n "$_dr_line" ] && doctor_fix_one "$_dr_line"
+    done
+    log "doctor: repaired $(printf '%s' "$_dr_problems" | grep -c .) issue(s)"
+    return 0
+  fi
   [ -n "$_dr_problems" ] && printf '%s\n' "$_dr_problems"
   _dr_bk=$(list_backups | grep -c .)
   if [ "${_dr_bk:-0}" -gt 0 ]; then
@@ -794,6 +842,7 @@ while [ $# -gt 0 ]; do
     --no-backup) NO_BACKUP=1 ;;
     --force) FORCE=1 ;;
     --no-prune) NO_PRUNE=1 ;;
+    --fix) DOCTOR_FIX=1 ;;
     --keep)
       shift
       [ $# -gt 0 ] || {

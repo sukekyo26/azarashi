@@ -206,7 +206,11 @@ jobs:
           ln -s "/old/checkout/azarashi/common/.agents/AGENTS.md" "$HOME/.claude/stale"
           if ./install.sh doctor >doc.out 2>&1; then echo "doctor should be nonzero"; cat doc.out; exit 1; fi
           grep -qE '^stale   : .*/\.claude/stale' doc.out
-          rm -f "$HOME/.claude/stale"; ./install.sh doctor >/dev/null
+          # doctor --fix repairs what it finds: the dead stale link is dropped
+          ./install.sh doctor --fix | tee fix.out
+          grep -q 'repaired 1 issue' fix.out
+          [ ! -L "$HOME/.claude/stale" ]
+          ./install.sh doctor >/dev/null
           # a missing mirror source warns and is skipped, never fatal
           printf '%s\n' '.nope/MISSING.md   .agents/does-not-exist.md' >>mirror.conf
           ./install.sh install 2>err.out
