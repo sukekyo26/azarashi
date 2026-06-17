@@ -83,5 +83,5 @@
 			"github.copilot.chat.localeOverride": "ja"
 		}
 	},
-	"postStartCommand": "set -e\nmkdir -p ~/.config\ncp ~/work/azarashi/workspace/main/starship.toml ~/.config/starship.toml\n# The context-mode plugin's git checkout omits the compiled build/ (.gitignore'd),\n# so its bundled statusline renderer can only show the static \"~98%\" fallback. The\n# npm package ships build/, giving the statusline real savings numbers. Guard on\n# presence so a warm container restart skips the network round-trip; non-fatal so\n# the statusline degrades gracefully when this CLI is absent.\ncommand -v context-mode >/dev/null 2>&1 || npm install -g context-mode@1.0.162 || true\ncd ~/work/azarashi\n./install.sh\n"
+	"postStartCommand": "set -e\n# The context-mode plugin's git checkout omits the compiled build/ (.gitignore'd),\n# so its bundled statusline renderer can only show the static \"~98%\" fallback. The\n# npm package ships build/, giving the statusline real savings numbers. Guard on\n# presence so a warm container restart skips the network round-trip; non-fatal so\n# the statusline degrades gracefully when this CLI is absent.\ncommand -v context-mode >/dev/null 2>&1 || npm install -g context-mode@1.0.162 || true\ncd ~/work/azarashi\n./install.sh\n"
 }

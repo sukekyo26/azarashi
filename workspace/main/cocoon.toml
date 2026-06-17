@@ -272,8 +272,6 @@ lang     = "ja_JP.UTF-8"
 [devcontainer]
 postStartCommand = """
 set -e
-mkdir -p ~/.config
-cp ~/work/azarashi/workspace/main/starship.toml ~/.config/starship.toml
 # The context-mode plugin's git checkout omits the compiled build/ (.gitignore'd),
 # so its bundled statusline renderer can only show the static "~98%" fallback. The
 # npm package ships build/, giving the statusline real savings numbers. Guard on
