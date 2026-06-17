@@ -214,6 +214,28 @@ jobs:
           [ ! -e "$HOME/.nope/MISSING.md" ] && [ -L "$HOME/.codex/AGENTS.md" ]
           grep -v '.nope/MISSING.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
 
+      - name: Common-only — mirror.conf rejects unsafe and malformed rules
+        run: |
+          cd "$FX"
+          # snapshot so the bad rules below don't leak into later steps
+          cp mirror.conf mirror.conf.orig
+          printf '%s\n' \
+            '../escape   .agents/AGENTS.md' \
+            '.bad/abs    /etc/passwd' \
+            '.bad/dots   ../../.agents/AGENTS.md' \
+            '.bad/extra  .agents/AGENTS.md  third' >>mirror.conf
+          ./install.sh install 2>warn.out
+          grep -qF "unsafe target (absolute or '..'): ../escape" warn.out
+          grep -qF "unsafe source (absolute or '..'): /etc/passwd" warn.out
+          grep -qF "unsafe source (absolute or '..'): ../../.agents/AGENTS.md" warn.out
+          grep -qF "malformed rule" warn.out
+          # no unsafe/malformed rule is ever applied
+          [ ! -e "$HOME/.bad/abs" ] && [ ! -e "$HOME/.bad/dots" ] && [ ! -e "$HOME/.bad/extra" ]
+          # a valid rule alongside them still deploys
+          [ -L "$HOME/.codex/AGENTS.md" ]
+          mv mirror.conf.orig mirror.conf
+          ./install.sh install >/dev/null
+
       - name: Common-only — uninstall
         run: |
           cd "$FX"
