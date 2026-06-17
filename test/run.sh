@@ -266,6 +266,44 @@ esac
 assert_eq "force 3-way: --dry-run leaves the target unchanged" \
   "$(jq -Sc .gone "$t")" '2'
 
+# (g2) dry-run previews add/overwrite/delete together and changes nothing
+rm -f "$t" "$bf"
+printf '{"a":1,"b":2}\n' >"$bf"
+printf '{"a":9,"b":2}\n' >"$t"
+printf '{"a":1,"c":3}\n' >"$f"
+DRY_RUN=1
+out=$(merge_json "$t" "$f" 2>&1)
+DRY_RUN=0
+case "$out" in
+  *"add key: c"*) ok "force 3-way: --dry-run previews an added key" ;;
+  *) ng "force 3-way: --dry-run should preview 'add key: c' (got: $out)" ;;
+esac
+case "$out" in
+  *"overwrite key: a"*) ok "force 3-way: --dry-run previews an overwritten key" ;;
+  *) ng "force 3-way: --dry-run should preview 'overwrite key: a' (got: $out)" ;;
+esac
+case "$out" in
+  *"delete key: b"*) ok "force 3-way: --dry-run previews a deleted key" ;;
+  *) ng "force 3-way: --dry-run should preview 'delete key: b' (got: $out)" ;;
+esac
+assert_eq "force 3-way: --dry-run preview leaves the target unchanged" \
+  "$(jq -Sc . "$t")" '{"a":9,"b":2}'
+
+# (g3) without --force, the preview lists only additions (the target wins)
+rm -f "$t" "$bf"
+printf '{"a":9,"b":2}\n' >"$t"
+printf '{"a":1,"c":3}\n' >"$f"
+FORCE=0
+DRY_RUN=1
+out=$(merge_json "$t" "$f" 2>&1)
+DRY_RUN=0
+FORCE=1
+case "$out" in
+  *"overwrite key:"*) ng "non-force --dry-run must not preview an overwrite (got: $out)" ;;
+  *"add key: c"*) ok "non-force --dry-run previews only additions" ;;
+  *) ng "non-force --dry-run should preview 'add key: c' (got: $out)" ;;
+esac
+
 # (h) after a delete, a second run converges (idempotent) and adds no backup
 rm -f "$t" "$bf" "$t".dotfiles-bak.*
 printf '{"keep":1,"gone":2}\n' >"$bf"

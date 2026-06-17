@@ -119,6 +119,32 @@ _show_deleted_keys() {
   done
 }
 
+# _show_changed_keys <force> <frag1> [frag2 ...] — under --dry-run, print the
+# dotted path of each leaf the merge would add (target lacks it) and, under
+# --force, each it would overwrite (target differs and the fragment wins). A new
+# target is reported only as the merge line, so this is a no-op without one.
+_show_changed_keys() {
+  _sck_force=$1
+  shift
+  [ -f "$_mj_target" ] || return 0
+  _sck_clean=$(_clean_fragment "$@") || exit 1
+  jq -rn --argjson force "$_sck_force" --argjson clean "$_sck_clean" \
+    --slurpfile target "$_mj_target" '
+      $clean as $c | $target[0] as $t
+      | [ $c | paths(scalars) ][]
+      | . as $p
+      | ($t | try getpath($p) catch null) as $tv
+      | ($c | getpath($p)) as $cv
+      | ($p | map(tostring) | join(".")) as $d
+      | if $tv == $cv then empty
+        elif $tv == null then "add key: \($d)"
+        elif $force == 1 then "overwrite key: \($d)"
+        else empty end
+    ' | while IFS= read -r _sck_line; do
+    [ -n "$_sck_line" ] && info "[dry-run] $_sck_line"
+  done
+}
+
 # _json_eq <json-string> <file> — true if the string equals the file's content
 # (compared in canonical sorted form).
 _json_eq() {
@@ -167,9 +193,11 @@ merge_json() {
   if [ "$DRY_RUN" -eq 1 ]; then
     if [ "$FORCE" -eq 1 ]; then
       printf '  [dry-run] merge (force: fragment overwrites target) %s -> %s\n' "$*" "$_mj_target"
+      _show_changed_keys 1 "$@"
       _show_deleted_keys "$@"
     else
       printf '  [dry-run] merge %s -> %s\n' "$*" "$_mj_target"
+      _show_changed_keys 0 "$@"
     fi
     return 0
   fi
