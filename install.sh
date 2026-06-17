@@ -346,13 +346,48 @@ deploy_rel() {
 # deployed to the target as one managed symlink (file -> file symlink, dir -> a
 # single directory symlink), so shared content lives in one place.
 
+# _mirror_path_safe <rel> — true if <rel> is a layer-relative path that cannot
+# escape its layer: non-empty, not absolute, and free of any '..' component.
+_mirror_path_safe() {
+  case "$1" in
+    '' | /* | .. | ../* | */.. | */../*) return 1 ;;
+  esac
+  return 0
+}
+
+# _mirror_rule_ok <target> <source> <extra> — true if a parsed mirror.conf rule
+# is well-formed (exactly two fields) and both paths are safe. Silent; human
+# diagnostics are emitted once by validate_mirror_conf, and every reader skips
+# the same bad rules so an unsafe rule is never applied.
+_mirror_rule_ok() {
+  [ -n "$2" ] && [ -z "$3" ] || return 1
+  _mirror_path_safe "$1" && _mirror_path_safe "$2"
+}
+
+# validate_mirror_conf — scan mirror.conf once and warn (non-fatal) about each
+# malformed or unsafe rule, so the user gets actionable feedback up front.
+validate_mirror_conf() {
+  [ -f "$MIRROR_CONF" ] || return 0
+  while read -r _vm_t _vm_s _vm_x || [ -n "$_vm_t" ]; do
+    case ${_vm_t:-} in '' | '#'*) continue ;; esac
+    if [ -z "$_vm_s" ] || [ -n "$_vm_x" ]; then
+      warn "mirror.conf: ignoring malformed rule (need exactly 'target source'): $_vm_t $_vm_s $_vm_x"
+      continue
+    fi
+    _mirror_path_safe "$_vm_t" ||
+      warn "mirror.conf: ignoring rule with unsafe target (absolute or '..'): $_vm_t"
+    _mirror_path_safe "$_vm_s" ||
+      warn "mirror.conf: ignoring rule with unsafe source (absolute or '..'): $_vm_s"
+  done <"$MIRROR_CONF"
+}
+
 # mirror_source <target-rel> — if <target-rel> is a mirror target, or lies under
 # a mirrored directory, print the matching source-rel; otherwise print nothing.
 mirror_source() {
   [ -f "$MIRROR_CONF" ] || return 0
   while read -r _ms_t _ms_s _ms_x || [ -n "$_ms_t" ]; do
     case ${_ms_t:-} in '' | '#'*) continue ;; esac
-    [ -n "$_ms_s" ] && [ -z "$_ms_x" ] || continue
+    _mirror_rule_ok "$_ms_t" "$_ms_s" "$_ms_x" || continue
     case "$1" in
       "$_ms_t") printf '%s' "$_ms_s" && return 0 ;;
       "$_ms_t"/*) printf '%s' "$_ms_s/${1#"$_ms_t"/}" && return 0 ;;
@@ -380,8 +415,7 @@ deploy_mirrors() {
   [ -f "$MIRROR_CONF" ] || return 0
   while read -r _dms_t _dms_s _dms_x || [ -n "$_dms_t" ]; do
     case ${_dms_t:-} in '' | '#'*) continue ;; esac
-    [ -n "$_dms_s" ] && [ -z "$_dms_x" ] ||
-      die "mirror.conf: each rule needs exactly 'target source': $_dms_t $_dms_s $_dms_x"
+    _mirror_rule_ok "$_dms_t" "$_dms_s" "$_dms_x" || continue
     deploy_mirror "$_dms_t" "$_dms_s"
   done <"$MIRROR_CONF"
 }
@@ -396,7 +430,7 @@ uninstall_mirrors() {
   _um_tops=" "
   while read -r _um_t _um_s _um_x || [ -n "$_um_t" ]; do
     case ${_um_t:-} in '' | '#'*) continue ;; esac
-    [ -n "$_um_s" ] && [ -z "$_um_x" ] || continue
+    _mirror_rule_ok "$_um_t" "$_um_s" "$_um_x" || continue
     is_managed_link "$HOME/$_um_t" && remove_link "$HOME/$_um_t"
     _um_top=${_um_t%%/*}
     case "$_um_tops" in *" $_um_top "*) ;; *) _um_tops="$_um_tops$_um_top " ;; esac
@@ -569,6 +603,7 @@ walk_top_do() {
 
 cmd_run() { # install / diff / status
   [ -d "$COMMON_SRC" ] || die "missing payload directory: $COMMON_SRC"
+  validate_mirror_conf
   walk_top deploy
 
   if [ -f "$MIRROR_CONF" ]; then
@@ -587,6 +622,7 @@ cmd_run() { # install / diff / status
 
 cmd_uninstall() {
   [ -d "$COMMON_SRC" ] || die "missing payload directory: $COMMON_SRC"
+  validate_mirror_conf
   walk_all_top uninstall
   uninstall_mirrors
   uninstall_toplevel
