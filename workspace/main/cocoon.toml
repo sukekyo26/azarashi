@@ -270,17 +270,7 @@ lang     = "ja_JP.UTF-8"
 # [devcontainer.*] — VS Code Dev Container 用に devcontainer.json へマージされる設定。
 #   [workspace] devcontainer = false のときは無視。よくあるのは VS Code 拡張リスト。
 [devcontainer]
-postStartCommand = """
-set -e
-# The context-mode plugin's git checkout omits the compiled build/ (.gitignore'd),
-# so its bundled statusline renderer can only show the static "~98%" fallback. The
-# npm package ships build/, giving the statusline real savings numbers. Guard on
-# presence so a warm container restart skips the network round-trip; non-fatal so
-# the statusline degrades gracefully when this CLI is absent.
-command -v context-mode >/dev/null 2>&1 || npm install -g context-mode@1.0.162 || true
-cd ~/work/azarashi
-./install.sh
-"""
+postStartCommand = "~/work/azarashi/workspace/main/.devcontainer/post-start.sh"
 
 [devcontainer.customizations.vscode]
 extensions = [
