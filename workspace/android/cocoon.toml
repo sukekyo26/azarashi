@@ -1,0 +1,164 @@
+# cocoon.toml — Android アプリ開発特化ワークスペース
+# 編集後は `cocoon gen` で .devcontainer/ を再生成する。
+# workspace/main と起動挙動を揃えつつ、Android (native Kotlin/Java + Flutter) に絞った構成。
+
+[workspace]
+mount_root = "../../.."
+dir = "work"
+devcontainer = true
+
+[container]
+service_name = "android"
+username = "tama"
+image = "debian"
+image_version = "13" # trixie → default-jdk-headless が JDK 21 LTS を解決 (AGP 9.x 推奨)
+docker_socket = true
+
+[container.sudo]
+mode = "password"
+
+[container.shell]
+default = "zsh"
+aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down", dcup = "docker compose up -d", ga = "git add", gc = "git commit", gco = "git checkout", gd = "git diff", gl = "git log --oneline --graph --decorate", gp = "git push", gs = "git status", la = "ls -A", ll = "ls -lah", lt = "ls -ltrh" }
+
+# Android 特化の最小セット。go/rust/zig/aws/opentofu 等の汎用ツールは除外。
+[plugins]
+enable = [
+    "android-sdk",
+    "flutter",
+    "claude-code",
+    "codex",
+    "copilot-cli",
+    "cocoon",
+    "docker-buildx",
+    "docker-cli",
+    "github-cli",
+    "gitleaks",
+    "just",
+    "node",
+    "shellcheck",
+    "shfmt",
+    "starship",
+]
+
+[plugins.methods]
+copilot-cli = "binary"
+
+[plugins.options]
+android-sdk = { api_level = "36", build_tools = "36.0.0" }
+
+[apt]
+packages = [
+    "jq",
+    "yq",
+    "ripgrep",
+    "fd-find",
+    "tree",
+    "python3",
+    "python3-pip",
+    "python3-venv",
+    "vim",
+    "nano",
+    "git",
+    "openssh-client",
+    "gnupg",
+    "less",
+    "rsync",
+    "file",
+    "bc",
+    "wget",
+    "gettext-base",
+    "uuid-runtime",
+    "zip",
+    "unzip",
+    "xz-utils",
+    "tar",
+    "gzip",
+    "bzip2",
+    "build-essential",
+    "pkg-config",
+    "make",
+    "patch",
+    "fzf",
+    "bat",
+]
+
+[ports]
+forward = [
+    "3000",
+]
+
+[home_files]
+files = [".claude.json"]
+
+[locale]
+timezone = "Asia/Tokyo"
+lang     = "ja_JP.UTF-8"
+
+# Redroid: ヘッドレス Android エミュレータ (sidecar)。
+# privileged / devices は cocoon の sidecar 拡張で対応。
+# 注意: ホストカーネルに binder モジュール (binder_linux devices=binder,hwbinder,vndbinder)
+# が必要。WSL2 既定カーネルは欠くことが多く、その場合は起動しない (カスタムカーネルが要る)。
+# dev コンテナからは `adb connect redroid:5555` で接続する。
+[services.redroid]
+# 再現性のため不変な日付タグで固定する (`-latest` は可変タグで挙動が変わりうる)。
+# Android 16 系。更新時は https://hub.docker.com/r/redroid/redroid/tags の新しい
+# 16.0.0-<date> へ差し替える (より厳密には image = "redroid/redroid@sha256:..."
+# でダイジェスト固定も可)。
+image      = "redroid/redroid:16.0.0-250627"
+privileged = true
+# ADB ポートは publish しない: ADB over TCP は無認証のため、host の全 IF へ公開すると
+# LAN 上の他マシンから無認証でデバイス操作されうる。dev コンテナからは compose
+# ネットワーク経由で `adb connect redroid:5555` に到達できる (publish 不要)。
+# ホスト側 adb/scrcpy で使う場合のみ、LAN 露出を避けて localhost に限定して publish する:
+# ports = ["127.0.0.1:5555:5555"]
+# 環境により binder デバイスの明示注入が必要な場合は以下を有効化:
+# devices = ["/dev/binder:/dev/binder", "/dev/hwbinder:/dev/hwbinder", "/dev/vndbinder:/dev/vndbinder"]
+
+[services.redroid.volumes]
+redroid-data = "/data"
+
+[devcontainer]
+postStartCommand = "~/work/azarashi/workspace/android/.devcontainer/post-start.sh"
+
+[devcontainer.customizations.vscode]
+extensions = [
+    "ms-azuretools.vscode-docker",
+    "eamodio.gitlens",
+    "github.vscode-github-actions",
+    "oderwat.indent-rainbow",
+    "shardulm94.trailing-spaces",
+    "tamasfe.even-better-toml",
+    "bierner.markdown-mermaid",
+    "redhat.java",
+    "vscjava.vscode-gradle",
+    "vscjava.vscode-java-test",
+    "vscjava.vscode-java-dependency",
+    "jetbrains.kotlin-server",
+    "Dart-Code.dart-code",
+    "Dart-Code.flutter",
+    "openai.chatgpt",
+]
+
+[devcontainer.customizations.settings]
+"[c]" = {"editor.tabSize" = 4}
+"[cpp]" = {"editor.tabSize" = 4}
+"[csharp]" = {"editor.tabSize" = 4}
+"[dockerfile]" = {"editor.tabSize" = 4}
+"[go]" = {"editor.insertSpaces" = false, "editor.tabSize" = 4}
+"[java]" = {"editor.tabSize" = 4}
+"[kotlin]" = {"editor.tabSize" = 4}
+"[makefile]" = {"editor.insertSpaces" = false, "editor.tabSize" = 4}
+"[php]" = {"editor.tabSize" = 4}
+"[python]" = {"editor.tabSize" = 4}
+"[rust]" = {"editor.tabSize" = 4}
+"[swift]" = {"editor.tabSize" = 4}
+"[toml]" = {"editor.tabSize" = 4}
+"editor.detectIndentation" = false
+"editor.formatOnSave" = true
+"editor.insertSpaces" = true
+"editor.tabSize" = 2
+"files.autoSave" = "afterDelay"
+"files.insertFinalNewline" = true
+"files.trimTrailingWhitespace" = true
+"github.copilot.chat.localeOverride" = "ja"
