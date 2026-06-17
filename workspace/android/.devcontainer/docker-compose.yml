@@ -43,10 +43,8 @@ services:
         soft: 65536
         hard: 1048576
   redroid:
-    image: "redroid/redroid:13.0.0-latest"
+    image: "redroid/redroid:13.0.0-240527"
     init: true
-    ports:
-      - "5555:5555"
     volumes:
       - "redroid_redroid-data:/data"
     privileged: true
