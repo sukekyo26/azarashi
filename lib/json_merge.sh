@@ -92,7 +92,7 @@ _merge_chain() {
 _save_base() {
   _sb_clean=$(_clean_fragment "$@") || exit 1
   mkdir -p "$(dirname "$BASE_FILE")" || die "mkdir failed: $BASE_FILE"
-  _sb_tmp="${BASE_FILE}.dotfiles-tmp.$$"
+  _sb_tmp=$(mktemp "${BASE_FILE}.dotfiles-tmp.XXXXXX") || die "mktemp failed: $BASE_FILE"
   printf '%s\n' "$_sb_clean" >"$_sb_tmp" || die "write failed: $_sb_tmp"
   mv "$_sb_tmp" "$BASE_FILE" || die "atomic move failed: $BASE_FILE"
 }
@@ -169,7 +169,7 @@ merge_json() {
 
   mkdir -p "$(dirname "$_mj_target")" || die "mkdir failed: $_mj_target"
   backup "$_mj_target"
-  _mj_tmp="${_mj_target}.dotfiles-tmp.$$"
+  _mj_tmp=$(mktemp "${_mj_target}.dotfiles-tmp.XXXXXX") || die "mktemp failed: $_mj_target"
   printf '%s\n' "$_mj_result" >"$_mj_tmp" || die "write failed: $_mj_tmp"
   if ! jq empty "$_mj_tmp" 2>/dev/null; then
     rm -f "$_mj_tmp"
