@@ -4,6 +4,13 @@
 # Keys never written into the target, even if a fragment mistakenly contains them.
 PROTECTED_KEY_RE='credentials|token|api[_-]?key|secret|password|firstLaunchAt'
 
+# _require_json <file> <label> — die unless <file> is valid JSON, surfacing jq's
+# own parse error (line/column) so a malformed file is actually debuggable.
+_require_json() {
+  _rj_err=$(jq empty "$1" 2>&1) && return 0
+  die "$2 is not valid JSON: $1: $_rj_err"
+}
+
 # jq program for the --force 3-way step. Inputs: $clean (the fragment as applied),
 # $base[0] (the previously applied fragment), $target[0] (the current file) and
 # $mode ("apply" | "list"). It removes every key that was in the base but is gone
@@ -41,7 +48,7 @@ def parentObj($o; $p): walk_ok($o; $p[0:-1]) | (.ok and (.cur | type == "object"
 # shared by the merge and by the 3-way base snapshot.
 _clean_fragment() {
   for _cf_f in "$@"; do
-    jq empty "$_cf_f" 2>/dev/null || die "invalid JSON fragment: $_cf_f"
+    _require_json "$_cf_f" "fragment"
   done
   jq -s --arg re "$PROTECTED_KEY_RE" \
     'reduce .[1:][] as $x (.[0]; . * $x)
@@ -68,10 +75,10 @@ _merge_chain() {
     printf '%s' "$_mc_clean"
     return 0
   fi
-  jq empty "$_mc_target" 2>/dev/null || die "existing target is not valid JSON: $_mc_target"
+  _require_json "$_mc_target" "existing target"
 
   if [ "$FORCE" -eq 1 ] && [ -n "${BASE_FILE:-}" ] && [ -f "$BASE_FILE" ]; then
-    jq empty "$BASE_FILE" 2>/dev/null || die "fragment base is not valid JSON: $BASE_FILE"
+    _require_json "$BASE_FILE" "fragment base"
     jq -n --arg mode apply --argjson clean "$_mc_clean" \
       --slurpfile base "$BASE_FILE" --slurpfile target "$_mc_target" \
       "$_3WAY_JQ" || die "3-way merge failed: $_mc_target"
@@ -171,9 +178,9 @@ merge_json() {
   backup "$_mj_target"
   _mj_tmp=$(mktemp "${_mj_target}.dotfiles-tmp.XXXXXX") || die "mktemp failed: $_mj_target"
   printf '%s\n' "$_mj_result" >"$_mj_tmp" || die "write failed: $_mj_tmp"
-  if ! jq empty "$_mj_tmp" 2>/dev/null; then
+  if ! _mj_err=$(jq empty "$_mj_tmp" 2>&1); then
     rm -f "$_mj_tmp"
-    die "merge produced invalid JSON, aborted: $_mj_target"
+    die "merge produced invalid JSON, aborted: $_mj_target: $_mj_err"
   fi
   mv "$_mj_tmp" "$_mj_target" || die "atomic move failed: $_mj_target"
   info "merged  : $_mj_target"

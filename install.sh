@@ -830,6 +830,12 @@ for _dep in git jq; do
     die "'$_dep' is required but not found. Install it (e.g. sudo apt install $_dep)."
 done
 
+# The fragment merge relies on the jq 'walk' builtin (jq 1.6+). Probe for it so
+# an old jq fails here with an actionable message instead of a confusing error
+# mid-merge.
+printf '{}' | jq -e 'walk(.)' >/dev/null 2>&1 ||
+  die "jq is too old: the fragment merge needs jq 1.6+ (the 'walk' builtin). Found: $(jq --version 2>/dev/null)"
+
 resolve_user
 
 # --- dispatch --------------------------------------------------------------
