@@ -43,7 +43,7 @@ services:
         soft: 65536
         hard: 1048576
   redroid:
-    image: "redroid/redroid:13.0.0-240527"
+    image: "redroid/redroid:16.0.0-250627"
     init: true
     volumes:
       - "redroid_redroid-data:/data"
