@@ -553,6 +553,24 @@ if _toml_available; then
     *) ng "toml: status mode should report in-sync (got: $out)" ;;
   esac
 
+  # (f) keys with special chars (paths) are quoted so the output re-parses
+  printf '[projects."/home/u/proj"]\ntrust = "high"\n' >"$tf"
+  rm -f "$tt"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: special-char table key round-trips" \
+    "$(tomlq -r '.projects["/home/u/proj"].trust' "$tt")" "high"
+
+  # (g) a target tomlq cannot parse is skipped with a warning, not fatal
+  printf '[features]\nhooks = true\n' >"$tf"
+  printf '[projects./home/u/proj]\ntrust = "high"\n' >"$tt"
+  out=$(merge_toml "$tt" "$tf" 2>&1)
+  rc=$?
+  case "$out" in
+    *skipping*) ok "toml: unparseable target is skipped, not fatal" ;;
+    *) ng "toml: unparseable target should skip (got: $out)" ;;
+  esac
+  assert_eq "toml: skip returns success" "$rc" "0"
+
   rm -f "$tf" "$tt"
 
 else

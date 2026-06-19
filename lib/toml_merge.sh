@@ -10,22 +10,25 @@ _toml_available() {
 
 # shellcheck disable=SC2016  # jq variables, not shell
 _JSON_TO_TOML_JQ='
+def tkey:
+  if test("^[A-Za-z0-9_-]+$") then .
+  else "\"" + (gsub("\\\\"; "\\\\\\\\") | gsub("\""; "\\\\\"")) + "\"" end;
 def toml_val:
   if type == "string" then "\"" + (gsub("\\\\"; "\\\\\\\\") | gsub("\""; "\\\\\"")
     | gsub("\n"; "\\\\n") | gsub("\t"; "\\\\t")) + "\""
   elif type == "boolean" then if . then "true" else "false" end
   elif type == "number" then tostring
-  elif type == "object" then "{" + ([to_entries[] | .key + " = " + (.value | toml_val)] | join(", ")) + "}"
+  elif type == "object" then "{" + ([to_entries[] | (.key | tkey) + " = " + (.value | toml_val)] | join(", ")) + "}"
   elif type == "array" then "[" + ([.[] | toml_val] | join(", ")) + "]"
   else tostring end;
 def has_leaf: to_entries | any(.value | type != "object");
 def emit($p):
   to_entries | sort_by(if .value | type == "object" then 1 else 0 end) | .[] |
   if .value | type == "object" then
-    (if $p == "" then .key else $p + "." + .key end) as $sub |
+    (if $p == "" then (.key | tkey) else $p + "." + (.key | tkey) end) as $sub |
     if (.value | has_leaf) then "\n[" + $sub + "]", (.value | emit($sub))
     else (.value | emit($sub)) end
-  else .key + " = " + (.value | toml_val) end;
+  else (.key | tkey) + " = " + (.value | toml_val) end;
 emit("")
 '
 
@@ -64,10 +67,11 @@ merge_toml() {
   _mt_json_target=$(mktemp) || die "mktemp failed"
   _mt_cleanup="$_mt_cleanup $_mt_json_target"
   if [ -f "$_mt_real_target" ]; then
-    tomlq . "$_mt_real_target" >"$_mt_json_target" || {
+    if ! tomlq . "$_mt_real_target" >"$_mt_json_target" 2>/dev/null; then
+      warn "TOML parse failed (non-standard syntax?), skipping merge: $_mt_real_target"
       rm -f $_mt_cleanup
-      die "TOML parse failed: $_mt_real_target"
-    }
+      return 0
+    fi
   else
     rm -f "$_mt_json_target"
   fi
