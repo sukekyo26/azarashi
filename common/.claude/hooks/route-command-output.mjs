@@ -1,15 +1,14 @@
 #!/usr/bin/env node
-// PreToolUse(Bash) hook: 大量出力コマンドを 2 通りに振り分ける。
-//  - RTK が圧縮できる単一コマンド（テスト: pytest/go test/cargo test/vitest run/
-//    playwright test、インフラ: docker/kubectl/aws/psql、ビルド/導入: npm|pnpm install/
-//    cargo build/go build/dotnet、ネット: curl/wget、git: status/log）は RTK CLI に
-//    透過リライトして allow する。エージェントの挙動は変えず出力だけ圧縮される。rtk は
-//    絶対パスで差し込むので PATH 非依存。git diff は精読されるため対象外（素通し）。
-//  - 間接実行 (npm/pnpm/yarn/bun テストスクリプト, make, just)、複合コマンド、rtk 未導入時は
-//    context-mode の ctx_execute へ誘導 (deny)。重い生出力を会話コンテキストに流さない。
-// watch / UI / debug などの対話モードはどちらの対象からも除外（サンドボックス/圧縮で詰まる）。
-import { readFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+// PreToolUse(Bash) hook: 重い/冗長なコマンドの出力を圧縮またはオフロードしてトークンを節約する。
+//  1. 対話/ストリーミング (`-it` / `--follow` / `--watch` / attach 等) と `git diff` は素通し。
+//     対話はサンドボックス/圧縮で詰まる。git diff はコード理解のため精読するので生のまま残す。
+//  2. 間接実行 (npm/pnpm/yarn/bun テストスクリプト, make, just) は context-mode の ctx_execute へ
+//     誘導 (deny)。内側のツールが隠れて圧縮が効かないため、丸ごとオフロードする方が削減できる。
+//  3. それ以外は RTK の公式 API `rtk rewrite`（フック用の単一の真実源）に委ね、rtk が圧縮できる
+//     コマンドなら `rtk <cmd>` に透過リライトして allow する。複合/パイプ/env 前置きは rtk が解決。
+//     rtk が非対応のコマンド・rtk 未導入時は素通し。rtk は絶対パスで差し込むので PATH 非依存。
+import { readFileSync, existsSync } from 'node:fs';
+import { execSync, spawnSync } from 'node:child_process';
 
 function allow() {
   process.exit(0);
@@ -87,15 +86,17 @@ function commandHead(seg) {
   return s;
 }
 
-// 対話・watch・UI・ストリーミングモードはどちらの対象からも除外（プロセスが終了せず
-// サンドボックス/圧縮で詰まる）。docker/kubectl の `-it` 対話シェルや `--follow` ログ追従も含む。
+// 対話・watch・UI・ストリーミングモード。詰まるのでどちらの対象からも外して素通しする。
+// docker/kubectl の `-it` 対話シェルや `--follow` ログ追従も含む。
 const EXCLUDE =
   /(--watch|--watchAll|--ui|--debug|--headed|--interactive|--tty|--follow)\b|\s-(it|ti)\b|\battach\b|pytest-watch|\bptw\b/;
 
-// context-mode へ誘導する間接実行系（recipe / script runner）。内側のツールが隠れて
-// RTK の専用フィルタが効かないため、丸ごとオフロードする方が削減できる。先頭一致で判定。
-// `ci` は `npm ci`(clean install) と衝突するので、ここでは `run ci`(スクリプト) のみを
-// heavy 扱いにし、`npm ci` は下の RTK 導入系へ回す。
+// git diff はエージェントがコード理解のため精読するので圧縮せず素通し（status/log は rtk に任せる）。
+const GITDIFF = /^git\s+diff\b/;
+
+// context-mode へ誘導する間接実行系（recipe / script runner）。内側のツールが隠れて rtk の
+// 専用フィルタが効かないため、丸ごとオフロードする方が削減できる。先頭一致で判定。
+// `ci` は `npm ci`(clean install) と衝突するので、ここでは `run ci`(スクリプト) のみ heavy 扱い。
 const CTX_PATTERNS = [
   /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|test:[\w:-]+|quality|e2e|lint|check)\b/,
   /^(npm|pnpm|yarn|bun)\s+run\s+ci\b/,
@@ -103,40 +104,12 @@ const CTX_PATTERNS = [
   /^just\s+(test|e2e|quality|lint|ci|check)\b/,
 ];
 
-// RTK の専用フィルタが効くコマンド。`rtk <cmd>` に透過リライトする。先頭一致で判定。
-const RTK_PATTERNS = [
-  // テストランナー（直接呼び出し）
-  /^(?:python3?\s+-m\s+)?pytest\b/,
-  /^go\s+test\b/,
-  /^cargo\s+test\b/,
-  /^(?:npx\s+|bunx\s+|pnpm\s+exec\s+|yarn\s+)?vitest\s+run\b/,
-  /^(?:npx\s+|bunx\s+|pnpm\s+exec\s+|yarn\s+)?playwright\s+test\b/,
-  // インフラ（冗長な一覧 / ログ出力）
-  /^docker\b/,
-  /^kubectl\b/,
-  /^aws\b/,
-  /^psql\b/,
-  // ビルド / 依存導入
-  /^(npm|pnpm)\s+(install|i|ci)\b/,
-  /^cargo\s+build\b/,
-  /^go\s+build\b/,
-  /^dotnet\s+(build|restore|publish)\b/,
-  // ネット
-  /^curl\b/,
-  /^wget\b/,
-  // git 表示系（diff は精読されるため除外）
-  /^git\s+(status|log)\b/,
-];
+const heads = splitSegments(command).map(commandHead);
 
-function classify(head) {
-  if (head === '' || EXCLUDE.test(head)) return null;
-  if (CTX_PATTERNS.some((re) => re.test(head))) return 'ctx';
-  if (RTK_PATTERNS.some((re) => re.test(head))) return 'rtk';
-  return null;
+// 1. 対話/ストリーミング or git diff がどこかに含まれる → 素通し（最優先）。
+if (heads.some((h) => EXCLUDE.test(h) || GITDIFF.test(h))) {
+  allow();
 }
-
-const segments = splitSegments(command);
-const kinds = segments.map((seg) => classify(commandHead(seg)));
 
 function denyToContextMode() {
   const reason = [
@@ -161,25 +134,22 @@ function denyToContextMode() {
   process.exit(0);
 }
 
-const hasCtx = kinds.includes('ctx');
-const hasRtk = kinds.includes('rtk');
-if (!hasCtx && !hasRtk) {
-  allow();
-}
-
-// 透過リライトは「単一コマンドの RTK 対象」だけに限定する。複合コマンド（区切り文字を
-// 含む）や ctx 混在は、セグメント単位の安全な再構成が難しいので従来どおり context-mode
-// 誘導にフォールバックする（カバレッジは落とさない）。
-if (hasCtx || segments.length !== 1 || kinds[0] !== 'rtk') {
+// 2. 間接実行系が含まれる → context-mode へ誘導（単一・複合どちらでも）。
+if (heads.some((h) => CTX_PATTERNS.some((re) => re.test(h)))) {
   denyToContextMode();
 }
 
-// rtk を絶対パスで解決する（PATH を補強）。見つからなければ context-mode 誘導に
-// フォールバック。これにより rtk 未導入でも重い生出力を会話に流さない保証は崩れない。
+// 3. rtk rewrite に委譲。まず rtk を絶対パスで解決する（既知パスを優先し subprocess を避ける）。
 function resolveRtk() {
   const home = process.env.HOME || '';
-  const path = `${process.env.PATH || ''}:${home}/.local/bin:${home}/.npm-global/bin`;
+  const candidates = [];
+  if (home) candidates.push(`${home}/.local/bin/rtk`, `${home}/.npm-global/bin/rtk`);
+  candidates.push('/usr/local/bin/rtk', '/usr/bin/rtk');
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
   try {
+    const path = `${process.env.PATH || ''}:${home}/.local/bin:${home}/.npm-global/bin`;
     return execSync('command -v rtk', { env: { ...process.env, PATH: path } })
       .toString()
       .trim();
@@ -190,30 +160,30 @@ function resolveRtk() {
 
 const rtk = resolveRtk();
 if (rtk === '') {
-  denyToContextMode();
+  allow(); // rtk 未導入: 圧縮できないので素通し（heavy な間接実行は上で context-mode 済み）。
 }
 
-// env 代入 / sudo を温存しつつ、パッケージランナーの前置き（npx 等）を剥がして
-// 解決済みの rtk 絶対パスを差し込む。例: `FOO=1 npx vitest run` -> `FOO=1 <rtk> vitest run`。
-function toRtk(seg) {
-  let s = seg.trim();
-  let prefix = '';
-  for (;;) {
-    const m = s.match(/^(?:\w+=\S+\s+|(?:sudo|command|env)\s+)/);
-    if (!m) break;
-    prefix += m[0];
-    s = s.slice(m[0].length);
-  }
-  s = s.replace(/^(?:npx\s+|bunx\s+|pnpm\s+exec\s+|yarn\s+|python3?\s+-m\s+)/, '');
-  return `${prefix}${rtk} ${s}`;
+// `rtk rewrite <cmd>` は対応コマンドを `rtk <cmd>` に変換（exit 3）、非対応は空出力（exit 1）。
+// 成功時も非ゼロ終了なので throw する execSync ではなく spawnSync で stdout を取る。
+const res = spawnSync(rtk, ['rewrite', command], { encoding: 'utf8' });
+const rewritten = (res.stdout || '').trim();
+if (rewritten === '' || rewritten === command) {
+  allow(); // rtk が対応しないコマンド → 素通し。
 }
+
+// rtk rewrite は wrapper を裸の `rtk` として出力する。コマンド位置（行頭 / パイプ・`&&`・`;` の後、
+// 任意の env 代入を挟む）に現れる `rtk ` だけを絶対パスへ置換し、引数中の `rtk` は温存する。
+const spliced = rewritten.replace(
+  /(^|[|&;\n(]\s*)((?:\w+=\S+\s+)*)rtk(\s)/g,
+  (_m, pre, env, post) => `${pre}${env}${rtk}${post}`,
+);
 
 process.stdout.write(
   JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'allow',
-      updatedInput: { ...payload.tool_input, command: toRtk(segments[0]) },
+      updatedInput: { ...payload.tool_input, command: spliced },
     },
   }),
 );
