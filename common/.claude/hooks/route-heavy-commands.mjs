@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // PreToolUse(Bash) hook: 大量出力コマンドを 2 通りに振り分ける。
-//  - 専用フィルタが直接効く単一コマンド (pytest / go test / cargo test / vitest run /
-//    playwright test) は RTK CLI に透過リライトして allow する。エージェントの挙動は
-//    変えず、出力だけインライン圧縮される。rtk は絶対パスで差し込むので PATH 非依存。
-//  - 間接実行 (npm/pnpm/yarn/bun スクリプト, make, just)、複合コマンド、rtk 未導入時は
+//  - RTK が圧縮できる単一コマンド（テスト: pytest/go test/cargo test/vitest run/
+//    playwright test、インフラ: docker/kubectl/aws/psql、ビルド/導入: npm|pnpm install/
+//    cargo build/go build/dotnet、ネット: curl/wget、git: status/log）は RTK CLI に
+//    透過リライトして allow する。エージェントの挙動は変えず出力だけ圧縮される。rtk は
+//    絶対パスで差し込むので PATH 非依存。git diff は精読されるため対象外（素通し）。
+//  - 間接実行 (npm/pnpm/yarn/bun テストスクリプト, make, just)、複合コマンド、rtk 未導入時は
 //    context-mode の ctx_execute へ誘導 (deny)。重い生出力を会話コンテキストに流さない。
 // watch / UI / debug などの対話モードはどちらの対象からも除外（サンドボックス/圧縮で詰まる）。
 import { readFileSync } from 'node:fs';
@@ -85,24 +87,45 @@ function commandHead(seg) {
   return s;
 }
 
-// 対話・watch・UI モードは退避対象外（プロセスが終了せずサンドボックスで詰まる）。
-const EXCLUDE = /(--watch|--watchAll|--ui|--debug|--headed)\b|pytest-watch|\bptw\b/;
+// 対話・watch・UI・ストリーミングモードはどちらの対象からも除外（プロセスが終了せず
+// サンドボックス/圧縮で詰まる）。docker/kubectl の `-it` 対話シェルや `--follow` ログ追従も含む。
+const EXCLUDE =
+  /(--watch|--watchAll|--ui|--debug|--headed|--interactive|--tty|--follow)\b|\s-(it|ti)\b|\battach\b|pytest-watch|\bptw\b/;
 
 // context-mode へ誘導する間接実行系（recipe / script runner）。内側のツールが隠れて
 // RTK の専用フィルタが効かないため、丸ごとオフロードする方が削減できる。先頭一致で判定。
+// `ci` は `npm ci`(clean install) と衝突するので、ここでは `run ci`(スクリプト) のみを
+// heavy 扱いにし、`npm ci` は下の RTK 導入系へ回す。
 const CTX_PATTERNS = [
-  /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|test:[\w:-]+|quality|e2e|lint|ci)\b/,
+  /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|test:[\w:-]+|quality|e2e|lint|check)\b/,
+  /^(npm|pnpm|yarn|bun)\s+run\s+ci\b/,
   /^make\s+(test|e2e|quality|lint|ci|check)\b/,
   /^just\s+(test|e2e|quality|lint|ci|check)\b/,
 ];
 
-// RTK の専用フィルタが直接効くコマンド。`rtk <cmd>` に透過リライトする。先頭一致で判定。
+// RTK の専用フィルタが効くコマンド。`rtk <cmd>` に透過リライトする。先頭一致で判定。
 const RTK_PATTERNS = [
+  // テストランナー（直接呼び出し）
   /^(?:python3?\s+-m\s+)?pytest\b/,
   /^go\s+test\b/,
   /^cargo\s+test\b/,
   /^(?:npx\s+|bunx\s+|pnpm\s+exec\s+|yarn\s+)?vitest\s+run\b/,
   /^(?:npx\s+|bunx\s+|pnpm\s+exec\s+|yarn\s+)?playwright\s+test\b/,
+  // インフラ（冗長な一覧 / ログ出力）
+  /^docker\b/,
+  /^kubectl\b/,
+  /^aws\b/,
+  /^psql\b/,
+  // ビルド / 依存導入
+  /^(npm|pnpm)\s+(install|i|ci)\b/,
+  /^cargo\s+build\b/,
+  /^go\s+build\b/,
+  /^dotnet\s+(build|restore|publish)\b/,
+  // ネット
+  /^curl\b/,
+  /^wget\b/,
+  // git 表示系（diff は精読されるため除外）
+  /^git\s+(status|log)\b/,
 ];
 
 function classify(head) {
