@@ -499,7 +499,7 @@ base="$WORK/nb"
 assert_eq "newest_backup returns the most recent timestamp" \
   "$(newest_backup "$base")" "$base.dotfiles-bak.20250101T000000Z"
 
-# --- toml_merge.sh (skipped when python3 unavailable) ----------------------
+# --- toml_merge.sh (skipped when python3 >= 3.9 unavailable) ----------------
 
 # tj <file> <jq-filter> — read a value out of a TOML file via the python bridge.
 tj() { _toml_to_json "$1" | jq -r "$2"; }
@@ -638,7 +638,7 @@ if _toml_available; then
   rm -f "$tf" "$tt"
 
 else
-  printf '  skip - toml_merge tests (python3 not available)\n'
+  printf '  skip - toml_merge tests (python3 >= 3.9 not available)\n'
 fi
 
 # --- summary ---------------------------------------------------------------

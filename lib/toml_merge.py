@@ -93,7 +93,7 @@ def cmd_to_json(path):
     with open(path, encoding="utf-8") as fh:
         text = fh.read()
     doc = tomlkit.parse(_quote_headers(text))
-    json.dump(doc.unwrap(), sys.stdout, default=_json_default)
+    json.dump(doc.unwrap(), sys.stdout, default=_json_default, separators=(",", ":"))
 
 
 def cmd_apply(orig, target_json, merged_json):

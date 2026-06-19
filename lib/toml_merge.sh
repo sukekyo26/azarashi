@@ -22,10 +22,13 @@ _TOML_PY="$(_toml_lib_dir)/toml_merge.py"
 # Minimum Python the vendored tomlkit supports (its Requires-Python is >=3.9).
 _TOML_MIN_PY="3.9"
 
-# _toml_python_ok — true if python3 exists and is new enough for tomlkit.
+# _toml_python_ok — true if python3 exists and is at least $_TOML_MIN_PY (the
+# single source of truth for the floor, parsed here so check and message agree).
 _toml_python_ok() {
   command -v python3 >/dev/null 2>&1 &&
-    python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3, 9) else 1)' 2>/dev/null
+    python3 -c 'import sys
+req = tuple(int(p) for p in sys.argv[1].split("."))
+sys.exit(0 if sys.version_info[: len(req)] >= req else 1)' "$_TOML_MIN_PY" 2>/dev/null
 }
 
 # _toml_available — true if the python bridge can run.
