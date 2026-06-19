@@ -2,7 +2,7 @@
 # Records resolved plugin versions + per-arch checksums for reproducible builds.
 
 lock_version = 1
-inputs_hash = '06e88fb73c61f7e6cfc7e6e3d2788138e360bd72486f8094f57041a1b47817d7'
+inputs_hash = 'b128319ff1362ba393c740e80ffc6dc352a324adc4a66860cbbcedcf5e8a12e7'
 
 [[plugins]]
 id = 'aws-sam-cli'
@@ -79,6 +79,13 @@ checksum_arm64 = '524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c
 id = 'opentofu'
 requested = 'latest'
 version = '1.12.2'
+
+[[plugins]]
+id = 'rtk'
+requested = 'latest'
+version = '0.42.4'
+checksum_amd64 = '34975116da11e09e502501daf758143e0b22ed3a42a10eb67fb693a6270d9e36'
+checksum_arm64 = 'cc2b91c064eb670c097c184913c8fbcb1a943d53d7fe505375e96ba0c5b6459f'
 
 [[plugins]]
 id = 'shellcheck'

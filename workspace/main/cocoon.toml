@@ -132,6 +132,7 @@ enable = [
     "node",
     "opentofu",
     "rust",
+    "rtk",
     "shellcheck",
     "shfmt",
     "starship",
@@ -143,6 +144,7 @@ enable = [
 #   方式を 1 つしか持たないプラグインはこのセクションを無視。
 [plugins.methods]
 copilot-cli = "binary"
+rtk = "binary"
 
 # [plugins.options] — 上で有効化したプラグインの追加設定。
 #   バージョンは enable 配列にインラインで指定（例 "go=1.22.5", "starship=latest"）。
