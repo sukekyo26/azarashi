@@ -18,6 +18,8 @@ MODE=install
 . "$SCRIPT_DIR/../lib/common.sh"
 # shellcheck source=lib/json_merge.sh
 . "$SCRIPT_DIR/../lib/json_merge.sh"
+# shellcheck source=lib/toml_merge.sh
+. "$SCRIPT_DIR/../lib/toml_merge.sh"
 
 TESTS=0
 FAILS=0
@@ -496,6 +498,66 @@ base="$WORK/nb"
 : >"$base.dotfiles-bak.20230101T000000Z"
 assert_eq "newest_backup returns the most recent timestamp" \
   "$(newest_backup "$base")" "$base.dotfiles-bak.20250101T000000Z"
+
+# --- toml_merge.sh (skipped when tomlq / python3-toml unavailable) --------
+
+if _toml_available; then
+
+  tf="$WORK/frag.toml"
+  tt="$WORK/target.toml"
+
+  # (a) merge into absent target materializes the fragment as TOML
+  rm -f "$tt"
+  printf '[features]\nhooks = true\n' >"$tf"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: merge into absent target materializes the fragment" \
+    "$(tomlq -r .features.hooks "$tt")" "true"
+
+  # (b) existing target value wins over the fragment
+  printf '[features]\nhooks = false\nmodel = "o3"\n' >"$tt"
+  printf '[features]\nhooks = true\n' >"$tf"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: existing target value wins over the fragment" \
+    "$(tomlq -r .features.hooks "$tt")" "false"
+  assert_eq "toml: target-only key is preserved" \
+    "$(tomlq -r .features.model "$tt")" "o3"
+
+  # (c) fragment adds new keys to existing target
+  printf '[features]\nhooks = true\n' >"$tt"
+  printf '[mcp]\ncommand = "ctx"\n' >"$tf"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: fragment adds new keys to existing target" \
+    "$(tomlq -r .mcp.command "$tt")" "ctx"
+  assert_eq "toml: existing keys survive after new key addition" \
+    "$(tomlq -r .features.hooks "$tt")" "true"
+
+  # (d) status mode reports drift (fragment adds a key the target lacks)
+  printf '[features]\nhooks = true\n' >"$tt"
+  printf '[features]\nhooks = true\n[mcp]\ncommand = "ctx"\n' >"$tf"
+  MODE=status
+  out=$(merge_toml "$tt" "$tf" 2>&1)
+  MODE=install
+  case "$out" in
+    *drift*) ok "toml: status mode reports drift" ;;
+    *) ng "toml: status mode should report drift (got: $out)" ;;
+  esac
+
+  # (e) status mode reports in-sync
+  printf '[features]\nhooks = true\n' >"$tt"
+  printf '[features]\nhooks = true\n' >"$tf"
+  MODE=status
+  out=$(merge_toml "$tt" "$tf" 2>&1)
+  MODE=install
+  case "$out" in
+    *in-sync*) ok "toml: status mode reports in-sync" ;;
+    *) ng "toml: status mode should report in-sync (got: $out)" ;;
+  esac
+
+  rm -f "$tf" "$tt"
+
+else
+  printf '  skip - toml_merge tests (tomlq/python3-toml not available)\n'
+fi
 
 # --- summary ---------------------------------------------------------------
 

@@ -43,6 +43,7 @@ USER_SRC=""
 
 . "$REPO_DIR/lib/common.sh"
 . "$REPO_DIR/lib/json_merge.sh"
+. "$REPO_DIR/lib/toml_merge.sh"
 
 usage() {
   cat <<'EOF'
@@ -319,6 +320,18 @@ deploy_fragment() {
   merge_json "$_df_target" "$@"
 }
 
+# deploy_fragment_toml <rel> — merge the common then user versions of a TOML
+# fragment into the matching TOML under $HOME (existing target keys still win).
+deploy_fragment_toml() {
+  _dft_rel=$1
+  _dft_target="$HOME/${_dft_rel%.fragment.toml}.toml"
+  set --
+  [ -e "$COMMON_SRC/$_dft_rel" ] && set -- "$@" "$COMMON_SRC/$_dft_rel"
+  [ -n "$USER_SRC" ] && [ -e "$USER_SRC/$_dft_rel" ] && set -- "$@" "$USER_SRC/$_dft_rel"
+  [ "$#" -gt 0 ] || return 0
+  merge_toml "$_dft_target" "$@"
+}
+
 # deploy_rel <rel>
 deploy_rel() {
   _eff=$(effective_src "$1")
@@ -327,6 +340,10 @@ deploy_rel() {
   case ${1##*/} in
     *.fragment.json)
       deploy_fragment "$1"
+      return 0
+      ;;
+    *.fragment.toml)
+      deploy_fragment_toml "$1"
       return 0
       ;;
   esac
