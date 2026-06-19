@@ -563,7 +563,8 @@ if _toml_available; then
   assert_eq "toml: special-char table key round-trips" \
     "$(tj "$tt" '.projects["/home/u/proj"].trust')" "high"
 
-  # (g) codex's unquoted '/' path header parses, merges, and stays unquoted
+  # (g) an unquoted '/' path header parses, merges, and is emitted quoted
+  # (the spec-valid form codex's reader requires)
   printf '[features]\nhooks = true\n' >"$tf"
   printf '[projects./home/u/proj]\ntrust = "high"\n' >"$tt"
   merge_toml "$tt" "$tf" >/dev/null
@@ -571,10 +572,10 @@ if _toml_available; then
     "$(tj "$tt" '.projects["/home/u/proj"].trust')" "high"
   assert_eq "toml: the new fragment key is merged in" \
     "$(tj "$tt" .features.hooks)" "true"
-  if grep -q '^\[projects\./home/u/proj\]$' "$tt"; then
-    ok "toml: '/' header is written back unquoted (byte-faithful to codex)"
+  if grep -q '^\[projects\."/home/u/proj"\]$' "$tt"; then
+    ok "toml: '/' header is written back quoted (spec-valid for codex)"
   else
-    ng "toml: '/' header should stay unquoted (got: $(grep projects "$tt"))"
+    ng "toml: '/' header should be quoted (got: $(grep projects "$tt"))"
   fi
 
   # (h) comments and unrelated keys survive a merge verbatim

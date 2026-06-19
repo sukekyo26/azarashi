@@ -42,7 +42,7 @@ install.sh の主要サブコマンド:
 
 **`*.fragment.json` の deep-merge**: fragment は対応する settings JSON へ deep-merge される。優先度は 既存値 > ユーザー fragment > 共通 fragment（`--force` 時のみリポジトリ fragment が既存値に勝つ）。credentials/token 等の保護キーは常に温存。`--force` では **3-way 削除** を行い、前回適用 fragment を `<settings>.fragment.base.json` に記録して、fragment から消えたキーを（手動変更が無ければ）同期削除する。
 
-**`*.fragment.toml` の deep-merge**: TOML fragment（例 `.codex/config.toml`）も同じ JSON マージ頭脳を再利用する。境界の TOML↔JSON 変換と書き戻しは同梱 `tomlkit` 経由（`lib/toml_merge.py`）で行い、コメント・型・書式を保持して**変更キーだけ**を差し込む。codex が書く非標準の `[projects./path]`（仕様違反の裸キー `/`）はパース前にクォートし、出力時に元の非クォート形へ戻して byte 単位で忠実に保つ。
+**`*.fragment.toml` の deep-merge**: TOML fragment（例 `.codex/config.toml`）も同じ JSON マージ頭脳を再利用する。境界の TOML↔JSON 変換と書き戻しは同梱 `tomlkit` 経由（`lib/toml_merge.py`）で行い、コメント・型・書式を保持して**変更キーだけ**を差し込む。非標準の `[projects./path]`（仕様違反の裸キー `/`）が混ざっていてもパース前にクォートして取り込み、出力は codex のリーダーが要求する仕様準拠のクォート形 `[projects."/path"]` で書く（入力に寛容・出力は valid）。
 
 **`mirror.conf`**（リポルート）: 1 つの正典ファイルを複数配布先へ symlink でミラーする宣言。各行は `target source`（レイヤ相対、`#` はコメント）。source はレイヤ解決を通るのでユーザー上書きに追従する。例: `.agents/AGENTS.md` を `.claude/CLAUDE.md` と `.copilot/copilot-instructions.md` へ。ソースが見つからない行は警告してスキップ（fatal にしない）。
 

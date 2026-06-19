@@ -9,10 +9,10 @@ write stays comment- and format-preserving. Two modes:
                            between target-JSON <t> and merged-JSON <m>, so the
                            comments and formatting of untouched keys survive
 
-Codex writes table headers with unquoted '/' in path keys (e.g.
-[projects./home/u/x]) -- invalid TOML every spec parser rejects. We quote such
-segments before parsing and unquote them again on output, so the file round-
-trips byte-for-byte and the merge is not skipped on real codex configs.
+Some tools have written table headers with unquoted '/' in path keys (e.g.
+[projects./home/u/x]) -- invalid TOML every spec parser rejects, codex included.
+We quote such segments before parsing so the merge is not skipped, and emit the
+canonical quoted form ([projects."/home/u/x"]) that codex actually reads.
 """
 
 import datetime
@@ -48,20 +48,6 @@ def _quote_headers(text):
                 segs = segs[:i] + ['"' + rest + '"']
                 break
         out.append(open_ + ".".join(segs) + close)
-    return "".join(out)
-
-
-def _unquote_headers(text):
-    """Inverse of _quote_headers: drop quotes around any '/'-bearing header
-    segment, restoring codex's exact unquoted representation."""
-    def fix(m):
-        open_, inner, close = m.groups()
-        inner = re.sub(r'"([^"]*/[^"]*)"', lambda q: q.group(1), inner)
-        return open_ + inner + close
-
-    out = []
-    for line in text.splitlines(keepends=True):
-        out.append(_HEADER.sub(fix, line) if _HEADER.match(line) else line)
     return "".join(out)
 
 
@@ -119,7 +105,7 @@ def cmd_apply(orig, target_json, merged_json):
     else:
         doc = tomlkit.document()
     _apply(doc, before, after)
-    sys.stdout.write(_unquote_headers(tomlkit.dumps(doc)))
+    sys.stdout.write(tomlkit.dumps(doc))
 
 
 def main(argv):
