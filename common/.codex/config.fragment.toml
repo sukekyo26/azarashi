@@ -6,3 +6,7 @@ command = "context-mode"
 
 [mcp_servers.context-mode.env]
 CONTEXT_MODE_PLATFORM = "codex"
+
+[tui]
+status_line = ["model-with-reasoning", "current-dir", "model", "reasoning", "git-branch", "permissions", "context-used", "five-hour-limit", "weekly-limit", "codex-version"]
+status_line_use_colors = true
