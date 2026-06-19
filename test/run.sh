@@ -556,7 +556,7 @@ if _toml_available; then
   rm -f "$tf" "$tt"
 
 else
-  printf '  skip - toml_merge tests (tomlq/python3-toml not available)\n'
+  printf '  skip - toml_merge tests (tomlq not available)\n'
 fi
 
 # --- summary ---------------------------------------------------------------

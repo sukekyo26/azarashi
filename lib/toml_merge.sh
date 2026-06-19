@@ -15,6 +15,7 @@ def toml_val:
     | gsub("\n"; "\\\\n") | gsub("\t"; "\\\\t")) + "\""
   elif type == "boolean" then if . then "true" else "false" end
   elif type == "number" then tostring
+  elif type == "object" then "{" + ([to_entries[] | .key + " = " + (.value | toml_val)] | join(", ")) + "}"
   elif type == "array" then "[" + ([.[] | toml_val] | join(", ")) + "]"
   else tostring end;
 def has_leaf: to_entries | any(.value | type != "object");
@@ -38,7 +39,7 @@ _json_to_toml() {
 # shellcheck disable=SC2086  # _mt_cleanup/_mt_json_frags are intentionally word-split
 merge_toml() {
   _toml_available || {
-    warn "tomlq not found, skipping TOML merge: $1"
+    warn "tomlq not found (apt install yq), skipping TOML merge: $1"
     return 0
   }
 
