@@ -91,8 +91,11 @@ function commandHead(seg) {
 const EXCLUDE =
   /(--watch|--watchAll|--ui|--debug|--headed|--interactive|--tty|--follow)\b|\s-(it|ti)\b|\battach\b|pytest-watch|\bptw\b/;
 
-// git diff はエージェントがコード理解のため精読するので圧縮せず素通し（status/log は rtk に任せる）。
-const GITDIFF = /^git\s+diff\b/;
+// rtk に渡すと精読できない/壊れるコマンドは常に素通しにする。
+//   git diff … エージェントがコード理解のため精読する（圧縮で必要な文脈が欠ける）。
+//   find     … rtk の find フィルタが GNU find の `<path> -type f` 構文を誤解釈し、
+//              ファイル一覧の代わりに `0 for '*'` のような誤出力を返す（正確性のバグ）。
+const FORCE_PASSTHROUGH = [/^git\s+diff\b/, /^find\b/];
 
 // context-mode へ誘導する間接実行系（recipe / script runner）。内側のツールが隠れて rtk の
 // 専用フィルタが効かないため、丸ごとオフロードする方が削減できる。先頭一致で判定。
@@ -122,8 +125,8 @@ if (heads.some((h) => /^rtk\s+init\b/.test(h))) {
   process.exit(0);
 }
 
-// 1. 対話/ストリーミング or git diff がどこかに含まれる → 素通し（最優先）。
-if (heads.some((h) => EXCLUDE.test(h) || GITDIFF.test(h))) {
+// 1. 対話/ストリーミング、または常時素通し対象（git diff / find）が含まれる → 素通し（最優先）。
+if (heads.some((h) => EXCLUDE.test(h) || FORCE_PASSTHROUGH.some((re) => re.test(h)))) {
   allow();
 }
 
