@@ -15,5 +15,15 @@
   "statusLine": {
     "type": "command",
     "command": "bash ~/.copilot/statusline.sh"
+  },
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "matcher": "bash",
+        "bash": "node \"$HOME/.copilot/hooks/route-command-output.mjs\"",
+        "timeoutSec": 5
+      }
+    ]
   }
 }
