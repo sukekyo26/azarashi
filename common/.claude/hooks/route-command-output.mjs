@@ -106,6 +106,22 @@ const CTX_PATTERNS = [
 
 const heads = splitSegments(command).map(commandHead);
 
+// 0. `rtk init` はブロックする（複合コマンドの一部でも）。この環境は rtk を CLI 専用で使う方針で、
+//    init すると RTK 純正の PreToolUse フック / RTK.md が入り、context-mode やこのフックと競合する。
+if (heads.some((h) => /^rtk\s+init\b/.test(h))) {
+  process.stdout.write(
+    JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason:
+          'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正フック/RTK.md が入り context-mode と競合）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
+      },
+    }),
+  );
+  process.exit(0);
+}
+
 // 1. 対話/ストリーミング or git diff がどこかに含まれる → 素通し（最優先）。
 if (heads.some((h) => EXCLUDE.test(h) || GITDIFF.test(h))) {
   allow();
