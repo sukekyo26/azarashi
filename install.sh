@@ -895,6 +895,8 @@ for _dep in git jq; do
   command -v "$_dep" >/dev/null 2>&1 ||
     die "'$_dep' is required but not found. Install it (e.g. sudo apt install $_dep)."
 done
+command -v tomlq >/dev/null 2>&1 ||
+  die "'tomlq' is required but not found. Install it (e.g. sudo apt install yq)."
 
 # The fragment merge relies on the jq 'walk' builtin (jq 1.6+). Probe for it so
 # an old jq fails here with an actionable message instead of a confusing error
