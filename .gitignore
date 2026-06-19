@@ -6,4 +6,8 @@
 # install.sh backups (only created under $HOME, but ignore defensively)
 *.dotfiles-bak.*
 
+# Python bytecode (the vendored tomlkit regenerates these at runtime)
+__pycache__/
+*.pyc
+
 *.code-workspace
