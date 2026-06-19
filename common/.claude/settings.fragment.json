@@ -20,7 +20,7 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "\"$HOME/.claude/hooks/redirect-tests-to-context-mode.mjs\"" }
+          { "type": "command", "command": "\"$HOME/.claude/hooks/route-heavy-commands.mjs\"" }
         ]
       }
     ],

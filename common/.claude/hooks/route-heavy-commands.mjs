@@ -3,8 +3,10 @@
 //  - 専用フィルタが直接効く単一コマンド (pytest / go test / cargo test / vitest run /
 //    playwright test) は RTK CLI に透過リライトして allow する。エージェントの挙動は
 //    変えず、出力だけインライン圧縮される。rtk は絶対パスで差し込むので PATH 非依存。
-//  - 間接実行 (npm/pnpm/yarn/bun スクリプト, make, just) と、複合コマンドや rtk 未導入時は
-//    context-mode の ctx_execute へ誘導 (deny)。生出力を会話コンテキストに流さない。
+//    rtk が未導入のときは素のコマンドをそのまま実行する（allow）。圧縮はされないが、
+//    エージェントの挙動は一切変えない。
+//  - 間接実行 (npm/pnpm/yarn/bun スクリプト, make, just) と複合コマンドは context-mode の
+//    ctx_execute へ誘導 (deny)。内側のツールが隠れて RTK が効かないので丸ごとオフロードする。
 // watch / UI / debug などの対話モードはどちらの対象からも除外（サンドボックス/圧縮で詰まる）。
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
@@ -151,8 +153,8 @@ if (hasCtx || segments.length !== 1 || kinds[0] !== 'rtk') {
   denyToContextMode();
 }
 
-// rtk を絶対パスで解決する（PATH を補強）。見つからなければ context-mode 誘導に
-// フォールバック。これにより rtk 未導入でも「生出力を会話に流さない」保証は崩れない。
+// rtk を絶対パスで解決する（PATH を補強）。見つからなければ素のコマンドを
+// そのまま実行する（このフックは何もしない＝エージェントの挙動を変えない）。
 function resolveRtk() {
   const home = process.env.HOME || '';
   const path = `${process.env.PATH || ''}:${home}/.local/bin:${home}/.npm-global/bin`;
@@ -167,7 +169,7 @@ function resolveRtk() {
 
 const rtk = resolveRtk();
 if (rtk === '') {
-  denyToContextMode();
+  allow();
 }
 
 // env 代入 / sudo を温存しつつ、パッケージランナーの前置き（npx 等）を剥がして
