@@ -13,7 +13,7 @@ set -euo pipefail
 # the statusline degrades gracefully when this CLI is absent.
 command -v context-mode >/dev/null 2>&1 || npm install -g context-mode@1.0.162 || true
 
-# RTK (rtk-ai) CLI for the route-heavy-commands hook's transparent compression.
+# RTK (rtk-ai) CLI for the route-command-output hook's transparent compression.
 # Install the binary ONLY — never `rtk init`, so RTK's own PreToolUse hook / RTK.md
 # context can't compete with context-mode. The hook resolves rtk by absolute path,
 # so no PATH wiring is needed. Installs to ~/.local/bin; guard on that to skip warm
