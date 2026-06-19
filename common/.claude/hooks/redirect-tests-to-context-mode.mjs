@@ -1,9 +1,13 @@
 #!/usr/bin/env node
-// PreToolUse(Bash) hook: 大量出力のテスト/品質チェック系コマンドを
-// context-mode の ctx_execute 経由に誘導する。生出力を会話コンテキストに
-// 流さず、サマリと失敗詳細だけを残すのが狙い。
-// watch / UI / debug などの対話モードは除外（サンドボックスで完結しないため）。
+// PreToolUse(Bash) hook: 大量出力コマンドを 2 通りに振り分ける。
+//  - 専用フィルタが直接効く単一コマンド (pytest / go test / cargo test / vitest run /
+//    playwright test) は RTK CLI に透過リライトして allow する。エージェントの挙動は
+//    変えず、出力だけインライン圧縮される。rtk は絶対パスで差し込むので PATH 非依存。
+//  - 間接実行 (npm/pnpm/yarn/bun スクリプト, make, just) と、複合コマンドや rtk 未導入時は
+//    context-mode の ctx_execute へ誘導 (deny)。生出力を会話コンテキストに流さない。
+// watch / UI / debug などの対話モードはどちらの対象からも除外（サンドボックス/圧縮で詰まる）。
 import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 function allow() {
   process.exit(0);
@@ -84,45 +88,109 @@ function commandHead(seg) {
 // 対話・watch・UI モードは退避対象外（プロセスが終了せずサンドボックスで詰まる）。
 const EXCLUDE = /(--watch|--watchAll|--ui|--debug|--headed)\b|pytest-watch|\bptw\b/;
 
-// 一括実行で長い出力が出る、退避する価値のあるコマンド群。先頭一致で判定する。
-const TEST_PATTERNS = [
+// context-mode へ誘導する間接実行系（recipe / script runner）。内側のツールが隠れて
+// RTK の専用フィルタが効かないため、丸ごとオフロードする方が削減できる。先頭一致で判定。
+const CTX_PATTERNS = [
   /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|test:[\w:-]+|quality|e2e|lint|ci)\b/,
-  /^(?:npx\s+|bunx\s+|pnpm\s+exec\s+|yarn\s+)?vitest\s+run\b/,
-  /^(?:npx\s+|bunx\s+|pnpm\s+exec\s+|yarn\s+)?playwright\s+test\b/,
-  /^(?:python3?\s+-m\s+)?pytest\b/,
   /^make\s+(test|e2e|quality|lint|ci|check)\b/,
   /^just\s+(test|e2e|quality|lint|ci|check)\b/,
-  /^go\s+test\b/,
-  /^cargo\s+test\b/,
 ];
 
-function isRedirectTarget(head) {
-  if (head === '' || EXCLUDE.test(head)) return false;
-  return TEST_PATTERNS.some((re) => re.test(head));
+// RTK の専用フィルタが直接効くコマンド。`rtk <cmd>` に透過リライトする。先頭一致で判定。
+const RTK_PATTERNS = [
+  /^(?:python3?\s+-m\s+)?pytest\b/,
+  /^go\s+test\b/,
+  /^cargo\s+test\b/,
+  /^(?:npx\s+|bunx\s+|pnpm\s+exec\s+|yarn\s+)?vitest\s+run\b/,
+  /^(?:npx\s+|bunx\s+|pnpm\s+exec\s+|yarn\s+)?playwright\s+test\b/,
+];
+
+function classify(head) {
+  if (head === '' || EXCLUDE.test(head)) return null;
+  if (CTX_PATTERNS.some((re) => re.test(head))) return 'ctx';
+  if (RTK_PATTERNS.some((re) => re.test(head))) return 'rtk';
+  return null;
 }
 
-const heads = splitSegments(command).map(commandHead);
-if (!heads.some(isRedirectTarget)) {
+const segments = splitSegments(command);
+const kinds = segments.map((seg) => classify(commandHead(seg)));
+
+function denyToContextMode() {
+  const reason = [
+    'このコマンドは大量のテスト/品質チェック出力を生成します。',
+    '生出力を会話コンテキストに流さないため、Bash ではなく context-mode の',
+    'ctx_execute MCP ツールで実行してください:',
+    '',
+    `  ctx_execute(language: "shell", code: ${JSON.stringify(command)})`,
+    '',
+    '実行後は pass/fail のサマリと失敗したテストの詳細だけを報告し、',
+    '全文が必要になったら ctx_search で該当箇所を取り出してください。',
+  ].join('\n');
+  process.stdout.write(
+    JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: reason,
+      },
+    }),
+  );
+  process.exit(0);
+}
+
+const hasCtx = kinds.includes('ctx');
+const hasRtk = kinds.includes('rtk');
+if (!hasCtx && !hasRtk) {
   allow();
 }
 
-const reason = [
-  'このコマンドは大量のテスト/品質チェック出力を生成します。',
-  '生出力を会話コンテキストに流さないため、Bash ではなく context-mode の',
-  'ctx_execute MCP ツールで実行してください:',
-  '',
-  `  ctx_execute(language: "shell", code: ${JSON.stringify(command)})`,
-  '',
-  '実行後は pass/fail のサマリと失敗したテストの詳細だけを報告し、',
-  '全文が必要になったら ctx_search で該当箇所を取り出してください。',
-].join('\n');
+// 透過リライトは「単一コマンドの RTK 対象」だけに限定する。複合コマンド（区切り文字を
+// 含む）や ctx 混在は、セグメント単位の安全な再構成が難しいので従来どおり context-mode
+// 誘導にフォールバックする（カバレッジは落とさない）。
+if (hasCtx || segments.length !== 1 || kinds[0] !== 'rtk') {
+  denyToContextMode();
+}
+
+// rtk を絶対パスで解決する（PATH を補強）。見つからなければ context-mode 誘導に
+// フォールバック。これにより rtk 未導入でも「生出力を会話に流さない」保証は崩れない。
+function resolveRtk() {
+  const home = process.env.HOME || '';
+  const path = `${process.env.PATH || ''}:${home}/.local/bin:${home}/.npm-global/bin`;
+  try {
+    return execSync('command -v rtk', { env: { ...process.env, PATH: path } })
+      .toString()
+      .trim();
+  } catch {
+    return '';
+  }
+}
+
+const rtk = resolveRtk();
+if (rtk === '') {
+  denyToContextMode();
+}
+
+// env 代入 / sudo を温存しつつ、パッケージランナーの前置き（npx 等）を剥がして
+// 解決済みの rtk 絶対パスを差し込む。例: `FOO=1 npx vitest run` -> `FOO=1 <rtk> vitest run`。
+function toRtk(seg) {
+  let s = seg.trim();
+  let prefix = '';
+  for (;;) {
+    const m = s.match(/^(?:\w+=\S+\s+|(?:sudo|command|env)\s+)/);
+    if (!m) break;
+    prefix += m[0];
+    s = s.slice(m[0].length);
+  }
+  s = s.replace(/^(?:npx\s+|bunx\s+|pnpm\s+exec\s+|yarn\s+|python3?\s+-m\s+)/, '');
+  return `${prefix}${rtk} ${s}`;
+}
 
 process.stdout.write(
   JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
-      permissionDecision: 'deny',
-      permissionDecisionReason: reason,
+      permissionDecision: 'allow',
+      updatedInput: { ...payload.tool_input, command: toRtk(segments[0]) },
     },
   }),
 );
