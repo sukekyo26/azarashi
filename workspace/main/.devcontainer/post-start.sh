@@ -17,8 +17,8 @@ command -v context-mode >/dev/null 2>&1 || npm install -g context-mode@1.0.162 |
 # Install the binary ONLY — never `rtk init`, so RTK's own PreToolUse hook / RTK.md
 # context can't compete with context-mode. The hook resolves rtk by absolute path,
 # so no PATH wiring is needed. Installs to ~/.local/bin; guard on that to skip warm
-# restarts. Non-fatal: without rtk the hook just runs the plain (uncompressed)
-# command. Pin a release with RTK_VERSION=vX.Y.Z if reproducibility matters.
+# restarts. Non-fatal: without rtk the hook falls back to the context-mode redirect.
+# Pin a release with RTK_VERSION=vX.Y.Z if reproducibility matters.
 [ -x "$HOME/.local/bin/rtk" ] || command -v rtk >/dev/null 2>&1 ||
   curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh || true
 
