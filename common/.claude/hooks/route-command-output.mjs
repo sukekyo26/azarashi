@@ -112,15 +112,11 @@ if (heads.some((h) => EXCLUDE.test(h) || GITDIFF.test(h))) {
 }
 
 function denyToContextMode() {
+  // モデルは context-mode を既知なので、要点（実行方法＋報告方針）だけを簡潔に伝える。
   const reason = [
-    'このコマンドは大量のテスト/品質チェック出力を生成します。',
-    '生出力を会話コンテキストに流さないため、Bash ではなく context-mode の',
-    'ctx_execute MCP ツールで実行してください:',
-    '',
+    '大量出力のため Bash ではなく context-mode で実行:',
     `  ctx_execute(language: "shell", code: ${JSON.stringify(command)})`,
-    '',
-    '実行後は pass/fail のサマリと失敗したテストの詳細だけを報告し、',
-    '全文が必要になったら ctx_search で該当箇所を取り出してください。',
+    '要約と失敗のみ報告、詳細は ctx_search で。',
   ].join('\n');
   process.stdout.write(
     JSON.stringify({
