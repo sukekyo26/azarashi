@@ -895,9 +895,16 @@ for _dep in git jq; do
   command -v "$_dep" >/dev/null 2>&1 ||
     die "'$_dep' is required but not found. Install it (e.g. sudo apt install $_dep)."
 done
-# TOML fragment merge needs python3; tomlkit is vendored under lib/, so no pip.
-command -v python3 >/dev/null 2>&1 ||
-  die "'python3' is required for TOML fragment merge but not found. Install it (e.g. sudo apt install python3)."
+# TOML fragment merge needs python3 (>= 3.9 for the vendored tomlkit; no pip).
+# Only install/status/diff run merges — don't block uninstall/doctor/clean-backups.
+case $CMD in
+  install | status)
+    command -v python3 >/dev/null 2>&1 ||
+      die "'python3' is required for TOML fragment merge but not found. Install it (e.g. sudo apt install python3)."
+    _toml_python_ok ||
+      die "python3 >= $_TOML_MIN_PY is required for TOML fragment merge (vendored tomlkit). Found: $(python3 --version 2>&1)."
+    ;;
+esac
 
 # The fragment merge relies on the jq 'walk' builtin (jq 1.6+). Probe for it so
 # an old jq fails here with an actionable message instead of a confusing error

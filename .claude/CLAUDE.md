@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 概要
 
-`azarashi` は dotfiles 管理リポジトリ。`common/` 配下を `$HOME` へ symlink でデプロイし、任意で `users/<name>/` の個人レイヤーを重ねる。本体は POSIX sh の `install.sh` と `lib/` のライブラリのみ。依存は `git` と `jq`、`*.fragment.toml` のマージに `python3`（`tomlkit` は `lib/vendor/` に同梱、`gh` は任意）。
+`azarashi` は dotfiles 管理リポジトリ。`common/` 配下を `$HOME` へ symlink でデプロイし、任意で `users/<name>/` の個人レイヤーを重ねる。本体は POSIX sh の `install.sh` と `lib/` のライブラリのみ。依存は `git` と `jq`、`*.fragment.toml` のマージに `python3` >= 3.9（`tomlkit` は `lib/vendor/` に同梱、`gh` は任意）。
 
 ## コマンド
 

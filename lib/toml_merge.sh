@@ -19,9 +19,18 @@ _toml_lib_dir() {
 
 _TOML_PY="$(_toml_lib_dir)/toml_merge.py"
 
+# Minimum Python the vendored tomlkit supports (its Requires-Python is >=3.9).
+_TOML_MIN_PY="3.9"
+
+# _toml_python_ok — true if python3 exists and is new enough for tomlkit.
+_toml_python_ok() {
+  command -v python3 >/dev/null 2>&1 &&
+    python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3, 9) else 1)' 2>/dev/null
+}
+
 # _toml_available — true if the python bridge can run.
 _toml_available() {
-  command -v python3 >/dev/null 2>&1 && [ -f "$_TOML_PY" ]
+  _toml_python_ok && [ -f "$_TOML_PY" ]
 }
 
 # _toml_to_json <file> — parse TOML to JSON on stdout (nonzero on parse error).
@@ -34,7 +43,7 @@ _toml_to_json() {
 # shellcheck disable=SC2086  # _mt_cleanup/_mt_json_frags are intentionally word-split
 merge_toml() {
   _toml_available || {
-    warn "python3 not found, skipping TOML merge: $1"
+    warn "python3 >= $_TOML_MIN_PY not found (needed by the vendored tomlkit), skipping TOML merge: $1"
     return 0
   }
 
@@ -61,6 +70,8 @@ merge_toml() {
   if [ -f "$_mt_real_target" ]; then
     if ! _toml_to_json "$_mt_real_target" >"$_mt_json_target" 2>/dev/null; then
       warn "TOML parse failed (non-standard syntax?), skipping merge: $_mt_real_target"
+      # Still emit a status line so `status` stays uniform/script-friendly.
+      [ "$MODE" = status ] && info "drift   : $_mt_real_target"
       rm -f $_mt_cleanup
       return 0
     fi

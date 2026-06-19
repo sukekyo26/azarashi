@@ -617,6 +617,24 @@ if _toml_available; then
   esac
   assert_eq "toml: skip returns success" "$rc" "0"
 
+  # (k) status mode still emits a drift line for an unparseable target
+  printf '[features]\nhooks = true\n' >"$tf"
+  printf 'broken = "unterminated\n' >"$tt"
+  MODE=status
+  out=$(merge_toml "$tt" "$tf" 2>&1)
+  MODE=install
+  case "$out" in
+    *drift*) ok "toml: status reports drift for an unparseable target" ;;
+    *) ng "toml: status should report drift for unparseable (got: $out)" ;;
+  esac
+
+  # (l) an array of inline tables round-trips (not stringified)
+  rm -f "$tt"
+  printf 'folders = [{ path = "." }, { path = "/x" }]\n' >"$tf"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: array of inline tables round-trips" \
+    "$(tj "$tt" '.folders[1].path')" "/x"
+
   rm -f "$tf" "$tt"
 
 else
