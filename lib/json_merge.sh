@@ -28,6 +28,19 @@ def walk_ok($o; $p):
          else {cur: null, ok: false} end);
 def absent($o; $p): walk_ok($o; $p) | .ok | not;
 def parentObj($o; $p): walk_ok($o; $p[0:-1]) | (.ok and (.cur | type == "object"));
+def force3($b; $t; $f):
+  if ($f | type) == "object" and ($t | type) == "object" then
+    ($b // {}) as $bb |
+    reduce (($t | keys) + ($f | keys) | unique)[] as $k (
+      {};
+      if ($f | has($k)) and ($t | has($k)) then
+        . + {($k): force3($bb[$k]; $t[$k]; $f[$k])}
+      elif ($f | has($k)) then . + {($k): $f[$k]}
+      else . + {($k): $t[$k]} end)
+  elif ($f | type) == "array" and ($t | type) == "array" and ($b | type) == "array" then
+    [$t[] | . as $x | select([$b[] | . == $x] | any | not)] as $user_added |
+    $f + [$user_added[] | . as $x | select([$f[] | . == $x] | any | not)]
+  else $f end;
 ($base[0]) as $b | ($target[0]) as $t | ($clean) as $f
 | [ $b | [paths] as $all | $all[] as $p
     # compare via walk_ok, not getpath: if the target diverged structurally from
@@ -39,7 +52,25 @@ def parentObj($o; $p): walk_ok($o; $p[0:-1]) | (.ok and (.cur | type == "object"
              and (walk_ok($t; $p) as $tw | $tw.ok and ($tw.cur == ($b | getpath($p)))))
     | $p ] as $del
 | if $mode == "list" then ($del[] | map(tostring) | join("."))
-  else (($t * $f) | delpaths($del)) end
+  else (force3($b; $t; $f) | delpaths($del)) end
+'
+
+# shellcheck disable=SC2016  # $l/$r/$k/$x are jq vars, not shell
+_UNION_MERGE_JQ='
+def union_merge:
+  if (.[0] | type) == "object" and (.[1] | type) == "object" then
+    .[0] as $l | .[1] as $r |
+    reduce (($l | keys) + ($r | keys) | unique)[] as $k (
+      {};
+      if ($l | has($k)) and ($r | has($k)) then
+        . + {($k): ([$l[$k], $r[$k]] | union_merge)}
+      elif ($r | has($k)) then . + {($k): $r[$k]}
+      else . + {($k): $l[$k]} end)
+  elif (.[0] | type) == "array" and (.[1] | type) == "array" then
+    .[0] as $l | .[1] as $r |
+    $r + [$l[] | . as $x | select([$r[] | . == $x] | any | not)]
+  else .[1] end;
+[.[0], .[1]] | union_merge
 '
 
 # _clean_fragment <frag1> [frag2 ...] — validate every fragment, then print the
@@ -85,10 +116,16 @@ _merge_chain() {
     return 0
   fi
 
-  # 2-way: stdin (clean) is .[0], target is .[1]. Default .[0] * .[1] keeps the
-  # target; --force flips to .[1] * .[0] so the fragment overwrites the target.
-  _mc_expr='.[0] * .[1]'
-  [ "$FORCE" -eq 1 ] && _mc_expr='.[1] * .[0]'
+  # 2-way: stdin (clean) is .[0], target is .[1].
+  if [ "$FORCE" -eq 1 ]; then
+    # --force flips to .[1] * .[0] so the fragment overwrites the target.
+    _mc_expr='.[1] * .[0]'
+  else
+    # Default: recursive union merge — objects merge by key (target wins on
+    # conflict), arrays are unioned (target elements kept, new fragment
+    # elements appended; deep equality deduplication).
+    _mc_expr=$_UNION_MERGE_JQ
+  fi
   printf '%s' "$_mc_clean" | jq -s "$_mc_expr" - "$_mc_target" ||
     die "merge failed: $_mc_target"
 }
@@ -128,18 +165,29 @@ _show_changed_keys() {
   shift
   [ -f "$_mj_target" ] || return 0
   _sck_clean=$(_clean_fragment "$@") || exit 1
+  # shellcheck disable=SC2016  # $c/$t/$k/$d/$cv/$tv/$n/$x are jq vars
   jq -rn --argjson force "$_sck_force" --argjson clean "$_sck_clean" \
     --slurpfile target "$_mj_target" '
-      $clean as $c | $target[0] as $t
-      | [ $c | paths(scalars) ][]
-      | . as $p
-      | ($t | try getpath($p) catch null) as $tv
-      | ($c | getpath($p)) as $cv
-      | ($p | map(tostring) | join(".")) as $d
-      | if $tv == $cv then empty
-        elif $tv == null then "add key: \($d)"
-        elif $force == 1 then "overwrite key: \($d)"
-        else empty end
+      def report($c; $t; $prefix):
+        if ($c | type) == "object" then
+          ($c | keys)[] as $k |
+          ($prefix + (if $prefix != "" then "." else "" end) + $k) as $d |
+          ($t | .[$k] // null) as $tv | $c[$k] as $cv |
+          if ($cv | type) == "object" and (($tv | type) == "object" or $tv == null) then
+            report($cv; ($tv // {}); $d)
+          elif ($cv | type) == "array" and ($tv | type) == "array" then
+            if $cv == $tv then empty
+            elif $force == 1 then "replace array: \($d)"
+            else
+              ([$cv[] | . as $x | select([$tv[] | . == $x] | any | not)] | length) as $n
+              | if $n > 0 then "add \($n) array element(s): \($d)" else empty end
+            end
+          elif $cv == $tv then empty
+          elif $tv == null then "add key: \($d)"
+          elif $force == 1 then "overwrite key: \($d)"
+          else empty end
+        else empty end;
+      report($clean; $target[0]; "")
     ' | while IFS= read -r _sck_line; do
     [ -n "$_sck_line" ] && info "[dry-run] $_sck_line"
   done
