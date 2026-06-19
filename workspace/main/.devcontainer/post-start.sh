@@ -13,12 +13,12 @@ set -euo pipefail
 # the statusline degrades gracefully when this CLI is absent.
 command -v context-mode >/dev/null 2>&1 || npm install -g context-mode@1.0.162 || true
 
-# RTK (rtk-ai) CLI for the redirect-tests hook's transparent compression. Install
-# the binary ONLY — never `rtk init`, so RTK's own PreToolUse hook / RTK.md context
-# can't compete with context-mode. The hook resolves rtk by absolute path, so no
-# PATH wiring is needed. Installs to ~/.local/bin; guard on that to skip warm
-# restarts. Non-fatal so a missing network degrades to the context-mode fallback.
-# Pin a release with RTK_VERSION=vX.Y.Z if reproducibility matters.
+# RTK (rtk-ai) CLI for the route-heavy-commands hook's transparent compression.
+# Install the binary ONLY — never `rtk init`, so RTK's own PreToolUse hook / RTK.md
+# context can't compete with context-mode. The hook resolves rtk by absolute path,
+# so no PATH wiring is needed. Installs to ~/.local/bin; guard on that to skip warm
+# restarts. Non-fatal: without rtk the hook just runs the plain (uncompressed)
+# command. Pin a release with RTK_VERSION=vX.Y.Z if reproducibility matters.
 [ -x "$HOME/.local/bin/rtk" ] || command -v rtk >/dev/null 2>&1 ||
   curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh || true
 
