@@ -94,8 +94,34 @@ assert_eq "protected keys are stripped (nested, case-insensitive)" \
 printf '{"p":[1,2]}\n' >"$t"
 printf '{"p":[3]}\n' >"$f"
 merge_json "$t" "$f" >/dev/null
-assert_eq "arrays: the existing target array wins wholesale" \
-  "$(jq -Sc . "$t")" '{"p":[1,2]}'
+assert_eq "arrays: fragment elements are unioned into the target array" \
+  "$(jq -Sc . "$t")" '{"p":[1,2,3]}'
+
+printf '{"p":[1,2]}\n' >"$t"
+printf '{"p":[2,3]}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "arrays: union deduplicates by deep equality" \
+  "$(jq -Sc . "$t")" '{"p":[1,2,3]}'
+
+printf '{"p":[{"a":1},{"b":2}]}\n' >"$t"
+printf '{"p":[{"a":1}]}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "arrays: object elements are deduplicated by deep equality" \
+  "$(jq -Sc . "$t")" '{"p":[{"a":1},{"b":2}]}'
+
+printf '{"h":{"Pre":[{"m":"B"}]}}\n' >"$t"
+printf '{"h":{"Pre":[{"m":"W"}]}}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "arrays: nested array union through object merge" \
+  "$(jq -Sc . "$t")" '{"h":{"Pre":[{"m":"B"},{"m":"W"}]}}'
+
+printf '{"p":[1,2]}\n' >"$t"
+printf '{"p":[3]}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+printf '{"p":[3]}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "arrays: union is idempotent (second run same result)" \
+  "$(jq -Sc . "$t")" '{"p":[1,2,3]}'
 
 rm -f "$t"
 printf '{"p":[1]}\n' >"$WORK/f1.json"
@@ -388,6 +414,42 @@ merge_json "$t" "$f" >/dev/null 2>&1
 DRY_RUN=0
 assert_eq "force 3-way: --dry-run does not rewrite the base snapshot" \
   "$(jq -Sc . "$bf")" '{"OLD":1,"keep":1}'
+
+# (p) force 3-way preserves user-added array elements via base comparison
+rm -f "$t" "$bf"
+printf '{"h":[{"a":1}]}\n' >"$bf"
+printf '{"h":[{"a":1},{"u":1}]}\n' >"$t"
+printf '{"h":[{"a":1},{"b":2}]}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: user-added array element is preserved" \
+  "$(jq -Sc .h "$t")" '[{"a":1},{"b":2},{"u":1}]'
+
+# (q) force 3-way removes fragment-dropped array elements but keeps user additions
+rm -f "$t" "$bf"
+printf '{"h":[{"a":1},{"b":2}]}\n' >"$bf"
+printf '{"h":[{"a":1},{"b":2},{"u":1}]}\n' >"$t"
+printf '{"h":[{"a":1}]}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: dropped element removed, user addition kept" \
+  "$(jq -Sc .h "$t")" '[{"a":1},{"u":1}]'
+
+# (r) force 3-way array: user addition identical to new fragment element is not duplicated
+rm -f "$t" "$bf"
+printf '{"h":[{"a":1}]}\n' >"$bf"
+printf '{"h":[{"a":1},{"b":2}]}\n' >"$t"
+printf '{"h":[{"a":1},{"b":2}]}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: overlapping user/fragment element not duplicated" \
+  "$(jq -Sc .h "$t")" '[{"a":1},{"b":2}]'
+
+# (s) force 3-way array works through nested objects
+rm -f "$t" "$bf"
+printf '{"hooks":{"Pre":[{"m":"B"}]}}\n' >"$bf"
+printf '{"hooks":{"Pre":[{"m":"B"},{"m":"U"}]}}\n' >"$t"
+printf '{"hooks":{"Pre":[{"m":"B"},{"m":"W"}]}}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: nested array preserves user-added element" \
+  "$(jq -Sc .hooks.Pre "$t")" '[{"m":"B"},{"m":"W"},{"m":"U"}]'
 
 rm -f "$t" "$bf"
 
