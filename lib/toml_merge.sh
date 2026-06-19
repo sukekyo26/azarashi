@@ -1,16 +1,36 @@
 # TOML fragment merge — thin wrapper around json_merge.sh.
 # Converts TOML ↔ JSON at the boundary, reuses the existing jq-based merge.
 # Sourced by install.sh AFTER json_merge.sh.
-# Requires: tomlq (TOML→JSON), python3 + toml module (JSON→TOML).
+# Requires: tomlq (TOML→JSON, from the yq package), jq (JSON→TOML emitter).
 
-# _toml_available — true if both conversion tools are present.
+# _toml_available — true if conversion tools are present.
 _toml_available() {
-  command -v tomlq >/dev/null 2>&1 && python3 -c 'import toml' 2>/dev/null
+  command -v tomlq >/dev/null 2>&1
 }
+
+# shellcheck disable=SC2016  # jq variables, not shell
+_JSON_TO_TOML_JQ='
+def toml_val:
+  if type == "string" then "\"" + (gsub("\\\\"; "\\\\\\\\") | gsub("\""; "\\\\\"")
+    | gsub("\n"; "\\\\n") | gsub("\t"; "\\\\t")) + "\""
+  elif type == "boolean" then if . then "true" else "false" end
+  elif type == "number" then tostring
+  elif type == "array" then "[" + ([.[] | toml_val] | join(", ")) + "]"
+  else tostring end;
+def has_leaf: to_entries | any(.value | type != "object");
+def emit($p):
+  to_entries | sort_by(if .value | type == "object" then 1 else 0 end) | .[] |
+  if .value | type == "object" then
+    (if $p == "" then .key else $p + "." + .key end) as $sub |
+    if (.value | has_leaf) then "\n[" + $sub + "]", (.value | emit($sub))
+    else (.value | emit($sub)) end
+  else .key + " = " + (.value | toml_val) end;
+emit("")
+'
 
 # _json_to_toml — read JSON from stdin, write TOML to stdout.
 _json_to_toml() {
-  python3 -c 'import toml,json,sys;toml.dump(json.load(sys.stdin),sys.stdout)'
+  jq -r "$_JSON_TO_TOML_JQ"
 }
 
 # merge_toml <target.toml> <frag1.toml> [frag2.toml ...]
@@ -18,7 +38,7 @@ _json_to_toml() {
 # shellcheck disable=SC2086  # _mt_cleanup/_mt_json_frags are intentionally word-split
 merge_toml() {
   _toml_available || {
-    warn "tomlq/python3-toml not found, skipping TOML merge: $1"
+    warn "tomlq not found, skipping TOML merge: $1"
     return 0
   }
 
