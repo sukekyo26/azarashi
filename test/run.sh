@@ -499,7 +499,10 @@ base="$WORK/nb"
 assert_eq "newest_backup returns the most recent timestamp" \
   "$(newest_backup "$base")" "$base.dotfiles-bak.20250101T000000Z"
 
-# --- toml_merge.sh (skipped when tomlq / python3-toml unavailable) --------
+# --- toml_merge.sh (skipped when python3 unavailable) ----------------------
+
+# tj <file> <jq-filter> — read a value out of a TOML file via the python bridge.
+tj() { _toml_to_json "$1" | jq -r "$2"; }
 
 if _toml_available; then
 
@@ -511,25 +514,25 @@ if _toml_available; then
   printf '[features]\nhooks = true\n' >"$tf"
   merge_toml "$tt" "$tf" >/dev/null
   assert_eq "toml: merge into absent target materializes the fragment" \
-    "$(tomlq -r .features.hooks "$tt")" "true"
+    "$(tj "$tt" .features.hooks)" "true"
 
   # (b) existing target value wins over the fragment
   printf '[features]\nhooks = false\nmodel = "o3"\n' >"$tt"
   printf '[features]\nhooks = true\n' >"$tf"
   merge_toml "$tt" "$tf" >/dev/null
   assert_eq "toml: existing target value wins over the fragment" \
-    "$(tomlq -r .features.hooks "$tt")" "false"
+    "$(tj "$tt" .features.hooks)" "false"
   assert_eq "toml: target-only key is preserved" \
-    "$(tomlq -r .features.model "$tt")" "o3"
+    "$(tj "$tt" .features.model)" "o3"
 
   # (c) fragment adds new keys to existing target
   printf '[features]\nhooks = true\n' >"$tt"
   printf '[mcp]\ncommand = "ctx"\n' >"$tf"
   merge_toml "$tt" "$tf" >/dev/null
   assert_eq "toml: fragment adds new keys to existing target" \
-    "$(tomlq -r .mcp.command "$tt")" "ctx"
+    "$(tj "$tt" .mcp.command)" "ctx"
   assert_eq "toml: existing keys survive after new key addition" \
-    "$(tomlq -r .features.hooks "$tt")" "true"
+    "$(tj "$tt" .features.hooks)" "true"
 
   # (d) status mode reports drift (fragment adds a key the target lacks)
   printf '[features]\nhooks = true\n' >"$tt"
@@ -553,28 +556,70 @@ if _toml_available; then
     *) ng "toml: status mode should report in-sync (got: $out)" ;;
   esac
 
-  # (f) keys with special chars (paths) are quoted so the output re-parses
+  # (f) already-quoted special-char table key round-trips
   printf '[projects."/home/u/proj"]\ntrust = "high"\n' >"$tf"
   rm -f "$tt"
   merge_toml "$tt" "$tf" >/dev/null
   assert_eq "toml: special-char table key round-trips" \
-    "$(tomlq -r '.projects["/home/u/proj"].trust' "$tt")" "high"
+    "$(tj "$tt" '.projects["/home/u/proj"].trust')" "high"
 
-  # (g) a target tomlq cannot parse is skipped with a warning, not fatal
+  # (g) codex's unquoted '/' path header parses, merges, and stays unquoted
   printf '[features]\nhooks = true\n' >"$tf"
   printf '[projects./home/u/proj]\ntrust = "high"\n' >"$tt"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: unquoted '/' path key is preserved through merge" \
+    "$(tj "$tt" '.projects["/home/u/proj"].trust')" "high"
+  assert_eq "toml: the new fragment key is merged in" \
+    "$(tj "$tt" .features.hooks)" "true"
+  if grep -q '^\[projects\./home/u/proj\]$' "$tt"; then
+    ok "toml: '/' header is written back unquoted (byte-faithful to codex)"
+  else
+    ng "toml: '/' header should stay unquoted (got: $(grep projects "$tt"))"
+  fi
+
+  # (h) comments and unrelated keys survive a merge verbatim
+  printf '# keep me\n[features]\nhooks = true # trailing\nnote = "x"\n' >"$tt"
+  printf '[mcp]\ncommand = "ctx"\n' >"$tf"
+  merge_toml "$tt" "$tf" >/dev/null
+  if grep -q '# keep me' "$tt" && grep -q '# trailing' "$tt"; then
+    ok "toml: comments survive the merge"
+  else
+    ng "toml: comments should survive (got: $(cat "$tt"))"
+  fi
+  assert_eq "toml: unrelated key survives the merge" \
+    "$(tj "$tt" .features.note)" "x"
+
+  # (j) codex super-table: add bare [tui] keys where only [tui.sub] exists
+  printf '[tui]\nstatus_line = ["model"]\n' >"$tf"
+  printf '[projects./home/u/p]\ntrust = "t"\n[tui.model_availability_nux]\ngpt-5.5 = 1\n' >"$tt"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: bare [tui] key is added alongside an existing [tui.sub]" \
+    "$(tj "$tt" '.tui.status_line[0]')" "model"
+  # the brain sees the dotted key as nested (gpt-5.5 => gpt-5.5); what matters is
+  # the on-disk line below stays verbatim, which the next check asserts.
+  assert_eq "toml: the existing [tui.sub] table survives" \
+    "$(tj "$tt" '.tui.model_availability_nux["gpt-5"]["5"]')" "1"
+  if grep -q '^gpt-5.5 = 1$' "$tt"; then
+    ok "toml: sub-table's dotted key stays verbatim (not split)"
+  else
+    ng "toml: 'gpt-5.5 = 1' should stay verbatim (got: $(grep gpt "$tt"))"
+  fi
+
+  # (i) a genuinely malformed target is skipped with a warning, not fatal
+  printf '[features]\nhooks = true\n' >"$tf"
+  printf 'broken = "unterminated\n' >"$tt"
   out=$(merge_toml "$tt" "$tf" 2>&1)
   rc=$?
   case "$out" in
-    *skipping*) ok "toml: unparseable target is skipped, not fatal" ;;
-    *) ng "toml: unparseable target should skip (got: $out)" ;;
+    *skipping*) ok "toml: malformed target is skipped, not fatal" ;;
+    *) ng "toml: malformed target should skip (got: $out)" ;;
   esac
   assert_eq "toml: skip returns success" "$rc" "0"
 
   rm -f "$tf" "$tt"
 
 else
-  printf '  skip - toml_merge tests (tomlq not available)\n'
+  printf '  skip - toml_merge tests (python3 not available)\n'
 fi
 
 # --- summary ---------------------------------------------------------------

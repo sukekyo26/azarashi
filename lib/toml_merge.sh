@@ -1,40 +1,32 @@
 # TOML fragment merge — thin wrapper around json_merge.sh.
-# Converts TOML ↔ JSON at the boundary, reuses the existing jq-based merge.
+# Converts TOML <-> JSON at the boundary via a vendored tomlkit (lib/toml_merge.py)
+# and reuses the existing jq-based merge. tomlkit makes the write comment- and
+# format-preserving and tolerates codex's unquoted '/' path keys.
 # Sourced by install.sh AFTER json_merge.sh.
-# Requires: tomlq (TOML→JSON, from the yq package), jq (JSON→TOML emitter).
+# Requires: python3 (tomlkit is vendored under lib/vendor/), jq.
 
-# _toml_available — true if conversion tools are present.
-_toml_available() {
-  command -v tomlq >/dev/null 2>&1
+# _toml_lib_dir — the lib/ dir holding toml_merge.py, resolved from whichever
+# entrypoint sourced us (install.sh sets REPO_DIR; test/run.sh sets SCRIPT_DIR).
+_toml_lib_dir() {
+  if [ -n "${REPO_DIR:-}" ]; then
+    printf '%s/lib' "$REPO_DIR"
+  elif [ -n "${SCRIPT_DIR:-}" ]; then
+    printf '%s/../lib' "$SCRIPT_DIR"
+  else
+    printf 'lib'
+  fi
 }
 
-# shellcheck disable=SC2016  # jq variables, not shell
-_JSON_TO_TOML_JQ='
-def tkey:
-  if test("^[A-Za-z0-9_-]+$") then .
-  else "\"" + (gsub("\\\\"; "\\\\\\\\") | gsub("\""; "\\\\\"")) + "\"" end;
-def toml_val:
-  if type == "string" then "\"" + (gsub("\\\\"; "\\\\\\\\") | gsub("\""; "\\\\\"")
-    | gsub("\n"; "\\\\n") | gsub("\t"; "\\\\t")) + "\""
-  elif type == "boolean" then if . then "true" else "false" end
-  elif type == "number" then tostring
-  elif type == "object" then "{" + ([to_entries[] | (.key | tkey) + " = " + (.value | toml_val)] | join(", ")) + "}"
-  elif type == "array" then "[" + ([.[] | toml_val] | join(", ")) + "]"
-  else tostring end;
-def has_leaf: to_entries | any(.value | type != "object");
-def emit($p):
-  to_entries | sort_by(if .value | type == "object" then 1 else 0 end) | .[] |
-  if .value | type == "object" then
-    (if $p == "" then (.key | tkey) else $p + "." + (.key | tkey) end) as $sub |
-    if (.value | has_leaf) then "\n[" + $sub + "]", (.value | emit($sub))
-    else (.value | emit($sub)) end
-  else (.key | tkey) + " = " + (.value | toml_val) end;
-emit("")
-'
+_TOML_PY="$(_toml_lib_dir)/toml_merge.py"
 
-# _json_to_toml — read JSON from stdin, write TOML to stdout.
-_json_to_toml() {
-  jq -r "$_JSON_TO_TOML_JQ"
+# _toml_available — true if the python bridge can run.
+_toml_available() {
+  command -v python3 >/dev/null 2>&1 && [ -f "$_TOML_PY" ]
+}
+
+# _toml_to_json <file> — parse TOML to JSON on stdout (nonzero on parse error).
+_toml_to_json() {
+  python3 "$_TOML_PY" to-json "$1"
 }
 
 # merge_toml <target.toml> <frag1.toml> [frag2.toml ...]
@@ -42,7 +34,7 @@ _json_to_toml() {
 # shellcheck disable=SC2086  # _mt_cleanup/_mt_json_frags are intentionally word-split
 merge_toml() {
   _toml_available || {
-    warn "tomlq not found (apt install yq), skipping TOML merge: $1"
+    warn "python3 not found, skipping TOML merge: $1"
     return 0
   }
 
@@ -56,7 +48,7 @@ merge_toml() {
   for _mt_f in "$@"; do
     _mt_jtmp=$(mktemp) || die "mktemp failed"
     _mt_cleanup="$_mt_cleanup $_mt_jtmp"
-    tomlq . "$_mt_f" >"$_mt_jtmp" || {
+    _toml_to_json "$_mt_f" >"$_mt_jtmp" || {
       rm -f $_mt_cleanup
       die "TOML parse failed: $_mt_f"
     }
@@ -67,7 +59,7 @@ merge_toml() {
   _mt_json_target=$(mktemp) || die "mktemp failed"
   _mt_cleanup="$_mt_cleanup $_mt_json_target"
   if [ -f "$_mt_real_target" ]; then
-    if ! tomlq . "$_mt_real_target" >"$_mt_json_target" 2>/dev/null; then
+    if ! _toml_to_json "$_mt_real_target" >"$_mt_json_target" 2>/dev/null; then
       warn "TOML parse failed (non-standard syntax?), skipping merge: $_mt_real_target"
       rm -f $_mt_cleanup
       return 0
@@ -122,10 +114,21 @@ merge_toml() {
   fi
 
   # --- write ---
+  # Apply the merged JSON onto the original document so comments/formatting of
+  # untouched keys survive: pass the live target as <orig> ('-' when absent).
   mkdir -p "$(dirname "$_mt_real_target")" || die "mkdir failed: $_mt_real_target"
+  _mt_mjson=$(mktemp) || die "mktemp failed"
+  _mt_cleanup="$_mt_cleanup $_mt_mjson"
+  printf '%s' "$_mt_result" >"$_mt_mjson" || die "write failed: $_mt_mjson"
+  _mt_orig='-'
+  _mt_tgt_json='-'
+  if [ -f "$_mt_real_target" ]; then
+    _mt_orig=$_mt_real_target
+    _mt_tgt_json=$_mt_json_target
+  fi
   backup "$_mt_real_target"
   _mt_tmp=$(mktemp "${_mt_real_target}.dotfiles-tmp.XXXXXX") || die "mktemp failed"
-  if ! printf '%s' "$_mt_result" | _json_to_toml >"$_mt_tmp" 2>/dev/null; then
+  if ! python3 "$_TOML_PY" apply "$_mt_orig" "$_mt_tgt_json" "$_mt_mjson" >"$_mt_tmp" 2>/dev/null; then
     rm -f "$_mt_tmp" $_mt_cleanup
     die "JSON-to-TOML conversion failed: $_mt_real_target"
   fi

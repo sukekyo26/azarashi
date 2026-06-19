@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 概要
 
-`azarashi` は dotfiles 管理リポジトリ。`common/` 配下を `$HOME` へ symlink でデプロイし、任意で `users/<name>/` の個人レイヤーを重ねる。本体は POSIX sh の `install.sh` と `lib/` のライブラリのみ。依存は `git` と `jq`（`gh` は任意）。
+`azarashi` は dotfiles 管理リポジトリ。`common/` 配下を `$HOME` へ symlink でデプロイし、任意で `users/<name>/` の個人レイヤーを重ねる。本体は POSIX sh の `install.sh` と `lib/` のライブラリのみ。依存は `git` と `jq`、`*.fragment.toml` のマージに `python3`（`tomlkit` は `lib/vendor/` に同梱、`gh` は任意）。
 
 ## コマンド
 
@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```sh
 just ci             # ローカル全スイート = check + test（CI と同一）
 just check          # shellcheck + shfmt-check のみ
-just test           # lib のユニットテスト（sh test/run.sh、jq のみに依存）
+just test           # lib のユニットテスト（sh test/run.sh、jq に依存。TOML テストは python3 が無ければ skip）
 just shfmt          # shfmt でフォーマット適用（in-place）
 just hooks-install  # 初回のみ: pre-commit hook を git に配線
 just hooks-run      # 全ファイルに shellcheck / shfmt / gitleaks
@@ -42,6 +42,8 @@ install.sh の主要サブコマンド:
 
 **`*.fragment.json` の deep-merge**: fragment は対応する settings JSON へ deep-merge される。優先度は 既存値 > ユーザー fragment > 共通 fragment（`--force` 時のみリポジトリ fragment が既存値に勝つ）。credentials/token 等の保護キーは常に温存。`--force` では **3-way 削除** を行い、前回適用 fragment を `<settings>.fragment.base.json` に記録して、fragment から消えたキーを（手動変更が無ければ）同期削除する。
 
+**`*.fragment.toml` の deep-merge**: TOML fragment（例 `.codex/config.toml`）も同じ JSON マージ頭脳を再利用する。境界の TOML↔JSON 変換と書き戻しは同梱 `tomlkit` 経由（`lib/toml_merge.py`）で行い、コメント・型・書式を保持して**変更キーだけ**を差し込む。codex が書く非標準の `[projects./path]`（仕様違反の裸キー `/`）はパース前にクォートし、出力時に元の非クォート形へ戻して byte 単位で忠実に保つ。
+
 **`mirror.conf`**（リポルート）: 1 つの正典ファイルを複数配布先へ symlink でミラーする宣言。各行は `target source`（レイヤ相対、`#` はコメント）。source はレイヤ解決を通るのでユーザー上書きに追従する。例: `.agents/AGENTS.md` を `.claude/CLAUDE.md` と `.copilot/copilot-instructions.md` へ。ソースが見つからない行は警告してスキップ（fatal にしない）。
 
 ### 主要ファイル
@@ -49,6 +51,8 @@ install.sh の主要サブコマンド:
 - `install.sh` — エントリポイント。POSIX sh。`lib/common.sh` と `lib/json_merge.sh` を source。
 - `lib/common.sh` — ログ（`log`/`info`/`warn`/`err`/`die`）、`backup`、`newest_backup`、symlink ヘルパー（`is_our_link` / `is_managed_link` / `link_path`）。
 - `lib/json_merge.sh` — fragment マージのコア（`merge_json` ほか）。
+- `lib/toml_merge.sh` — TOML fragment マージ（`merge_toml`）。境界変換と書き戻しを `lib/toml_merge.py` に委譲し、頭脳は `json_merge.sh` を再利用。
+- `lib/toml_merge.py` — 同梱 `tomlkit`（`lib/vendor/tomlkit/`, MIT）を使う TOML↔JSON ブリッジ。フォーマット保持の書き戻しと codex 方言の正規化を担う。
 - `test/run.sh` — `lib/` のユニットテスト。グローバルはハーネスがケースごとに所有。
 - `common/` — 配布ペイロード（`.agents/`, `.claude/`, `.copilot/` の設定・statusline・hooks）。
 
