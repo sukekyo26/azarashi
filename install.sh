@@ -43,6 +43,7 @@ USER_SRC=""
 
 . "$REPO_DIR/lib/common.sh"
 . "$REPO_DIR/lib/json_merge.sh"
+. "$REPO_DIR/lib/toml_merge.sh"
 
 usage() {
   cat <<'EOF'
@@ -319,6 +320,18 @@ deploy_fragment() {
   merge_json "$_df_target" "$@"
 }
 
+# deploy_fragment_toml <rel> — merge the common then user versions of a TOML
+# fragment into the matching TOML under $HOME (existing target keys still win).
+deploy_fragment_toml() {
+  _dft_rel=$1
+  _dft_target="$HOME/${_dft_rel%.fragment.toml}.toml"
+  set --
+  [ -e "$COMMON_SRC/$_dft_rel" ] && set -- "$@" "$COMMON_SRC/$_dft_rel"
+  [ -n "$USER_SRC" ] && [ -e "$USER_SRC/$_dft_rel" ] && set -- "$@" "$USER_SRC/$_dft_rel"
+  [ "$#" -gt 0 ] || return 0
+  merge_toml "$_dft_target" "$@"
+}
+
 # deploy_rel <rel>
 deploy_rel() {
   _eff=$(effective_src "$1")
@@ -327,6 +340,10 @@ deploy_rel() {
   case ${1##*/} in
     *.fragment.json)
       deploy_fragment "$1"
+      return 0
+      ;;
+    *.fragment.toml)
+      deploy_fragment_toml "$1"
       return 0
       ;;
   esac
@@ -878,6 +895,16 @@ for _dep in git jq; do
   command -v "$_dep" >/dev/null 2>&1 ||
     die "'$_dep' is required but not found. Install it (e.g. sudo apt install $_dep)."
 done
+# TOML fragment merge needs python3 (>= 3.9 for the vendored tomlkit; no pip).
+# Only install/status/diff run merges — don't block uninstall/doctor/clean-backups.
+case $CMD in
+  install | status)
+    command -v python3 >/dev/null 2>&1 ||
+      die "'python3' is required for TOML fragment merge but not found. Install it (e.g. sudo apt install python3)."
+    _toml_python_ok ||
+      die "python3 >= $_TOML_MIN_PY is required for TOML fragment merge (vendored tomlkit). Found: $(python3 --version 2>&1)."
+    ;;
+esac
 
 # The fragment merge relies on the jq 'walk' builtin (jq 1.6+). Probe for it so
 # an old jq fails here with an actionable message instead of a confusing error

@@ -1,6 +1,6 @@
 # azarashi
 
-個人用の dotfiles 置き場。`common/`（+ 任意の `users/<name>/`）を `$HOME` へ symlink で配る。依存: `git`, `jq`。
+個人用の dotfiles 置き場。`common/`（+ 任意の `users/<name>/`）を `$HOME` へ symlink で配る。依存: `git`, `jq`（`*.fragment.toml` のマージに `python3` >= 3.9。`tomlkit` は同梱）。
 
 ```sh
 ./install.sh            # デプロイ（= install）

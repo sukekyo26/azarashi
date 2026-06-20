@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
-# Unit tests for the sourced libraries (lib/common.sh, lib/json_merge.sh).
-# Run: sh test/run.sh   (depends only on jq). Exits non-zero on any failure.
+# Unit tests for the sourced libraries (lib/common.sh, lib/json_merge.sh,
+# lib/toml_merge.sh). Run: sh test/run.sh — needs jq; the TOML merge tests also
+# need python3 >= 3.9 and are skipped otherwise. Exits non-zero on any failure.
 set -u
 
 SCRIPT_DIR=$(
@@ -18,6 +19,8 @@ MODE=install
 . "$SCRIPT_DIR/../lib/common.sh"
 # shellcheck source=lib/json_merge.sh
 . "$SCRIPT_DIR/../lib/json_merge.sh"
+# shellcheck source=lib/toml_merge.sh
+. "$SCRIPT_DIR/../lib/toml_merge.sh"
 
 TESTS=0
 FAILS=0
@@ -496,6 +499,148 @@ base="$WORK/nb"
 : >"$base.dotfiles-bak.20230101T000000Z"
 assert_eq "newest_backup returns the most recent timestamp" \
   "$(newest_backup "$base")" "$base.dotfiles-bak.20250101T000000Z"
+
+# --- toml_merge.sh (skipped when python3 >= 3.9 unavailable) ----------------
+
+# tj <file> <jq-filter> — read a value out of a TOML file via the python bridge.
+tj() { _toml_to_json "$1" | jq -r "$2"; }
+
+if _toml_available; then
+
+  tf="$WORK/frag.toml"
+  tt="$WORK/target.toml"
+
+  # (a) merge into absent target materializes the fragment as TOML
+  rm -f "$tt"
+  printf '[features]\nhooks = true\n' >"$tf"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: merge into absent target materializes the fragment" \
+    "$(tj "$tt" .features.hooks)" "true"
+
+  # (b) existing target value wins over the fragment
+  printf '[features]\nhooks = false\nmodel = "o3"\n' >"$tt"
+  printf '[features]\nhooks = true\n' >"$tf"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: existing target value wins over the fragment" \
+    "$(tj "$tt" .features.hooks)" "false"
+  assert_eq "toml: target-only key is preserved" \
+    "$(tj "$tt" .features.model)" "o3"
+
+  # (c) fragment adds new keys to existing target
+  printf '[features]\nhooks = true\n' >"$tt"
+  printf '[mcp]\ncommand = "ctx"\n' >"$tf"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: fragment adds new keys to existing target" \
+    "$(tj "$tt" .mcp.command)" "ctx"
+  assert_eq "toml: existing keys survive after new key addition" \
+    "$(tj "$tt" .features.hooks)" "true"
+
+  # (d) status mode reports drift (fragment adds a key the target lacks)
+  printf '[features]\nhooks = true\n' >"$tt"
+  printf '[features]\nhooks = true\n[mcp]\ncommand = "ctx"\n' >"$tf"
+  MODE=status
+  out=$(merge_toml "$tt" "$tf" 2>&1)
+  MODE=install
+  case "$out" in
+    *drift*) ok "toml: status mode reports drift" ;;
+    *) ng "toml: status mode should report drift (got: $out)" ;;
+  esac
+
+  # (e) status mode reports in-sync
+  printf '[features]\nhooks = true\n' >"$tt"
+  printf '[features]\nhooks = true\n' >"$tf"
+  MODE=status
+  out=$(merge_toml "$tt" "$tf" 2>&1)
+  MODE=install
+  case "$out" in
+    *in-sync*) ok "toml: status mode reports in-sync" ;;
+    *) ng "toml: status mode should report in-sync (got: $out)" ;;
+  esac
+
+  # (f) already-quoted special-char table key round-trips
+  printf '[projects."/home/u/proj"]\ntrust = "high"\n' >"$tf"
+  rm -f "$tt"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: special-char table key round-trips" \
+    "$(tj "$tt" '.projects["/home/u/proj"].trust')" "high"
+
+  # (g) an unquoted '/' path header parses, merges, and is emitted quoted
+  # (the spec-valid form codex's reader requires)
+  printf '[features]\nhooks = true\n' >"$tf"
+  printf '[projects./home/u/proj]\ntrust = "high"\n' >"$tt"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: unquoted '/' path key is preserved through merge" \
+    "$(tj "$tt" '.projects["/home/u/proj"].trust')" "high"
+  assert_eq "toml: the new fragment key is merged in" \
+    "$(tj "$tt" .features.hooks)" "true"
+  if grep -q '^\[projects\."/home/u/proj"\]$' "$tt"; then
+    ok "toml: '/' header is written back quoted (spec-valid for codex)"
+  else
+    ng "toml: '/' header should be quoted (got: $(grep projects "$tt"))"
+  fi
+
+  # (h) comments and unrelated keys survive a merge verbatim
+  printf '# keep me\n[features]\nhooks = true # trailing\nnote = "x"\n' >"$tt"
+  printf '[mcp]\ncommand = "ctx"\n' >"$tf"
+  merge_toml "$tt" "$tf" >/dev/null
+  if grep -q '# keep me' "$tt" && grep -q '# trailing' "$tt"; then
+    ok "toml: comments survive the merge"
+  else
+    ng "toml: comments should survive (got: $(cat "$tt"))"
+  fi
+  assert_eq "toml: unrelated key survives the merge" \
+    "$(tj "$tt" .features.note)" "x"
+
+  # (j) codex super-table: add bare [tui] keys where only [tui.sub] exists
+  printf '[tui]\nstatus_line = ["model"]\n' >"$tf"
+  printf '[projects./home/u/p]\ntrust = "t"\n[tui.model_availability_nux]\ngpt-5.5 = 1\n' >"$tt"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: bare [tui] key is added alongside an existing [tui.sub]" \
+    "$(tj "$tt" '.tui.status_line[0]')" "model"
+  # the brain sees the dotted key as nested (gpt-5.5 => gpt-5.5); what matters is
+  # the on-disk line below stays verbatim, which the next check asserts.
+  assert_eq "toml: the existing [tui.sub] table survives" \
+    "$(tj "$tt" '.tui.model_availability_nux["gpt-5"]["5"]')" "1"
+  if grep -q '^gpt-5.5 = 1$' "$tt"; then
+    ok "toml: sub-table's dotted key stays verbatim (not split)"
+  else
+    ng "toml: 'gpt-5.5 = 1' should stay verbatim (got: $(grep gpt "$tt"))"
+  fi
+
+  # (i) a genuinely malformed target is skipped with a warning, not fatal
+  printf '[features]\nhooks = true\n' >"$tf"
+  printf 'broken = "unterminated\n' >"$tt"
+  out=$(merge_toml "$tt" "$tf" 2>&1)
+  rc=$?
+  case "$out" in
+    *skipping*) ok "toml: malformed target is skipped, not fatal" ;;
+    *) ng "toml: malformed target should skip (got: $out)" ;;
+  esac
+  assert_eq "toml: skip returns success" "$rc" "0"
+
+  # (k) status mode still emits a drift line for an unparseable target
+  printf '[features]\nhooks = true\n' >"$tf"
+  printf 'broken = "unterminated\n' >"$tt"
+  MODE=status
+  out=$(merge_toml "$tt" "$tf" 2>&1)
+  MODE=install
+  case "$out" in
+    *drift*) ok "toml: status reports drift for an unparseable target" ;;
+    *) ng "toml: status should report drift for unparseable (got: $out)" ;;
+  esac
+
+  # (l) an array of inline tables round-trips (not stringified)
+  rm -f "$tt"
+  printf 'folders = [{ path = "." }, { path = "/x" }]\n' >"$tf"
+  merge_toml "$tt" "$tf" >/dev/null
+  assert_eq "toml: array of inline tables round-trips" \
+    "$(tj "$tt" '.folders[1].path')" "/x"
+
+  rm -f "$tf" "$tt"
+
+else
+  printf '  skip - toml_merge tests (python3 >= 3.9 not available)\n'
+fi
 
 # --- summary ---------------------------------------------------------------
 
