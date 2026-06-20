@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
-# Unit tests for the sourced libraries (lib/common.sh, lib/json_merge.sh).
-# Run: sh test/run.sh   (depends only on jq). Exits non-zero on any failure.
+# Unit tests for the sourced libraries (lib/common.sh, lib/json_merge.sh,
+# lib/toml_merge.sh). Run: sh test/run.sh — needs jq; the TOML merge tests also
+# need python3 >= 3.9 and are skipped otherwise. Exits non-zero on any failure.
 set -u
 
 SCRIPT_DIR=$(

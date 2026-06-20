@@ -9,6 +9,12 @@ write stays comment- and format-preserving. Two modes:
                            between target-JSON <t> and merged-JSON <m>, so the
                            comments and formatting of untouched keys survive
 
+Preservation applies to keys the fragment does NOT touch — they keep their exact
+comments, formatting and types. Values a fragment adds or changes round-trip
+through JSON, which has no date/time type: a TOML date/time a fragment
+introduces is therefore written back as a quoted string, not a date literal
+(existing, untouched date/time values are unaffected).
+
 Some tools have written table headers with unquoted '/' in path keys (e.g.
 [projects./home/u/x]) -- invalid TOML every spec parser rejects, codex included.
 We quote such segments before parsing so the merge is not skipped, and emit the
