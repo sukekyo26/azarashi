@@ -10,3 +10,8 @@ CONTEXT_MODE_PLATFORM = "codex"
 [tui]
 status_line = ["model-with-reasoning", "current-dir", "git-branch", "permissions", "context-used", "five-hour-limit", "weekly-limit", "codex-version"]
 status_line_use_colors = true
+# Claude Code 側 Notification と同等の注意喚起。TUI 本体が端末へ BEL を出すため、
+# 子プロセス（notify）経由と違い確実に鳴る。フォーカス有無に関わらず鳴らす。
+notifications = true
+notification_method = "bel"
+notification_condition = "always"
