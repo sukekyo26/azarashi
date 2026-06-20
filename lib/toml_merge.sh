@@ -142,9 +142,11 @@ merge_toml() {
   fi
   backup "$_mt_real_target"
   _mt_tmp=$(mktemp "${_mt_real_target}.dotfiles-tmp.XXXXXX") || die "mktemp failed"
-  if ! python3 "$_TOML_PY" apply "$_mt_orig" "$_mt_tgt_json" "$_mt_mjson" >"$_mt_tmp" 2>/dev/null; then
+  # Capture the python stderr (stdout goes to the temp file) so a conversion
+  # failure surfaces tomlkit's actual error instead of a generic message.
+  if ! _mt_err=$(python3 "$_TOML_PY" apply "$_mt_orig" "$_mt_tgt_json" "$_mt_mjson" 2>&1 >"$_mt_tmp"); then
     rm -f "$_mt_tmp" $_mt_cleanup
-    die "JSON-to-TOML conversion failed: $_mt_real_target"
+    die "JSON-to-TOML conversion failed: $_mt_real_target: $_mt_err"
   fi
   mv "$_mt_tmp" "$_mt_real_target" || die "atomic move failed: $_mt_real_target"
   info "merged  : $_mt_real_target"
