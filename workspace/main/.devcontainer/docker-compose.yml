@@ -22,7 +22,6 @@ services:
       - "aws:/home/${USERNAME}/.aws"
       - "bun:/home/${USERNAME}/.bun"
       - "claude:/home/${USERNAME}/.claude"
-      - "codex:/home/${USERNAME}/.codex"
       - "copilot:/home/${USERNAME}/.copilot"
       - "config:/home/${USERNAME}/.config"
       - "go:/home/${USERNAME}/go"
@@ -30,6 +29,7 @@ services:
       - "npm-global:/home/${USERNAME}/.npm-global"
       - "cargo:/home/${USERNAME}/.cargo"
       - "rustup:/home/${USERNAME}/.rustup"
+      - "codex:/home/${USERNAME}/.codex"
       - "${HOME:?HOME must be set on the host}/.claude.json:/home/${USERNAME}/.claude.json"
     ports:
       - "3000"
@@ -54,8 +54,6 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_bun"
   claude:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_claude"
-  codex:
-    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_codex"
   copilot:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_copilot"
   config:
@@ -70,6 +68,8 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_cargo"
   rustup:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_rustup"
+  codex:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_codex"
 secrets:
   sudo_password:
     file: ".env.local"

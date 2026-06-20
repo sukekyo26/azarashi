@@ -13,6 +13,11 @@ set -euo pipefail
 # the statusline degrades gracefully when this CLI is absent.
 command -v context-mode >/dev/null 2>&1 || npm install -g context-mode@1.0.162 || true
 
+# The upstream chatgpt.com/codex/install.sh resolves a SHA256SUMS that omits the
+# package asset and aborts; the npm package is the reliable path. Guard on presence
+# so warm restarts skip the network round-trip; non-fatal so startup still proceeds.
+command -v codex >/dev/null 2>&1 || npm install -g @openai/codex || true
+
 cd ~/work/azarashi
 
 # Run install.sh, echo its output live, and condense the actions into one line so

@@ -2,7 +2,7 @@
 # Records resolved plugin versions + per-arch checksums for reproducible builds.
 
 lock_version = 1
-inputs_hash = 'b128319ff1362ba393c740e80ffc6dc352a324adc4a66860cbbcedcf5e8a12e7'
+inputs_hash = '8454ce75590eec782a11c5007d1b8e5d19da9607aa7a9be4e451baac60af1d4f'
 
 [[plugins]]
 id = 'aws-sam-cli'
@@ -17,28 +17,23 @@ version = '1.3.14'
 [[plugins]]
 id = 'cocoon'
 requested = 'latest'
-version = '0.15.7'
-checksum_amd64 = 'bba16f01c69574ae604255f00980f57b6d88bd874e309b3e4507a735f84b5e4d'
-checksum_arm64 = 'ad6651c16b8dc575d21ad344607ff632502c67d4f1acef5e145781d8d08464c8'
-
-[[plugins]]
-id = 'codex'
-requested = 'latest'
-version = '0.139.0'
+version = '0.17.0'
+checksum_amd64 = 'df3ab7dbeaf67bb724ee46a44ade84c10316e3c513847ce66d07424b9170e5aa'
+checksum_arm64 = '8951ebb38bb8b7533e93a7c5d2a62ebe37258dcec2f2c3301296286c716646b9'
 
 [[plugins]]
 id = 'copilot-cli'
 requested = 'latest'
-version = '1.0.61'
-checksum_amd64 = '228bd802a369ad6b3477be1c08510d555628bb1fc8a53a26337f336659f817db'
-checksum_arm64 = '225c87742394096557ec5d1cc559362654da895a672d5a7aa6fdc204b1c95d36'
+version = '1.0.63'
+checksum_amd64 = '64d4a80496248f316030c358f530e60b96bae670e18f0c3f62e1f91fefacaf82'
+checksum_arm64 = 'fa3255439d7d63ae0e51ab614b0285606212b316790550351eae88a62f0bb20f'
 
 [[plugins]]
 id = 'docker-buildx'
 requested = 'latest'
-version = '0.34.1'
-checksum_amd64 = 'f1332ddb9010bd0b72628266c3a906d9a6979848033df4c8d9bd2cd113bae12b'
-checksum_arm64 = 'c34e32dd6ea2653d960d6c099c9f09b9077e4a37504d2d31e5066eccc3904231'
+version = '0.35.0'
+checksum_amd64 = 'd41ece72044243b4f58b343441ae37446d9c29a7d6b5e11c61847bbcf8f7dfda'
+checksum_arm64 = 'c4248d6cbc4a619a7e0b4609c11e509ad4ac0b475e1c64817c0ac20c5d90c766'
 
 [[plugins]]
 id = 'gitleaks'
@@ -64,21 +59,21 @@ checksum_arm64 = '44cd40a8c76c86755375adfeea52cfd3533cb43d7bd647771e0ae065e166df
 [[plugins]]
 id = 'just'
 requested = 'latest'
-version = '1.52.0'
-checksum_amd64 = 'e0a712614574d45625332529c864754e26782422b7c7db931466180a618f092d'
-checksum_arm64 = '41af45372c49c404ca7b9a318ae9de5564636e39c6520cc4d42bf678f3bfb1bc'
+version = '1.53.0'
+checksum_amd64 = '7fedeb22c7e14d9ef1551e8b793700866d80f409f9884b0e80ebb65c11d4874d'
+checksum_arm64 = 'f29d8e72380bc144465f632c7d59da311205eef2923d57511708b05b82f2e64f'
 
 [[plugins]]
 id = 'node'
 requested = 'latest'
-version = '24.16.0'
-checksum_amd64 = 'd804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9'
-checksum_arm64 = '524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78'
+version = '24.17.0'
+checksum_amd64 = 'ab343a1b747c7cbf3630dfd7dbf818c5423fab2eb4f5ad1afc896f6bd121a917'
+checksum_arm64 = '67324b9e515e7d13da72571a5dd522bb23145a820f7dde15497897e466759ab3'
 
 [[plugins]]
 id = 'opentofu'
 requested = 'latest'
-version = '1.12.2'
+version = '1.12.3'
 
 [[plugins]]
 id = 'rtk'
@@ -107,4 +102,4 @@ checksum_arm64 = '01517aab398959ea9ea73bdb4f032ea4dbb51dff5c8e5eb05b4a1b9b7ab872
 [[plugins]]
 id = 'uv'
 requested = 'latest'
-version = '0.11.21'
+version = '0.11.23'
