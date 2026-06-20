@@ -1,3 +1,7 @@
+# notify は exec へ直接渡るため ~ や $HOME を展開しない。HOME が可変な dotfiles
+# 配布に対応するため bash -c ラッパーで実行時に解決する（JSON ペイロードは "$@"）。
+notify = ["bash", "-c", "exec \"$HOME/.codex/notify.sh\" \"$@\"", "codex-notify"]
+
 [features]
 hooks = true
 
