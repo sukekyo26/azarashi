@@ -100,11 +100,15 @@ export function tokenize(cmd) {
       continue;
     }
     if (c === '{') {
-      // bash の `{ ... ; }` グルーピングは前後が空白／行頭で囲まれる。
-      // `${var}` や `{a,b}` (brace 展開) は対象外なので区別する。
+      // bash の `{ ... ; }` グルーピング検出。直前は行頭 / 空白 / 演算子
+      // (`;` `|` `&` `(` `\n`) のいずれかで、直後は空白。`${var}` や `{a,b}`
+      // (brace 展開) はこの条件で除外される（`{a,b}` は直後が `a` で非空白、
+      // `${var}` は直前が `$` で除外）。`cmd;{ echo hi; }` のように演算子
+      // 直後に `{` が来るパターンも group として拾うため、prev の許容セットを
+      // 演算子まで広げる。
       const prev = i === 0 ? '' : cmd[i - 1];
       const next = i + 1 < cmd.length ? cmd[i + 1] : '';
-      if ((prev === '' || /\s/.test(prev)) && /\s/.test(next)) {
+      if ((prev === '' || /[\s;|&(\n]/.test(prev)) && /\s/.test(next)) {
         flags.hasGroup = true;
       }
       current += c;
@@ -464,7 +468,8 @@ function main() {
 }
 
 // エントリポイント保護: 直接実行（shebang or `node hook.mjs`）の時だけ main() を走らせる。
-// symlink 経由でも argv[1] を realpath で実体に揃えれば import.meta.url と一致する。
+// `import.meta.url` と `process.argv[1]` を両辺 realpath で正規化してから比較する
+// （詳細な失敗モードは関数内のコメントを参照）。
 function isMain() {
   try {
     // 両辺を realpath で正規化してから比較する。

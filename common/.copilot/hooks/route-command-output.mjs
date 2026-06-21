@@ -86,9 +86,10 @@ export function tokenize(cmd) {
       continue;
     }
     if (c === '{') {
+      // grouping `{ ... ; }`: 直前が行頭 / 空白 / 演算子 (`;|&(`) + 直後が空白
       const prev = i === 0 ? '' : cmd[i - 1];
       const next = i + 1 < cmd.length ? cmd[i + 1] : '';
-      if ((prev === '' || /\s/.test(prev)) && /\s/.test(next)) {
+      if ((prev === '' || /[\s;|&(\n]/.test(prev)) && /\s/.test(next)) {
         flags.hasGroup = true;
       }
       current += c;
