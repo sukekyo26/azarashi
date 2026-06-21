@@ -76,12 +76,20 @@ export function tokenize(cmd) {
       i += 2;
       continue;
     }
-    // ヒアドキュメント開始: `<<` or `<<-` + 任意のクォート + ワード
-    const here = cmd.slice(i).match(/^<<-?\s*['"]?\w+['"]?/);
-    if (here) {
+    // here-string `<<<` (heredoc ではない単行構文 — unsafe 扱いから外す)
+    if (c === '<' && cmd[i + 1] === '<' && cmd[i + 2] === '<') {
+      current += '<<<';
+      i += 3;
+      continue;
+    }
+    // ヒアドキュメント開始: `<<` / `<<-`。delimiter の形式 (`EOF` / `'EOF'` / `"EOF"` /
+    // `\EOF`) は問わず、`<<` を見た時点で一律 unsafe にする。delimiter 周りの正規表現で
+    // 厳密にマッチさせると `<<\EOF` のようなバックスラッシュエスケープ delimiter を
+    // 取りこぼし、分割で壊れたコマンドを実行する事故になりうるため。
+    if (c === '<' && cmd[i + 1] === '<') {
       flags.hasHeredoc = true;
-      current += here[0];
-      i += here[0].length;
+      current += '<<';
+      i += 2;
       continue;
     }
     // プロセス置換: `<(` `>(`
@@ -146,8 +154,12 @@ export function tokenize(cmd) {
 // `sudo FOO=bar aws s3 ls` のようなセグメントから「先頭の空白 / env 代入 / wrapper」を剥がし、
 // rtk rewrite に渡す本体 body と、後で再貼り付ける prefix に分割する。
 //
-// wrapper には sudo / command / env / nice / nohup / time を含める。直後の `-X` /
-// `--long` どちらのフラグも 1 個ずつ吸収する（例: `sudo -E aws ...`）。順序は env と
+// wrapper には sudo / command / env / nice / nohup / time を含める。wrapper 名 +
+// 空白のみを吸収し、wrapper のフラグ (`-E` / `-u user` / `-n 5` 等) には触らない。
+// 値を取るフラグ (`sudo -u <user>`, `nice -n <prio>`, `env -u <var>`) の引数を
+// 誤って body 先頭に残すと、その値が rtk 対応コマンド名と衝突したときに
+// `sudo -u rtk <cmd>` のような致命的な誤書き換えになる。フラグを残せば rtk rewrite
+// 側が「先頭が `-` のコマンド」を扱えず keep するので、安全側に倒す。順序は env と
 // wrapper のどちらでも来うるのでループで交互に剥がす。
 //
 // env 代入の値はクォート (`FOO='a b'` / `FOO="a b"`) を 1 トークンとして扱う。
@@ -166,7 +178,7 @@ export function splitPrefix(seg) {
       s = s.slice(m1[0].length);
       continue;
     }
-    const m2 = s.match(/^(?:sudo|command|env|nice|nohup|time)\s+(?:-\S+\s+)*/);
+    const m2 = s.match(/^(?:sudo|command|env|nice|nohup|time)\s+/);
     if (m2) {
       prefix += m2[0];
       s = s.slice(m2[0].length);

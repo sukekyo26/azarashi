@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // preToolUse(bash) hook for GitHub Copilot CLI: RTK で出力を圧縮する。
-// Copilot は MCP 非対応のため context-mode 誘導は行わず、RTK のみ。
-// Claude Code 版 (common/.claude/hooks/route-command-output.mjs) の RTK 部分を抽出。
+// Copilot は MCP 非対応のため context-mode 誘導は行わず、RTK のみの簡易版。
+// 入力スキーマ (toolArgs.command) は Copilot CLI 固有。Claude Code 版
+// (common/.claude/hooks/route-command-output.mjs) とは別物として独立に維持する
+// — Claude 側の追加機能（セグメント単位 rewrite / version guard / deny・ask 扱い /
+// unsafe-shape ガード 等）は Copilot 版には自動同期されない。必要なら個別に移植する。
 import { readFileSync, existsSync } from 'node:fs';
 import { execSync, spawnSync } from 'node:child_process';
 
