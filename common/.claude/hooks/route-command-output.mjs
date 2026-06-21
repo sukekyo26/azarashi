@@ -467,9 +467,13 @@ function main() {
 // symlink 経由でも argv[1] を realpath で実体に揃えれば import.meta.url と一致する。
 function isMain() {
   try {
-    // 両辺とも realpath に揃える。Node が `--preserve-symlinks` などで `import.meta.url`
-    // に symlink パスを残す環境でも、`process.argv[1]` 側だけ realpath すると比較が
-    // 不一致になり main() が走らなくなる。
+    // 両辺を realpath で正規化してから比較する。
+    //  - `import.meta.url` 側だけ realpath: `process.argv[1]` が symlink のときに
+    //    実体パスと一致せず main() が走らない。
+    //  - `process.argv[1]` 側だけ realpath: Node が `--preserve-symlinks` 等で
+    //    `import.meta.url` に symlink パスを残す環境で同じく不一致になる。
+    // 片方だけでは不十分で、両方そろえて初めて symlink 経由起動と直接起動の
+    // どちらでも main() が走るようになる。
     const here = realpathSync(fileURLToPath(import.meta.url));
     const invoked = process.argv[1] ? realpathSync(process.argv[1]) : '';
     return invoked === here;
