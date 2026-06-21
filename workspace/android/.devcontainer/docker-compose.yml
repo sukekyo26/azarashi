@@ -24,11 +24,11 @@ services:
       - "pub-cache:/home/${USERNAME}/.pub-cache"
       - "flutter:/home/${USERNAME}/.flutter"
       - "claude:/home/${USERNAME}/.claude"
-      - "codex:/home/${USERNAME}/.codex"
       - "copilot:/home/${USERNAME}/.copilot"
       - "config:/home/${USERNAME}/.config"
       - "npm:/home/${USERNAME}/.npm"
       - "npm-global:/home/${USERNAME}/.npm-global"
+      - "codex:/home/${USERNAME}/.codex"
       - "${HOME:?HOME must be set on the host}/.claude.json:/home/${USERNAME}/.claude.json"
     ports:
       - "3000"
@@ -42,12 +42,6 @@ services:
       nofile:
         soft: 65536
         hard: 1048576
-  redroid:
-    image: "redroid/redroid:16.0.0-250627"
-    init: true
-    volumes:
-      - "redroid_redroid-data:/data"
-    privileged: true
 volumes:
   local:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_local"
@@ -63,8 +57,6 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_flutter"
   claude:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_claude"
-  codex:
-    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_codex"
   copilot:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_copilot"
   config:
@@ -73,8 +65,8 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_npm"
   npm-global:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_npm-global"
-  redroid_redroid-data:
-    name: "${COMPOSE_PROJECT_NAME}_redroid_redroid-data"
+  codex:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_codex"
 secrets:
   sudo_password:
     file: ".env.local"

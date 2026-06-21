@@ -355,84 +355,10 @@ COCOON_PLUGIN_EOF
 ENV PUB_CACHE="/home/${USERNAME}/.pub-cache"
 ENV FLUTTER_ROOT="/usr/local/flutter"
 ENV PATH="/usr/local/flutter/bin:/usr/local/flutter/bin/cache/dart-sdk/bin:$PUB_CACHE/bin:$PATH"
-# Install OpenAI Codex CLI
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.140.0" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
-#!/usr/bin/env bash
-# Install OpenAI Codex CLI (https://github.com/openai/codex)
-#
-# Inputs (env):
-#   PIN              : Codex version without the "rust-v" tag prefix (e.g. "0.135.0"); empty = latest
-#   CHECKSUM_AMD64   : sha256 of the x86_64 tarball; empty to skip verification
-#   CHECKSUM_ARM64   : sha256 of the aarch64 tarball; empty to skip verification
-set -euo pipefail
-
-# Yellow WARNING when stderr is a TTY (and NO_COLOR is unset) or
-# FORCE_COLOR is set. NO_COLOR wins per no-color.org.
-if [ -n "${NO_COLOR:-}" ]; then
-  C_YEL=''
-  C_RST=''
-elif [ -n "${FORCE_COLOR:-}" ] || [ -t 2 ]; then
-  C_YEL=$'\033[33m'
-  C_RST=$'\033[0m'
-else
-  C_YEL=''
-  C_RST=''
-fi
-
-ARCH="$(dpkg --print-architecture)"
-case "$ARCH" in
-  amd64)
-    DOWNLOAD_ARCH="x86_64"
-    CHECKSUM="$CHECKSUM_AMD64"
-    ;;
-  arm64)
-    DOWNLOAD_ARCH="aarch64"
-    CHECKSUM="$CHECKSUM_ARM64"
-    ;;
-  *)
-    DOWNLOAD_ARCH="x86_64"
-    CHECKSUM="$CHECKSUM_AMD64"
-    ;;
-esac
-
-if [ -n "$PIN" ]; then
-  VERSION="$PIN"
-else
-  # openai/codex tags releases as rust-v<semver>; /releases/latest redirects
-  # to .../tag/rust-v<semver>.
-  VERSION=$(curl -fsSLI --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
-    -o /dev/null -w '%{url_effective}' https://github.com/openai/codex/releases/latest |
-    sed 's|.*/tag/rust-v||')
-fi
-
-triple="${DOWNLOAD_ARCH}-unknown-linux-musl"
-TARBALL="codex-${triple}.tar.gz"
-curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
-  "https://github.com/openai/codex/releases/download/rust-v${VERSION}/${TARBALL}" \
-  -o "/tmp/${TARBALL}"
-
-if [ -n "$CHECKSUM" ]; then
-  echo "${CHECKSUM}  /tmp/${TARBALL}" | sha256sum -c -
-else
-  # openai/codex publishes no SHA256SUMS manifest or .sha256 sidecar (only
-  # per-asset digests in the GitHub API + Sigstore bundles), so an unpinned
-  # build can fetch no upstream checksum. Warn loudly and proceed, matching
-  # shfmt / shellcheck. Set checksum_amd64 / checksum_arm64 in [plugins.options].codex for a verified build.
-  printf '%sWARNING: SHA256 verification skipped for OpenAI Codex CLI (no upstream checksum; set checksum_amd64/arm64 in [plugins.options].codex)%s\n' "$C_YEL" "$C_RST" >&2
-fi
-
-# The tarball holds one entry named with the full target triple
-# (codex-<triple>, no leading directory); land it as /usr/local/bin/codex.
-tar -xzf "/tmp/${TARBALL}" -C /tmp "codex-${triple}"
-install -o root -g root -m 0755 "/tmp/codex-${triple}" /usr/local/bin/codex
-rm "/tmp/${TARBALL}" "/tmp/codex-${triple}"
-COCOON_PLUGIN_EOF
 # Install cocoon
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.15.7" CHECKSUM_AMD64="bba16f01c69574ae604255f00980f57b6d88bd874e309b3e4507a735f84b5e4d" CHECKSUM_ARM64="ad6651c16b8dc575d21ad344607ff632502c67d4f1acef5e145781d8d08464c8" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.17.0" CHECKSUM_AMD64="df3ab7dbeaf67bb724ee46a44ade84c10316e3c513847ce66d07424b9170e5aa" CHECKSUM_ARM64="8951ebb38bb8b7533e93a7c5d2a62ebe37258dcec2f2c3301296286c716646b9" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install the cocoon binary from its GitHub Pages mirror rather than the
 # GitHub Releases CDN. Pages-only by design — no fallback to the
@@ -510,7 +436,7 @@ COCOON_PLUGIN_EOF
 # Install Docker Buildx
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.34.1" CHECKSUM_AMD64="f1332ddb9010bd0b72628266c3a906d9a6979848033df4c8d9bd2cd113bae12b" CHECKSUM_ARM64="c34e32dd6ea2653d960d6c099c9f09b9077e4a37504d2d31e5066eccc3904231" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.35.0" CHECKSUM_AMD64="d41ece72044243b4f58b343441ae37446d9c29a7d6b5e11c61847bbcf8f7dfda" CHECKSUM_ARM64="c4248d6cbc4a619a7e0b4609c11e509ad4ac0b475e1c64817c0ac20c5d90c766" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Docker Buildx (https://github.com/docker/buildx)
 #
@@ -777,7 +703,7 @@ COCOON_PLUGIN_EOF
 # Install Node.js
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="24.16.0" CHECKSUM_AMD64="d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9" CHECKSUM_ARM64="524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="24.17.0" CHECKSUM_AMD64="ab343a1b747c7cbf3630dfd7dbf818c5423fab2eb4f5ad1afc896f6bd121a917" CHECKSUM_ARM64="67324b9e515e7d13da72571a5dd522bb23145a820f7dde15497897e466759ab3" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Node.js (https://github.com/nodejs/node)
 #
@@ -1136,6 +1062,97 @@ tar -C "$HOME/.local/bin" -xzf "/tmp/${TARBALL}"
 # Tarball entry already ships mode 0755, but re-assert it in case a
 # future release ships a more permissive umask-dependent mode.
 chmod 0755 "$HOME/.local/bin/copilot"
+
+rm "/tmp/${TARBALL}"
+COCOON_PLUGIN_EOF
+ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
+# Install RTK
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.42.4" CHECKSUM_AMD64="34975116da11e09e502501daf758143e0b22ed3a42a10eb67fb693a6270d9e36" CHECKSUM_ARM64="cc2b91c064eb670c097c184913c8fbcb1a943d53d7fe505375e96ba0c5b6459f" bash <<'COCOON_PLUGIN_EOF'
+#!/usr/bin/env bash
+# Install rtk from the GitHub Releases binary tarball
+# (https://github.com/rtk-ai/rtk/releases). Picked when
+# raw.githubusercontent.com is unreachable (e.g. Zscaler) or policy
+# forbids the `curl | sh` pattern that install.installer.sh uses.
+#
+# Inputs (env):
+#   PIN                   : rtk version (without leading "v"); empty = latest
+#   CHECKSUM_AMD64        : sha256 of rtk-x86_64-unknown-linux-musl.tar.gz;
+#                           empty = verify against the release checksums.txt
+#   CHECKSUM_ARM64        : sha256 of rtk-aarch64-unknown-linux-gnu.tar.gz;
+#                           empty = verify against the release checksums.txt
+#   COCOON_INSTALL_METHOD : selected install method; must equal "binary"
+set -euo pipefail
+
+: "${COCOON_INSTALL_METHOD:?missing}"
+if [ "$COCOON_INSTALL_METHOD" != "binary" ]; then
+  echo "install.binary.sh invoked with COCOON_INSTALL_METHOD=$COCOON_INSTALL_METHOD; expected binary" >&2
+  exit 1
+fi
+
+REPO="rtk-ai/rtk"
+# Upstream release asset names are asymmetric: amd64 ships a musl static
+# build, arm64 ships a gnu build. Map each Debian arch to its full target
+# triple so the tarball name resolves correctly.
+ARCH="$(dpkg --print-architecture)"
+case "$ARCH" in
+  amd64)
+    TARGET="x86_64-unknown-linux-musl"
+    CHECKSUM="$CHECKSUM_AMD64"
+    ;;
+  arm64)
+    TARGET="aarch64-unknown-linux-gnu"
+    CHECKSUM="$CHECKSUM_ARM64"
+    ;;
+  *)
+    echo "rtk: unsupported architecture: $ARCH" >&2
+    exit 1
+    ;;
+esac
+
+if [ -n "$PIN" ]; then
+  VERSION="$PIN"
+else
+  VERSION=$(curl -fsSLI --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+    -o /dev/null -w '%{url_effective}' https://github.com/${REPO}/releases/latest |
+    sed 's|.*/tag/v||')
+fi
+
+base="https://github.com/${REPO}/releases/download/v${VERSION}"
+TARBALL="rtk-${TARGET}.tar.gz"
+curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+  "${base}/${TARBALL}" \
+  -o "/tmp/${TARBALL}"
+
+if [ -n "$CHECKSUM" ]; then
+  echo "${CHECKSUM}  /tmp/${TARBALL}" | sha256sum -c -
+else
+  # No user checksum: verify against the release's own checksums.txt.
+  curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+    "${base}/checksums.txt" -o /tmp/rtk.sums
+  # Match the asset name literally (awk field compare, not a regex; strip the
+  # binary-mode '*' marker some manifests prepend) and fail loudly if it is
+  # absent so a manifest-shape change does not collapse into an opaque error.
+  expected="$(awk -v f="$TARBALL" '{ n = $2; sub(/^\*/, "", n); if (n == f) { print $1; exit } }' /tmp/rtk.sums)"
+  if [ -z "$expected" ]; then
+    echo "rtk: ${TARBALL} not found in checksums.txt" >&2
+    exit 1
+  fi
+  echo "${expected}  /tmp/${TARBALL}" | sha256sum -c -
+  rm -f /tmp/rtk.sums
+fi
+
+# The release tarball is a single self-contained binary at the archive
+# root (no leading directory), so a straight `tar -xzf` into ~/.local/bin
+# lands the binary directly on PATH (install.env adds ~/.local/bin to
+# PATH). NB: do NOT add --strip-components=1 — that would silently skip
+# the file because there is no leading path component to strip.
+mkdir -p "$HOME/.local/bin"
+tar -C "$HOME/.local/bin" -xzf "/tmp/${TARBALL}"
+# Tarball entry already ships an executable mode, but re-assert it in case
+# a future release ships a more permissive umask-dependent mode.
+chmod 0755 "$HOME/.local/bin/rtk"
 
 rm "/tmp/${TARBALL}"
 COCOON_PLUGIN_EOF
