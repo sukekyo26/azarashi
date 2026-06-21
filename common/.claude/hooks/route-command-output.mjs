@@ -1,105 +1,120 @@
 #!/usr/bin/env node
-// PreToolUse(Bash) hook: 重い/冗長なコマンドの出力を圧縮またはオフロードしてトークンを節約する。
-//  1. 対話/ストリーミング (`-it` / `--follow` / `--watch` / attach 等) と `git diff` は素通し。
-//     対話はサンドボックス/圧縮で詰まる。git diff はコード理解のため精読するので生のまま残す。
-//  2. 間接実行 (npm/pnpm/yarn/bun テストスクリプト, make, just) は context-mode の ctx_execute へ
-//     誘導 (deny)。内側のツールが隠れて圧縮が効かないため、丸ごとオフロードする方が削減できる。
-//  3. それ以外は RTK の公式 API `rtk rewrite`（フック用の単一の真実源）に委ね、rtk が圧縮できる
-//     コマンドなら `rtk <cmd>` に透過リライトして allow する。複合/パイプ/env 前置きは rtk が解決。
-//     rtk が非対応のコマンド・rtk 未導入時は素通し。rtk は絶対パスで差し込むので PATH 非依存。
-import { readFileSync, existsSync } from 'node:fs';
+// PreToolUse(Bash) hook: 重い/冗長な出力を圧縮またはオフロードしてトークンを節約。
+//  - 対話/ストリーミング系と git diff/find/ps は素通し
+//  - npm/make/just 等の間接実行 (テストランナー) は context-mode へ deny で誘導
+//  - それ以外は rtk rewrite をセグメント単位で適用 (exit 0/1/2/3 を尊重)
+import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { execSync, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 function allow() {
   process.exit(0);
 }
 
-let payload;
-try {
-  payload = JSON.parse(readFileSync(0, 'utf8'));
-} catch {
-  allow();
-}
-
-const command = payload?.tool_input?.command;
-if (typeof command !== 'string' || command.trim() === '') {
-  allow();
-}
-
-// コマンドを「実際に起動される単位」へ分割する。`&&` `||` `;` `|` `&` 改行で
-// 区切るが、クォート内の区切り文字は無視する。これにより
-// `foo && make test` の 2 つ目以降のコマンドも検知でき、かつ
-// `git commit -m "...make test..."` のようにクォート内へキーワードを含むだけの
-// コマンドは 1 セグメントに閉じ込められ、セグメント先頭に来ないため誤検知しない。
-function splitSegments(cmd) {
-  const segments = [];
+export function tokenize(cmd) {
+  const tokens = [];
+  const flags = { hasHeredoc: false, hasSubshell: false, hasGroup: false, hasProcSub: false };
   let current = '';
-  let quote = null; // "'" or '"'
-  for (let i = 0; i < cmd.length; i++) {
+  let quote = null;
+  let i = 0;
+  const pushSeg = () => { tokens.push({ kind: 'seg', text: current }); current = ''; };
+  const pushDelim = (text) => { tokens.push({ kind: 'delim', text }); };
+  while (i < cmd.length) {
     const c = cmd[i];
     if (quote) {
       current += c;
-      // ダブルクォート内のみバックスラッシュでエスケープが効く（次の 1 文字を温存）。
-      if (c === '\\' && quote === '"' && i + 1 < cmd.length) {
-        current += cmd[++i];
-      } else if (c === quote) {
-        quote = null;
-      }
-      continue;
+      if (c === '\\' && quote === '"' && i + 1 < cmd.length) { current += cmd[i + 1]; i += 2; continue; }
+      if (c === quote) quote = null;
+      i++; continue;
     }
-    if (c === '"' || c === "'") {
-      quote = c;
-      current += c;
-      continue;
+    if (c === '"' || c === "'") { quote = c; current += c; i++; continue; }
+    if (c === '\\' && i + 1 < cmd.length) { current += c + cmd[i + 1]; i += 2; continue; }
+    if (c === '<' && cmd[i + 1] === '<' && cmd[i + 2] === '<') { current += '<<<'; i += 3; continue; }
+    // heredoc は delimiter 形式 (`EOF` / `'EOF'` / `\EOF` 等) を問わず一律 unsafe にする
+    if (c === '<' && cmd[i + 1] === '<') { flags.hasHeredoc = true; current += '<<'; i += 2; continue; }
+    if ((c === '<' || c === '>') && cmd[i + 1] === '(') {
+      flags.hasProcSub = true; current += cmd.slice(i, i + 2); i += 2; continue;
     }
-    if (c === '\\' && i + 1 < cmd.length) {
-      current += c + cmd[++i];
-      continue;
+    if (c === '(') { flags.hasSubshell = true; current += c; i++; continue; }
+    if (c === '{') {
+      // `{ ... ; }` grouping: 直前が行頭/空白/演算子 (`;|&(\n`) + 直後が空白。
+      // `${var}` / `{a,b}` (brace 展開) はこの条件で除外される。
+      const prev = i === 0 ? '' : cmd[i - 1];
+      const next = i + 1 < cmd.length ? cmd[i + 1] : '';
+      if ((prev === '' || /[\s;|&(\n]/.test(prev)) && /\s/.test(next)) flags.hasGroup = true;
+      current += c; i++; continue;
     }
     const two = cmd.slice(i, i + 2);
-    if (two === '&&' || two === '||') {
-      segments.push(current);
-      current = '';
-      i++;
-      continue;
+    if (two === '&&' || two === '||') { pushSeg(); pushDelim(two); i += 2; continue; }
+    if (c === '&') {
+      // fd リダイレクト (`2>&1`, `&>file`) はデリミタにしない
+      const prev = i === 0 ? '' : cmd[i - 1];
+      const next = i + 1 < cmd.length ? cmd[i + 1] : '';
+      if (prev === '>' || prev === '<' || next === '>') { current += c; i++; continue; }
     }
-    if (c === ';' || c === '|' || c === '&' || c === '\n') {
-      segments.push(current);
-      current = '';
-      continue;
-    }
-    current += c;
+    if (c === ';' || c === '|' || c === '&' || c === '\n') { pushSeg(); pushDelim(c); i++; continue; }
+    current += c; i++;
   }
-  segments.push(current);
-  return segments;
+  pushSeg();
+  return { tokens, flags };
 }
 
-// 1 セグメントの「先頭」を取り出す。先頭の環境変数代入と sudo/command/env を剥がす。
-function commandHead(seg) {
-  let s = seg.trim();
+// wrapper のフラグは body 側に残す。`sudo -u <user>` の値が rtk 対応コマンド名と
+// 衝突したときの致命的な誤書き換え (`sudo -u rtk cmd` 化) を防ぐため。
+export function splitPrefix(seg) {
+  let s = seg;
+  const lead = s.match(/^\s*/)[0];
+  s = s.slice(lead.length);
+  let prefix = lead;
   for (;;) {
-    const before = s;
-    s = s.replace(/^\w+=\S+\s+/, '');
-    s = s.replace(/^(?:sudo|command|env)\s+/, '');
-    if (s === before) break;
+    const m1 = s.match(/^\w+=(?:'[^']*'|"(?:[^"\\]|\\.)*"|\S*)\s+/);
+    if (m1) { prefix += m1[0]; s = s.slice(m1[0].length); continue; }
+    const m2 = s.match(/^(?:sudo|command|env|nice|nohup|time)\s+/);
+    if (m2) { prefix += m2[0]; s = s.slice(m2[0].length); continue; }
+    break;
   }
-  return s;
+  return { prefix, body: s };
 }
 
-// 対話・watch・UI・ストリーミングモード。詰まるのでどちらの対象からも外して素通しする。
-// docker/kubectl の `-it` 対話シェルや `--follow` ログ追従も含む。
+export function commandHead(seg) {
+  return splitPrefix(seg).body.trimStart();
+}
+
+const CONTROL_HEADS = new Set([
+  'for', 'while', 'until', 'if', 'case', 'do', 'done',
+  'then', 'else', 'elif', 'fi', 'esac', 'select', 'function',
+]);
+const FORBIDDEN_HEADS = new Set(['eval', 'exec']);
+
+export function isUnsafeSeg(segText) {
+  const { body } = splitPrefix(segText);
+  const trimmed = body.trimStart();
+  if (trimmed === '') return false;
+  if (/^[A-Za-z_]\w*\s*\(\s*\)/.test(trimmed)) return true;
+  if (/^function\b/.test(trimmed)) return true;
+  const head = trimmed.split(/\s+/)[0];
+  if (CONTROL_HEADS.has(head)) return true;
+  if (FORBIDDEN_HEADS.has(head)) return true;
+  return false;
+}
+
+export function hasUnsafeShape(tokens, flags) {
+  if (flags.hasHeredoc || flags.hasSubshell || flags.hasGroup || flags.hasProcSub) return true;
+  for (const t of tokens) {
+    if (t.kind === 'seg' && isUnsafeSeg(t.text)) return true;
+  }
+  return false;
+}
+
 const EXCLUDE =
   /(--watch|--watchAll|--ui|--debug|--headed|--interactive|--tty|--follow)\b|\s-(it|ti)\b|\battach\b|pytest-watch|\bptw\b/;
 
-// rtk に渡すと精読できない/壊れるコマンドは常に素通しにする。
-//   git diff … エージェントがコード理解のため精読する（圧縮で必要な文脈が欠ける）。
-//   find     … rtk の find フィルタが GNU find の `<path> -type f` 構文を誤解釈し、
-//              ファイル一覧の代わりに `0 for '*'` のような誤出力を返す（正確性のバグ）。
-const FORCE_PASSTHROUGH = [/^git\s+diff\b/, /^find\b/];
+// git diff: 精読 / find: rtk フィルタが GNU find 構文を誤解釈 /
+// ps: rtk 0.42 系は rewrite を返すが subcommand 表に無く実行時に死ぬ
+const FORCE_PASSTHROUGH = [/^git\s+diff\b/, /^find\b/, /^ps\b/];
 
-// context-mode へ誘導する間接実行系（recipe / script runner）。内側のツールが隠れて rtk の
-// 専用フィルタが効かないため、丸ごとオフロードする方が削減できる。先頭一致で判定。
-// `ci` は `npm ci`(clean install) と衝突するので、ここでは `run ci`(スクリプト) のみ heavy 扱い。
+// テストランナー系は内側ツールが隠れて rtk が効かないため context-mode へオフロード。
+// `npm ci` (clean install) と区別するため `ci` は `run ci` のみ拾う。
 const CTX_PATTERNS = [
   /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|test:[\w:-]+|quality|e2e|lint|check)\b/,
   /^(npm|pnpm|yarn|bun)\s+run\s+ci\b/,
@@ -107,54 +122,6 @@ const CTX_PATTERNS = [
   /^just\s+(test|e2e|quality|lint|ci|check)\b/,
 ];
 
-const heads = splitSegments(command).map(commandHead);
-
-// 0. `rtk init` はブロックする（複合コマンドの一部でも）。この環境は rtk を CLI 専用で使う方針で、
-//    init すると RTK 純正の PreToolUse フック / RTK.md が入り、context-mode やこのフックと競合する。
-if (heads.some((h) => /^rtk\s+init\b/.test(h))) {
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'deny',
-        permissionDecisionReason:
-          'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正フック/RTK.md が入り context-mode と競合）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
-      },
-    }),
-  );
-  process.exit(0);
-}
-
-// 1. 対話/ストリーミング、または常時素通し対象（git diff / find）が含まれる → 素通し（最優先）。
-if (heads.some((h) => EXCLUDE.test(h) || FORCE_PASSTHROUGH.some((re) => re.test(h)))) {
-  allow();
-}
-
-function denyToContextMode() {
-  // モデルは context-mode を既知なので、要点（実行方法＋報告方針）だけを簡潔に伝える。
-  const reason = [
-    '大量出力のため Bash ではなく context-mode で実行:',
-    `  ctx_execute(language: "shell", code: ${JSON.stringify(command)})`,
-    '要約と失敗のみ報告、詳細は ctx_search で。',
-  ].join('\n');
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'deny',
-        permissionDecisionReason: reason,
-      },
-    }),
-  );
-  process.exit(0);
-}
-
-// 2. 間接実行系が含まれる → context-mode へ誘導（単一・複合どちらでも）。
-if (heads.some((h) => CTX_PATTERNS.some((re) => re.test(h)))) {
-  denyToContextMode();
-}
-
-// 3. rtk rewrite に委譲。まず rtk を絶対パスで解決する（既知パスを優先し subprocess を避ける）。
 function resolveRtk() {
   const home = process.env.HOME || '';
   const candidates = [];
@@ -165,41 +132,153 @@ function resolveRtk() {
   }
   try {
     const path = `${process.env.PATH || ''}:${home}/.local/bin:${home}/.npm-global/bin`;
-    return execSync('command -v rtk', { env: { ...process.env, PATH: path } })
-      .toString()
-      .trim();
+    return execSync('command -v rtk', { env: { ...process.env, PATH: path } }).toString().trim();
   } catch {
     return '';
   }
 }
 
-const rtk = resolveRtk();
-if (rtk === '') {
-  allow(); // rtk 未導入: 圧縮できないので素通し（heavy な間接実行は上で context-mode 済み）。
+// rtk rewrite の exit code 規約: 0=ok / 1=N/A / 2=deny / 3=ask
+export function rewriteSegmentBody(rtk, body) {
+  if (!body.trim()) return { action: 'keep' };
+  const res = spawnSync(rtk, ['rewrite', body], { encoding: 'utf8' });
+  const out = (res.stdout || '').trim();
+  switch (res.status) {
+    case 0:
+      return out === '' || out === body ? { action: 'keep' } : { action: 'replace', body: out };
+    case 1:
+      return { action: 'keep' };
+    case 2:
+      return { action: 'deny' };
+    case 3:
+      return out === '' || out === body ? { action: 'keep' } : { action: 'replace-ask', body: out };
+    default:
+      return { action: 'keep' };
+  }
 }
 
-// `rtk rewrite <cmd>` は対応コマンドを `rtk <cmd>` に変換（exit 3）、非対応は空出力（exit 1）。
-// 成功時も非ゼロ終了なので throw する execSync ではなく spawnSync で stdout を取る。
-const res = spawnSync(rtk, ['rewrite', command], { encoding: 'utf8' });
-const rewritten = (res.stdout || '').trim();
-if (rewritten === '' || rewritten === command) {
-  allow(); // rtk が対応しないコマンド → 素通し。
+// sudo の secure_path 経由でも rtk を見つけられるよう、書き換え後の裸 `rtk` は絶対パス化
+function absInBody(rtk, body) {
+  if (body === 'rtk') return rtk;
+  if (body.startsWith('rtk ')) return `${rtk} ${body.slice(4)}`;
+  return body;
 }
 
-// rtk rewrite は wrapper を裸の `rtk` として出力する。コマンド位置（行頭 / パイプ・`&&`・`;` の後、
-// 任意の env 代入を挟む）に現れる `rtk ` だけを絶対パスへ置換し、引数中の `rtk` は温存する。
-const spliced = rewritten.replace(
-  /(^|[|&;\n(]\s*)((?:\w+=\S+\s+)*)rtk(\s)/g,
-  (_m, pre, env, post) => `${pre}${env}${rtk}${post}`,
-);
+function denyToContextMode(command) {
+  const reason = [
+    '大量出力のため Bash ではなく context-mode で実行:',
+    `  ctx_execute(language: "shell", code: ${JSON.stringify(command)})`,
+    '要約と失敗のみ報告、詳細は ctx_search で。',
+  ].join('\n');
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: reason,
+    },
+  }));
+  process.exit(0);
+}
 
-process.stdout.write(
-  JSON.stringify({
+function main() {
+  let payload;
+  try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch { allow(); }
+  const command = payload?.tool_input?.command;
+  if (typeof command !== 'string' || command.trim() === '') allow();
+
+  const { tokens, flags } = tokenize(command);
+  const segs = tokens.filter((t) => t.kind === 'seg');
+  const heads = segs.map((s) => commandHead(s.text));
+
+  // 0. `rtk init` はブロック（複合の一部でも）
+  if (heads.some((h) => /^rtk\s+init\b/.test(h))) {
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason:
+          'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正フック/RTK.md が入り context-mode と競合）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
+      },
+    }));
+    process.exit(0);
+  }
+
+  // 1. 対話/ストリーミング・常時 passthrough 対象 → 素通し
+  if (heads.some((h) => EXCLUDE.test(h) || FORCE_PASSTHROUGH.some((re) => re.test(h)))) allow();
+
+  // 2. テスト/ビルド等の重い間接実行 → context-mode へ deny で誘導
+  if (heads.some((h) => CTX_PATTERNS.some((re) => re.test(h)))) denyToContextMode(command);
+
+  // 3. 分割で壊れる shell 構文 (heredoc / 制御構文 / サブシェル等) → 全体 passthrough
+  if (hasUnsafeShape(tokens, flags)) allow();
+
+  // 4. rtk 解決 (未導入なら passthrough)
+  const rtk = resolveRtk();
+  if (rtk === '') allow();
+
+  // 5. セグメント数の上限 (fork コスト保護)
+  const MAX_SEGS = 16;
+  if (segs.length > MAX_SEGS) allow();
+
+  // 6. セグメント単位で rewrite し、結果を組み立てる
+  let needsAsk = false;
+  let denyHit = false;
+  let anyReplace = false;
+  const pieces = [];
+  for (const tok of tokens) {
+    if (tok.kind === 'delim') { pieces.push(tok.text); continue; }
+    const { prefix, body } = splitPrefix(tok.text);
+    // rtk rewrite が trim した結果を返すため、末尾 whitespace を別途保持して再結合
+    const tail = body.match(/\s*$/)[0];
+    const trimmedBody = tail ? body.slice(0, -tail.length) : body;
+    const r = rewriteSegmentBody(rtk, trimmedBody);
+    if (r.action === 'deny') { denyHit = true; pieces.push(tok.text); continue; }
+    if (r.action === 'keep') { pieces.push(tok.text); continue; }
+    anyReplace = true;
+    if (r.action === 'replace-ask') needsAsk = true;
+    pieces.push(prefix + absInBody(rtk, r.body) + tail);
+  }
+
+  // 7. いずれかのセグメントが deny → Claude Code の native deny rule に委ねる
+  if (denyHit) allow();
+
+  // 8. 書き換え対象なし → 素通し
+  if (!anyReplace) allow();
+
+  const newCommand = pieces.join('');
+
+  // 9. ask: permissionDecision を omit してユーザー確認に回す
+  if (needsAsk) {
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        updatedInput: { ...payload.tool_input, command: newCommand },
+      },
+    }));
+    process.exit(0);
+  }
+
+  // 10. 通常: 書き換えて allow
+  process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'allow',
-      updatedInput: { ...payload.tool_input, command: spliced },
+      permissionDecisionReason: 'RTK auto-rewrite',
+      updatedInput: { ...payload.tool_input, command: newCommand },
     },
-  }),
-);
-process.exit(0);
+  }));
+  process.exit(0);
+}
+
+// 直接実行のときだけ main() を起動。symlink 経由起動と直接起動の両対応のため両辺を realpath で正規化
+function isMain() {
+  try {
+    const here = realpathSync(fileURLToPath(import.meta.url));
+    const invoked = process.argv[1] ? realpathSync(process.argv[1]) : '';
+    return invoked === here;
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) main();
