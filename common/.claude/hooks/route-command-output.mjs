@@ -146,16 +146,21 @@ export function tokenize(cmd) {
 // `sudo FOO=bar aws s3 ls` のようなセグメントから「先頭の空白 / env 代入 / wrapper」を剥がし、
 // rtk rewrite に渡す本体 body と、後で再貼り付ける prefix に分割する。
 //
-// wrapper には sudo / command / env / nice / nohup / time を含める。短い `-X` フラグも
-// 1 個ずつ吸収する（例: `sudo -E aws ...`）。順序は env と wrapper のどちらでも来うるので
-// ループで交互に剥がす。
+// wrapper には sudo / command / env / nice / nohup / time を含める。直後の `-X` /
+// `--long` どちらのフラグも 1 個ずつ吸収する（例: `sudo -E aws ...`）。順序は env と
+// wrapper のどちらでも来うるのでループで交互に剥がす。
+//
+// env 代入の値はクォート (`FOO='a b'` / `FOO="a b"`) を 1 トークンとして扱う。
+// 裸の値は空白で止まる（`FOO=$(echo x)` のように展開や `$(..)` を含む場合は
+// 退避を諦めて rtk rewrite 側に丸投げする — そういう値は元々 hook が綺麗に
+// 切れないので、ここで頑張らない）。
 export function splitPrefix(seg) {
   let s = seg;
   const lead = s.match(/^\s*/)[0];
   s = s.slice(lead.length);
   let prefix = lead;
   for (;;) {
-    const m1 = s.match(/^\w+=\S+\s+/);
+    const m1 = s.match(/^\w+=(?:'[^']*'|"(?:[^"\\]|\\.)*"|\S*)\s+/);
     if (m1) {
       prefix += m1[0];
       s = s.slice(m1[0].length);
@@ -275,9 +280,10 @@ function resolveRtk() {
 function ensureRtkVersion(rtk) {
   const home = process.env.HOME || '';
   const cacheDir = process.env.XDG_CACHE_HOME || (home ? `${home}/.cache` : '');
-  if (!cacheDir) return true;
-  const sentinel = `${cacheDir}/rtk-hook-version-ok`;
-  if (existsSync(sentinel)) return true;
+  const sentinel = cacheDir ? `${cacheDir}/rtk-hook-version-ok` : '';
+  if (sentinel && existsSync(sentinel)) return true;
+  // cacheDir が無い環境 (HOME も XDG_CACHE_HOME も未設定) でも、バージョン検査自体は
+  // 必ず行う。sentinel 書き込みだけをスキップして毎回検査する fallback とする。
   const res = spawnSync(rtk, ['--version'], { encoding: 'utf8' });
   const raw = ((res.stdout || '') + (res.stderr || ''))
     .trim()
@@ -285,11 +291,13 @@ function ensureRtkVersion(rtk) {
     .split(/\s+/)[0] || '';
   const [maj = NaN, min = NaN] = raw.split('.').map((x) => parseInt(x, 10));
   if (Number.isFinite(maj) && Number.isFinite(min) && (maj > 0 || (maj === 0 && min >= 23))) {
-    try {
-      mkdirSync(cacheDir, { recursive: true });
-      writeFileSync(sentinel, '');
-    } catch {
-      /* sentinel が書けなくても続行（毎回バージョンチェックするだけ） */
+    if (sentinel) {
+      try {
+        mkdirSync(cacheDir, { recursive: true });
+        writeFileSync(sentinel, '');
+      } catch {
+        /* sentinel が書けなくても続行（毎回バージョンチェックするだけ） */
+      }
     }
     return true;
   }
@@ -486,7 +494,10 @@ function main() {
 // symlink 経由でも argv[1] を realpath で実体に揃えれば import.meta.url と一致する。
 function isMain() {
   try {
-    const here = fileURLToPath(import.meta.url);
+    // 両辺とも realpath に揃える。Node が `--preserve-symlinks` などで `import.meta.url`
+    // に symlink パスを残す環境でも、`process.argv[1]` 側だけ realpath すると比較が
+    // 不一致になり main() が走らなくなる。
+    const here = realpathSync(fileURLToPath(import.meta.url));
     const invoked = process.argv[1] ? realpathSync(process.argv[1]) : '';
     return invoked === here;
   } catch {
