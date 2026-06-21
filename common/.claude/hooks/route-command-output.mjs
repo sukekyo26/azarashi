@@ -8,13 +8,7 @@
 //     非対応セグメント・デリミタ・ヒアドキュメント等の構文は原文を維持する。
 //     rtk 公式の exit code 規約 (0=ok, 1=N/A, 2=deny, 3=ask) を尊重し、ask の場合は
 //     permissionDecision を omit して Claude Code のユーザー確認に委ねる。
-import {
-  readFileSync,
-  existsSync,
-  writeFileSync,
-  mkdirSync,
-  realpathSync,
-} from 'node:fs';
+import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -285,40 +279,6 @@ function resolveRtk() {
   }
 }
 
-// --- バージョンガード ---------------------------------------------------------
-//
-// 公式の `rtk rewrite` は >= 0.23.0 で導入された。古い rtk を silently 素通しすると気付けない
-// ので 1 回だけ警告し、sentinel ファイルでキャッシュして以降の起動を高速化する。
-function ensureRtkVersion(rtk) {
-  const home = process.env.HOME || '';
-  const cacheDir = process.env.XDG_CACHE_HOME || (home ? `${home}/.cache` : '');
-  const sentinel = cacheDir ? `${cacheDir}/rtk-hook-version-ok` : '';
-  if (sentinel && existsSync(sentinel)) return true;
-  // cacheDir が無い環境 (HOME も XDG_CACHE_HOME も未設定) でも、バージョン検査自体は
-  // 必ず行う。sentinel 書き込みだけをスキップして毎回検査する fallback とする。
-  const res = spawnSync(rtk, ['--version'], { encoding: 'utf8' });
-  const raw = ((res.stdout || '') + (res.stderr || ''))
-    .trim()
-    .replace(/^rtk\s+/i, '')
-    .split(/\s+/)[0] || '';
-  const [maj = NaN, min = NaN] = raw.split('.').map((x) => parseInt(x, 10));
-  if (Number.isFinite(maj) && Number.isFinite(min) && (maj > 0 || (maj === 0 && min >= 23))) {
-    if (sentinel) {
-      try {
-        mkdirSync(cacheDir, { recursive: true });
-        writeFileSync(sentinel, '');
-      } catch {
-        /* sentinel が書けなくても続行（毎回バージョンチェックするだけ） */
-      }
-    }
-    return true;
-  }
-  process.stderr.write(
-    `[rtk-hook] WARNING: rtk ${raw || '(unknown)'} is too old (need >= 0.23.0); passthrough\n`,
-  );
-  return false;
-}
-
 // --- セグメント単位 rewrite ---------------------------------------------------
 //
 // rtk rewrite の exit code 規約:
@@ -428,10 +388,11 @@ function main() {
     allow();
   }
 
-  // 4. rtk 解決 & バージョンガード。
+  // 4. rtk 解決。未導入なら圧縮できないので素通し。バージョン検査は意図的に行わない
+  //    （rtk は devcontainer のセットアップで制御しているため。古い rtk が紛れ込む
+  //    リスクは管理外要素として割り切る）。
   const rtk = resolveRtk();
-  if (rtk === '') allow(); // rtk 未導入: 圧縮できないので素通し。
-  if (!ensureRtkVersion(rtk)) allow();
+  if (rtk === '') allow();
 
   // 5. セグメント数の上限（fork コスト保護）。
   const MAX_SEGS = 16;
