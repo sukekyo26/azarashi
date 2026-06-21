@@ -233,7 +233,11 @@ const EXCLUDE =
 // rtk に渡すと精読できない/壊れるコマンドは常に素通しにする。
 //   git diff … エージェントがコード理解のため精読する（圧縮で必要な文脈が欠ける）。
 //   find     … rtk の find フィルタが GNU find の `<path> -type f` 構文を誤解釈する。
-const FORCE_PASSTHROUGH = [/^git\s+diff\b/, /^find\b/];
+//   ps       … rtk 0.42 系の `rtk rewrite` は `ps` を rc=3 で書き換えるが `rtk --help`
+//              の subcommand 表には `ps` が無い。実行時に `rtk ps` のフォールバックが
+//              システム `ps` を spawn しようとして「[rtk: No such file or directory]」
+//              で死ぬ（rtk 側の不整合）。標準 `ps` の出力は元々短く圧縮の旨味も薄い。
+const FORCE_PASSTHROUGH = [/^git\s+diff\b/, /^find\b/, /^ps\b/];
 
 // context-mode へ誘導する間接実行系。内側のツールが隠れて rtk の専用フィルタが効かないため、
 // 丸ごとオフロードする方が削減できる。`ci` は `npm ci` と衝突するので `run ci` のみ heavy 扱い。
