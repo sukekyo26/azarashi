@@ -42,8 +42,7 @@
     "context-mode": {
       "source": {
         "source": "github",
-        "repo": "mksglu/context-mode",
-        "sha": "4b4b976d9f84b5ed7d8e7ce4ddd122605a78f03d"
+        "repo": "mksglu/context-mode"
       }
     }
   },
