@@ -82,10 +82,18 @@ require_buildx() {
 }
 
 # env_value reads the first KEY=... value from the generated .env (a flat
-# KEY=value file written by `cocoon gen` — no quoting/interpolation). Prints
-# empty when the key is absent so callers decide how to handle it.
+# KEY=value file written by `cocoon gen` — no quoting/interpolation). A missing
+# key prints nothing so callers decide how to handle absence; any other grep
+# failure (e.g. an unreadable .env) aborts rather than masquerading as "key
+# unset", which would otherwise surface as a misleading "X not set" downstream.
 env_value() {
-  grep -m1 -E "^$1=" "$ENV_FILE" | cut -d= -f2- || true
+  local line rc
+  line="$(grep -m1 -E "^$1=" "$ENV_FILE")" && rc=0 || rc=$?
+  case "$rc" in
+    0) printf '%s\n' "${line#*=}" ;;
+    1) ;; # no match: key absent
+    *) die "failed to read ${ENV_FILE} (grep exited ${rc})" ;;
+  esac
 }
 
 # project_name reads COMPOSE_PROJECT_NAME from .env for display only; the
@@ -178,6 +186,22 @@ cmd_prune_cache() {
 }
 
 main() {
+  # Consume the leading global options first so the `exec` fast-path is reached
+  # even after them — the documented grammar is `[-y] <command>`. Parsing stops
+  # at the first non-option token (the command); anything unrecognised is left
+  # for the per-command parser below to reject.
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -y | --yes) ASSUME_YES=1 ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *) break ;;
+    esac
+    shift
+  done
+
   # `exec` forwards its entire command line to the container verbatim, so it
   # must bypass the option parser below (which would reject e.g. `-la`).
   if [ "${1:-}" = exec ]; then

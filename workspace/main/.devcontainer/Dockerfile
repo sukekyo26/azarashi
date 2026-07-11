@@ -133,7 +133,7 @@ RUN mkdir -p /home/${USERNAME}/.aws /home/${USERNAME}/.bun /home/${USERNAME}/.ca
 # Install cocoon
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.17.0" CHECKSUM_AMD64="df3ab7dbeaf67bb724ee46a44ade84c10316e3c513847ce66d07424b9170e5aa" CHECKSUM_ARM64="8951ebb38bb8b7533e93a7c5d2a62ebe37258dcec2f2c3301296286c716646b9" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.17.1" CHECKSUM_AMD64="5e31e75c3aef2ec542daf0312768be1da0f8a430a1ae0b73c6668a04cf4bf240" CHECKSUM_ARM64="347b6ba5dbee3ef103e83b2d4f5a589493562b48621cf72f77923fe58cd1f2e1" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install the cocoon binary from its GitHub Pages mirror rather than the
 # GitHub Releases CDN. Pages-only by design — no fallback to the
@@ -410,7 +410,7 @@ COCOON_PLUGIN_EOF
 # Install Go
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="1.26.4" CHECKSUM_AMD64="1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f" CHECKSUM_ARM64="ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="1.26.5" CHECKSUM_AMD64="5c2c3b16caefa1d968a94c1daca04a7ca301a496d9b086e17ad77bb81393f053" CHECKSUM_ARM64="fe4789e92b1f33358680864bbe8704289e7bb5fc207d80623c308935bd696d49" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Go (https://github.com/golang/go)
 #
@@ -536,7 +536,7 @@ COCOON_PLUGIN_EOF
 # Install just
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.53.0" CHECKSUM_AMD64="7fedeb22c7e14d9ef1551e8b793700866d80f409f9884b0e80ebb65c11d4874d" CHECKSUM_ARM64="f29d8e72380bc144465f632c7d59da311205eef2923d57511708b05b82f2e64f" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.56.0" CHECKSUM_AMD64="fa2a8ec1015d9df5330941ade12437488fc40d33f9c9f8cd4eb70a26de11b639" CHECKSUM_ARM64="c8c1d656e9f47569ec1ae2bf8779af2621cdeea6bbbba3b0cacd64f951d25e2b" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install just (https://github.com/casey/just)
 #
@@ -604,7 +604,7 @@ COCOON_PLUGIN_EOF
 # Install Node.js
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="24.17.0" CHECKSUM_AMD64="ab343a1b747c7cbf3630dfd7dbf818c5423fab2eb4f5ad1afc896f6bd121a917" CHECKSUM_ARM64="67324b9e515e7d13da72571a5dd522bb23145a820f7dde15497897e466759ab3" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="24.18.0" CHECKSUM_AMD64="55aa7153f9d88f28d765fcdad5ae6945b5c0f98a36881703817e4c450fa76742" CHECKSUM_ARM64="58c9520501f6ae2b52d5b210444e24b9d0c029a58c5011b797bc1fe7105886f6" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Node.js (https://github.com/nodejs/node)
 #
@@ -934,7 +934,7 @@ COCOON_PLUGIN_EOF
 # Install Starship
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.25.1" CHECKSUM_AMD64="c6ddd3ecb9c0071a2ad38d98cee748160066b7c4f197421268058f4a5d6f8504" CHECKSUM_ARM64="01517aab398959ea9ea73bdb4f032ea4dbb51dff5c8e5eb05b4a1b9b7ab872b8" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.26.0" CHECKSUM_AMD64="b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3" CHECKSUM_ARM64="dc30189378d2f2e287384e8a692d3f95ad1df64cf0e8c36aa9201516028aed6b" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Starship (https://github.com/starship/starship)
 #
@@ -1160,7 +1160,7 @@ COCOON_PLUGIN_EOF
 # Install AWS SAM CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="1.162.1" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="1.163.0" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install AWS SAM CLI (https://github.com/aws/aws-sam-cli)
 #
@@ -1268,7 +1268,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Install GitHub Copilot CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.0.63" CHECKSUM_AMD64="64d4a80496248f316030c358f530e60b96bae670e18f0c3f62e1f91fefacaf82" CHECKSUM_ARM64="fa3255439d7d63ae0e51ab614b0285606212b316790550351eae88a62f0bb20f" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.0.70" CHECKSUM_AMD64="4edee3cd005254960789329181968b209b17cab47f43ee13c9e071b1f7e33095" CHECKSUM_ARM64="1cb358a1a8ac8d0f680b54c6eac990c376043314409a06a5aa4fed0e0a7d3362" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install GitHub Copilot CLI from the GitHub Releases binary tarball
 # (https://github.com/github/copilot-cli/releases). Picked when gh.io is
@@ -1388,7 +1388,7 @@ ENV PATH="/home/${USERNAME}/.cargo/bin:$PATH"
 # Install RTK
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.42.4" CHECKSUM_AMD64="34975116da11e09e502501daf758143e0b22ed3a42a10eb67fb693a6270d9e36" CHECKSUM_ARM64="cc2b91c064eb670c097c184913c8fbcb1a943d53d7fe505375e96ba0c5b6459f" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.43.0" CHECKSUM_AMD64="ff8a1e7766496e175291a85aeca1dc97c9ff6df33e51e5893d1fbc78fea2a609" CHECKSUM_ARM64="5519f7ca12e5c143a609f0d28a0a77b97413a8dce31c2681f1a41c24519a8731" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install rtk from the GitHub Releases binary tarball
 # (https://github.com/rtk-ai/rtk/releases). Picked when
@@ -1479,7 +1479,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Install uv
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="0.11.23" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="0.11.28" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install uv (fast Python package and project manager) (https://github.com/astral-sh/uv)
 #
@@ -1509,7 +1509,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Configure Starship (user)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.25.1" CHECKSUM_AMD64="c6ddd3ecb9c0071a2ad38d98cee748160066b7c4f197421268058f4a5d6f8504" CHECKSUM_ARM64="01517aab398959ea9ea73bdb4f032ea4dbb51dff5c8e5eb05b4a1b9b7ab872b8" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.26.0" CHECKSUM_AMD64="b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3" CHECKSUM_ARM64="dc30189378d2f2e287384e8a692d3f95ad1df64cf0e8c36aa9201516028aed6b" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Configure Starship for the user's login shell.
 #
