@@ -122,8 +122,9 @@ FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal
 # upgrade でビルド時点の最新セキュリティパッチを取り込む(定期リビルドとセットで機能する)
 RUN microdnf -y upgrade \
  && microdnf -y install python3.14 shadow-utils \
- && microdnf clean all \
- && useradd --system --no-create-home appuser
+ && useradd --system --no-create-home appuser \
+ && microdnf -y remove shadow-utils \
+ && microdnf clean all
 
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 
@@ -134,6 +135,7 @@ ENTRYPOINT ["/app/.venv/bin/python3", "-m", "app.main"]
 要点:
 
 - AL2023 の minimal コンテナイメージは `dnf` ではなく **`microdnf`**。
+- `shadow-utils` は `useradd` のためだけに必要なので、同一 RUN レイヤー内でユーザー作成後に `remove` して runtime に残さない(不要パッケージ = 不要な CVE 母数)。
 - **`UV_PYTHON_DOWNLOADS=never` がパターン 2 の要**。無いと uv が standalone Python を勝手に落として使うことがあり、「dnf 管理の CPython(=Inspector に見える)」の前提が静かに崩れる。
 - `uv sync` を 2 回に分けるのはレイヤーキャッシュのため。ソース変更だけなら依存レイヤーはキャッシュヒット。
 - `--no-editable` でプロジェクト本体が venv 内に実体コピーされるので、runtime へは **`.venv` だけコピーすれば完結**。venv の `bin/python3` は `/usr/bin/python3.14` へのシンボリックリンクなので、builder / runtime が同じベース + 同じパッケージなら動く。
