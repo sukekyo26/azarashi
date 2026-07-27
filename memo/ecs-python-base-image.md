@@ -39,6 +39,8 @@
 
 AL2023 を推す理由: AWS 自身がパッチを速いサイクルで供給し Inspector のデータソースと整合するため、「CRITICAL が出た → upgrade してリビルド → 消える」のループが実際に回る。Debian slim ではこのループが上流待ちで断絶する。
 
+Distroless（Google）を推さない理由: 中身は Debian パッケージからのビルドなので CVE 修正は結局 Debian 待ちで、slim の no-DSA 問題をそのまま引き継ぐ（本メモの課題を解決しない）。加えて `python3` イメージは公式に experimental 扱いで Python バージョンも Debian stable のものに固定、シェル・パッケージマネージャが無いため共有ライブラリ不足時の対処やデバッグも難しい。distroless の強み（攻撃面積の最小化）を CVE 対応の速さと両立させたいなら Chainguard が同思想の選択肢。
+
 ---
 
 ## ベースイメージ差で Python 処理にエラーは出るか
