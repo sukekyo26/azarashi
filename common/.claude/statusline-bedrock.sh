@@ -45,8 +45,8 @@ if [[ -n "$transcript" && -r "$transcript" ]]; then
     result=$(jq -rn '
       def price(m):
         if   (m | test("fable-5|mythos-5"))   then {i: 10.0, o: 50.0}
-        elif (m | test("opus-4-[5-8]"))       then {i: 5.0,  o: 25.0}
-        elif (m | test("sonnet-4-[56]"))      then {i: 3.0,  o: 15.0}
+        elif (m | test("opus-(4-[5-8]|5)"))   then {i: 5.0,  o: 25.0}
+        elif (m | test("sonnet-(4-[56]|5)"))  then {i: 3.0,  o: 15.0}
         elif (m | test("haiku-4-5"))          then {i: 1.0,  o: 5.0}
         else null end;
       def mult(m):

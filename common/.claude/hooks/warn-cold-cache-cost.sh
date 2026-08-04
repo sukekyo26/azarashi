@@ -83,10 +83,10 @@ last_req=$(date -d "$last_req" +%s 2>/dev/null) || exit 0
 warn_usd=${WARN_COLD_CACHE_WARN_USD:-1}
 est=$(jq -rs --arg warn "$warn_usd" --arg write "$write_mult" '
   def price(m):
-    if   (m | test("fable-5|mythos-5")) then 10.0
-    elif (m | test("opus-4-[5-8]"))     then 5.0
-    elif (m | test("sonnet-4-[56]"))    then 3.0
-    elif (m | test("haiku-4-5"))        then 1.0
+    if   (m | test("fable-5|mythos-5"))  then 10.0
+    elif (m | test("opus-(4-[5-8]|5)"))  then 5.0
+    elif (m | test("sonnet-(4-[56]|5)")) then 3.0
+    elif (m | test("haiku-4-5"))         then 1.0
     else null end;
   def mult(m):
     if   (m | test("^global\\."))             then 1.0
