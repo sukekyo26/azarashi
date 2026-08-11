@@ -151,7 +151,7 @@ RUN mkdir -p /home/${USERNAME}/.aws /home/${USERNAME}/.bun /home/${USERNAME}/.ca
 # Install cocoon
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.17.1" CHECKSUM_AMD64="5e31e75c3aef2ec542daf0312768be1da0f8a430a1ae0b73c6668a04cf4bf240" CHECKSUM_ARM64="347b6ba5dbee3ef103e83b2d4f5a589493562b48621cf72f77923fe58cd1f2e1" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.17.2" CHECKSUM_AMD64="9225cb28a53ef646890d1e594ebe78aca703f109036236a9f1a9155155d35388" CHECKSUM_ARM64="53a9b793134d4b87110b0cf5f865ae3a2ebe530a0644f25bf3f07d557b8077e3" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install the cocoon binary from its GitHub Pages mirror rather than the
 # GitHub Releases CDN. Pages-only by design — no fallback to the
@@ -229,7 +229,7 @@ COCOON_PLUGIN_EOF
 # Install Docker Buildx
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.36.0" CHECKSUM_AMD64="07823fdfcd82a41be90155a8b16876c1a780a6462de805a9f3f63b3119ccfb99" CHECKSUM_ARM64="70382de03915c07c488ae4ddc4f7e169ee978f953e754ecfce110ba017e0132b" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.36.1" CHECKSUM_AMD64="48af8a397ebd60178778bf63611dbcebe5f5e7a9be90eb9147b24b9587455778" CHECKSUM_ARM64="5d0cafd9d16afe1a0f0d9529885344ace2cc99efdd531b6c783c5455a6001569" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Docker Buildx (https://github.com/docker/buildx)
 #
@@ -554,7 +554,7 @@ COCOON_PLUGIN_EOF
 # Install just
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.57.0" CHECKSUM_AMD64="45b548094283cb9739af8f13273b8cddeee869f5b4ef2bb631b1f311cb566155" CHECKSUM_ARM64="f225044a81adea6e0b3a8b9370aaf374e6af76c8735ae263ac993df55fd137ec" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.58.0" CHECKSUM_AMD64="4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d" CHECKSUM_ARM64="748237128c4c40cbdabc65e841d05ceba13cc23a91eaba395495894c1d9764df" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install just (https://github.com/casey/just)
 #
@@ -622,7 +622,7 @@ COCOON_PLUGIN_EOF
 # Install Node.js
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="24.18.1" CHECKSUM_AMD64="d6c664df3f3f61458e8c277585571328522d705166723a7c7823a9253a4d15a0" CHECKSUM_ARM64="7201e3a09dc825bac57867c81913e2b8f0ef87d04cb9082af4cda82f6ff3d88c" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="24.19.0" CHECKSUM_AMD64="14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647" CHECKSUM_ARM64="01443c1e1a29e531ccad5a46fefa6df490d2189c49f7955904aecdbb0fe86fdc" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Node.js (https://github.com/nodejs/node)
 #
@@ -1178,7 +1178,7 @@ COCOON_PLUGIN_EOF
 # Install AWS SAM CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="1.164.0" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="1.165.0" CHECKSUM_AMD64="" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install AWS SAM CLI (https://github.com/aws/aws-sam-cli)
 #
@@ -1286,7 +1286,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Install GitHub Copilot CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.0.77" CHECKSUM_AMD64="c6414f99c5b29b049a3b0929ba824f0ff0ae88b85eb52559be45631b96b00f4c" CHECKSUM_ARM64="5bcf01b30bd74ce415cc93acb404885e0bc396cde037ca68efe2b8ec84f91e5a" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.0.79" CHECKSUM_AMD64="9248d81ead3055c51e90067ae7adf0cfb84b2f8b456d8580f18705ae181ca624" CHECKSUM_ARM64="c2181e3a597c7c9593b2a6d5d4e2e58b4e6a5ded12def8b74510869d3a3a977b" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install GitHub Copilot CLI from the GitHub Releases binary tarball
 # (https://github.com/github/copilot-cli/releases). Picked when gh.io is
@@ -1406,7 +1406,7 @@ ENV PATH="/home/${USERNAME}/.cargo/bin:$PATH"
 # Install RTK
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.44.1" CHECKSUM_AMD64="986f29704469b3d1051e2474105c6c75ab8b73651068dcd61612c1fb3938ad95" CHECKSUM_ARM64="ce97a94dbda556125fdbb22c94f538f93ae7dbc2b3de6f497bd60f206959c11c" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.45.0" CHECKSUM_AMD64="c4c036fbf181fc55ef329786c8c17e0d427972b053b825944d968a6aafef1ba4" CHECKSUM_ARM64="80a746dd305ef944ff50ef011ae4ce3878dd5ba88dfe35d859d05498191637c3" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install rtk from the GitHub Releases binary tarball
 # (https://github.com/rtk-ai/rtk/releases). Picked when
@@ -1497,7 +1497,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Install uv
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="0.12.0" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="0.12.3" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install uv (fast Python package and project manager) (https://github.com/astral-sh/uv)
 #
