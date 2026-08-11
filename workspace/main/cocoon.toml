@@ -189,6 +189,7 @@ packages = [
     "patch",
     "fzf",
     "bat",
+    "trivy",
 ]
 
 # [apt.mirror] — 上流 apt URL を地域ミラーに書き換え。
@@ -210,6 +211,15 @@ packages = [
 # components = ["main"]
 # url        = "https://download.opensuse.org/repositories/shells:fish:release:3/xUbuntu_24.04/"
 # key_url    = "https://download.opensuse.org/repositories/shells:fish:release:3/xUbuntu_24.04/Release.key"
+
+# trivy は Debian 公式リポジトリに無いため Aqua 公式 apt リポジトリを追加する。
+# suite = "generic" は trivy repo がディストリ非依存の単一 suite を切っているため。
+[[apt.sources]]
+name       = "trivy"
+suite      = "generic"
+components = ["main"]
+url        = "https://aquasecurity.github.io/trivy-repo/deb"
+key_url    = "https://aquasecurity.github.io/trivy-repo/deb/public.key"
 
 # [ports] — コンテナへフォワードするホストポート。
 #   short form: [HOST_IP:][HOST:]CONTAINER[/PROTOCOL]。範囲 (3000-3005:3000-3005)、UDP、IPv6 [::1] バインドも可。
