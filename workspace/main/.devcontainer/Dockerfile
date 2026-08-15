@@ -77,6 +77,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     patch \
     fzf \
     bat \
+    sqlite3 \
     trivy \
     && rm -rf /tmp/* /var/tmp/*
 

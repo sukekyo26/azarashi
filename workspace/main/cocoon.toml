@@ -189,6 +189,7 @@ packages = [
     "patch",
     "fzf",
     "bat",
+    "sqlite3",
     "trivy",
 ]
 
