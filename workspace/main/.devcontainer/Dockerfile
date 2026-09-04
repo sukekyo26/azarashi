@@ -1547,10 +1547,6 @@ else
 fi
 COCOON_PLUGIN_EOF
 
-# === user-defined dockerfile.post_plugins (from your config) ===
-RUN npm install -g typescript typescript-language-server
-# === end dockerfile.post_plugins ===
-
 # Backup image-installed files for volume-mount resilience
 RUN if [ -d ~/.local ]; then cp -a ~/.local ~/.image-local; else mkdir -p ~/.image-local; fi
 

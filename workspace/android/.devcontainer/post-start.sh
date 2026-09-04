@@ -27,6 +27,10 @@ fi
 # to pick up the latest release; non-fatal so startup still proceeds.
 npm install -g @openai/codex || true
 
+# Claude Code の typescript-lsp プラグインは PATH 上の typescript-language-server を
+# 起動するだけなので、本体はここで npm global に入れる。非 fatal。
+npm install -g typescript typescript-language-server || true
+
 cd ~/work/azarashi
 
 # Run install.sh, echo its output live, and condense the actions into one line so

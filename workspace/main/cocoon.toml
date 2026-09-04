@@ -264,11 +264,6 @@ lang     = "ja_JP.UTF-8"
 # pre_user_setup = """RUN apt-get install -y my-extra-pkg"""
 # post_plugins   = """RUN echo done"""
 
-# Claude Code の typescript-lsp プラグインは PATH 上の typescript-language-server を
-# 起動するだけなので、本体を npm global (NPM_CONFIG_PREFIX=$HOME/.npm-global) に入れる。
-[dockerfile]
-post_plugins = """RUN npm install -g typescript typescript-language-server"""
-
 # [certificates] — ~/.cocoon/certs/ からコンテナイメージへ TLS 証明書を自動取り込み (opt-in)。
 #   enable = true のとき `cocoon gen` が docker-compose の additional_contexts と Dockerfile の
 #   RUN --mount=type=bind を配線し、ホスト側ディレクトリの *.crt / *.cer がビルド時にトラストストアへ
