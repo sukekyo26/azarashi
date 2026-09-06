@@ -18,17 +18,6 @@ npm install -g typescript typescript-language-server pyright || true
 command -v gopls >/dev/null 2>&1 || go install golang.org/x/tools/gopls@latest || true
 rustup component add rust-analyzer >/dev/null 2>&1 || true
 
-# Serena runs a project's activation_command on activation, gated by
-# trusted_project_path_patterns. Its *code* default is "**" (trust everything, kept
-# for backward compatibility) and only the generated config carries the safe "[]",
-# so a config predating the key silently falls back to trusting every checkout.
-# Pin it when absent. The file is rewritten by Serena (it records projects), hence
-# an append here rather than deploying it from common/.
-serena_cfg="$HOME/.serena/serena_config.yml"
-if [ -f "$serena_cfg" ] && ! grep -q '^trusted_project_path_patterns:' "$serena_cfg"; then
-  printf '\n# Added by dotfiles: do not inherit the "**" code default.\ntrusted_project_path_patterns: []\n' >>"$serena_cfg"
-fi
-
 cd ~/work/azarashi
 
 # Run install.sh, echo its output live, and condense the actions into one line so
