@@ -249,6 +249,27 @@ assert_eq "force 3-way: no base (first run) deletes nothing" \
 assert_eq "force 3-way: the first run writes a base snapshot" \
   "$([ -f "$bf" ] && echo yes || echo no)" "yes"
 
+# (c2) the fragment dropped the parent object too: the nested key still goes,
+# while a sibling the user added under that parent survives. Regression: the
+# parent-exists guard used to skip these, so `[mcp_servers.<plugin>]` stayed
+# behind whenever it was the fragment's only entry under that table.
+rm -f "$t" "$bf"
+printf '{"servers":{"gone":{"cmd":"x"}}}\n' >"$bf"
+printf '{"servers":{"gone":{"cmd":"x"},"mine":{"cmd":"y"}}}\n' >"$t"
+printf '{"other":1}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: a nested key is deleted even when the fragment dropped its parent" \
+  "$(jq -Sc .servers "$t")" '{"mine":{"cmd":"y"}}'
+
+# (c3) same shape, but the user edited the key since the base — it must survive.
+rm -f "$t" "$bf"
+printf '{"servers":{"gone":{"cmd":"x"}}}\n' >"$bf"
+printf '{"servers":{"gone":{"cmd":"edited"}}}\n' >"$t"
+printf '{"other":1}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: a manually-changed nested key survives a dropped parent" \
+  "$(jq -Sc .servers.gone.cmd "$t")" '"edited"'
+
 # (d) without --force, deletion never happens even when a base exists
 FORCE=0
 rm -f "$t" "$bf"
