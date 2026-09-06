@@ -11,9 +11,12 @@ set -euo pipefail
 # to pick up the latest release; non-fatal so startup still proceeds.
 npm install -g @openai/codex || true
 
-# Claude Code の typescript-lsp プラグインは PATH 上の typescript-language-server を
-# 起動するだけなので、本体はここで npm global に入れる。非 fatal。
-npm install -g typescript typescript-language-server || true
+# Serena は言語サーバーを同梱せず PATH 上のものを起動するため、作業対象の 4 言語分を
+# ここで揃える。gopls だけは未導入だと Serena が RuntimeError で止まる（他は自前で
+# 取得を試みる）。go/rustup はイメージ側にあるので前提を足さない。いずれも非 fatal。
+npm install -g typescript typescript-language-server pyright || true
+command -v gopls >/dev/null 2>&1 || go install golang.org/x/tools/gopls@latest || true
+rustup component add rust-analyzer >/dev/null 2>&1 || true
 
 cd ~/work/azarashi
 
