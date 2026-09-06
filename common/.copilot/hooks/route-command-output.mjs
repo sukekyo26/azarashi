@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // preToolUse(bash) hook for GitHub Copilot CLI: rtk rewrite で出力を圧縮。
 // npm/make/just 等の間接実行 (テストランナー) は `rtk test` で包んで失敗行だけに畳む。
-// Copilot は MCP 非対応なので context-mode 誘導は無し。
+// 対話/ストリーミング系と git diff/find/ps は素通し。
 // 入出力スキーマ (toolArgs.command / permissionDecision / modifiedArgs) 以外の
 // rtk ロジックは common/.claude/hooks/route-command-output.mjs と同一を維持する。
 import { readFileSync, existsSync, realpathSync } from 'node:fs';
