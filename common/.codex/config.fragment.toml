@@ -4,6 +4,15 @@ approvals_reviewer = "auto_review"
 [features]
 hooks = true
 
+# Serena は tag 固定で取得する。プラグイン版 (.mcp.json) は git のデフォルトブランチを
+# 引くため、レビューを経ない上流変更がそのまま実行される。
+[mcp_servers.serena]
+command = "uvx"
+args = ["--from", "git+https://github.com/oraios/serena@v1.7.0", "serena", "start-mcp-server"]
+
+[mcp_servers.serena.env]
+SERENA_USAGE_REPORTING = "false"
+
 [tui]
 status_line = ["model-with-reasoning", "current-dir", "git-branch", "permissions", "context-used", "five-hour-limit", "weekly-limit", "codex-version"]
 status_line_use_colors = true
