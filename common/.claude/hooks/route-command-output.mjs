@@ -180,8 +180,8 @@ function main() {
   const segs = tokens.filter((t) => t.kind === 'seg');
   const heads = segs.map((s) => commandHead(s.text));
 
-  // 0. `rtk init` はブロック（複合の一部でも）
-  if (heads.some((h) => /^rtk\s+init\b/.test(h))) {
+  // 0. `rtk init` はブロック（複合の一部でも）。`--help` は何も書き込まないので通す。
+  if (heads.some((h) => /^rtk\s+init\b/.test(h) && !/\s(-h|--help)\b/.test(h))) {
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
