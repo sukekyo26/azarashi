@@ -486,6 +486,31 @@ expect_true "_json_eq is key-order insensitive" _json_eq '{"a":1,"b":2}' "$t"
 expect_false "_json_eq detects a difference" _json_eq '{"a":1,"b":3}' "$t"
 expect_false "_json_eq is false for a missing file" _json_eq '{"a":1}' "$WORK/none.json"
 
+# --- common.sh: atomic_write -----------------------------------------------
+
+rm -f "$WORK/aw"
+printf 'new\n' >"$WORK/aw.tmp"
+atomic_write "$WORK/aw.tmp" "$WORK/aw"
+assert_eq "atomic_write renames the temp onto the target" \
+  "$(cat "$WORK/aw")" "new"
+assert_eq "atomic_write consumes the temp file" \
+  "$([ -e "$WORK/aw.tmp" ] && echo yes || echo no)" "no"
+
+# A bind-mounted target refuses rename (EBUSY) but accepts a write through the
+# inode. Force that path by making mv fail, and check the target keeps its inode.
+printf 'old\n' >"$WORK/aw"
+_aw_ino_before=$(stat -c %i "$WORK/aw")
+printf 'replaced\n' >"$WORK/aw.tmp"
+mv() { return 1; }
+atomic_write "$WORK/aw.tmp" "$WORK/aw"
+unset -f mv 2>/dev/null || unalias mv 2>/dev/null || true
+assert_eq "atomic_write falls back to copying when rename fails" \
+  "$(cat "$WORK/aw")" "replaced"
+assert_eq "the fallback writes through the existing inode" \
+  "$(stat -c %i "$WORK/aw")" "$_aw_ino_before"
+assert_eq "the fallback still consumes the temp file" \
+  "$([ -e "$WORK/aw.tmp" ] && echo yes || echo no)" "no"
+
 # --- common.sh: backup -----------------------------------------------------
 
 rm -f "$WORK/x"

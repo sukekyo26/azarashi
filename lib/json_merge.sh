@@ -142,7 +142,7 @@ _save_base() {
   mkdir -p "$(dirname "$BASE_FILE")" || die "mkdir failed: $BASE_FILE"
   _sb_tmp=$(mktemp "${BASE_FILE}.dotfiles-tmp.XXXXXX") || die "mktemp failed: $BASE_FILE"
   printf '%s\n' "$_sb_clean" >"$_sb_tmp" || die "write failed: $_sb_tmp"
-  mv "$_sb_tmp" "$BASE_FILE" || die "atomic move failed: $BASE_FILE"
+  atomic_write "$_sb_tmp" "$BASE_FILE" || die "write failed: $BASE_FILE"
 }
 
 # _show_deleted_keys <frag1> [frag2 ...] — under --force --dry-run, print the
@@ -262,7 +262,7 @@ merge_json() {
     rm -f "$_mj_tmp"
     die "merge produced invalid JSON, aborted: $_mj_target: $_mj_err"
   fi
-  mv "$_mj_tmp" "$_mj_target" || die "atomic move failed: $_mj_target"
+  atomic_write "$_mj_tmp" "$_mj_target" || die "write failed: $_mj_target"
   info "merged  : $_mj_target"
   # Snapshot the applied fragment for the next --force run's 3-way delete.
   [ "$FORCE" -eq 1 ] && _save_base "$@"
