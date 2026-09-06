@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // preToolUse(bash) hook for GitHub Copilot CLI: rtk rewrite で出力を圧縮。
+// npm/make/just 等の間接実行 (テストランナー) は `rtk test` で包んで失敗行だけに畳む。
 // Copilot は MCP 非対応なので context-mode 誘導は無し。
 // 入出力スキーマ (toolArgs.command / permissionDecision / modifiedArgs) 以外の
 // rtk ロジックは common/.claude/hooks/route-command-output.mjs と同一を維持する。
@@ -113,6 +114,16 @@ const EXCLUDE =
 // ps: rtk 0.42 系は rewrite を返すが subcommand 表に無く実行時に死ぬ
 const FORCE_PASSTHROUGH = [/^git\s+diff\b/, /^find\b/, /^ps\b/];
 
+// テストランナー系は内側ツールが隠れて rtk rewrite が効かないため、`rtk test` で
+// 実行ごと包んで失敗行だけに畳む。
+// `npm ci` (clean install) と区別するため `ci` は `run ci` のみ拾う。
+const TEST_RUNNER_PATTERNS = [
+  /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|test:[\w:-]+|quality|e2e|lint|check)\b/,
+  /^(npm|pnpm|yarn|bun)\s+run\s+ci\b/,
+  /^make\s+(test|e2e|quality|lint|ci|check)\b/,
+  /^just\s+(test|e2e|quality|lint|ci|check)\b/,
+];
+
 function resolveRtk() {
   const home = process.env.HOME || '';
   const candidates = [];
@@ -132,6 +143,11 @@ function resolveRtk() {
 // rtk rewrite の exit code 規約: 0=ok / 1=N/A / 2=deny / 3=ask
 export function rewriteSegmentBody(rtk, body) {
   if (!body.trim()) return { action: 'keep' };
+  // テストランナーは内側ツールが隠れて rtk rewrite が効かない (exit 3 を返す) ので、
+  // `rtk test` で実行ごと包んで失敗行だけに畳む。exit code は透過される。
+  if (TEST_RUNNER_PATTERNS.some((re) => re.test(commandHead(body)))) {
+    return { action: 'replace', body: `${rtk} test ${body}` };
+  }
   const res = spawnSync(rtk, ['rewrite', body], { encoding: 'utf8' });
   const out = (res.stdout || '').trim();
   switch (res.status) {
@@ -165,12 +181,12 @@ function main() {
   const segs = tokens.filter((t) => t.kind === 'seg');
   const heads = segs.map((s) => commandHead(s.text));
 
-  // 0. `rtk init` はブロック（複合の一部でも）
-  if (heads.some((h) => /^rtk\s+init\b/.test(h))) {
+  // 0. `rtk init` はブロック（複合の一部でも）。`--help` は何も書き込まないので通す。
+  if (heads.some((h) => /^rtk\s+init\b/.test(h) && !/\s(-h|--help)\b/.test(h))) {
     process.stdout.write(JSON.stringify({
       permissionDecision: 'deny',
       permissionDecisionReason:
-        'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正フック/RTK.md が入り既存フックと競合）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
+        'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正の PreToolUse フックと指示ファイルが入り、このフックと二重に走る）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
     }));
     process.exit(0);
   }
