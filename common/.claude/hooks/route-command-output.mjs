@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PreToolUse(Bash) hook: 重い/冗長な出力を圧縮またはオフロードしてトークンを節約。
 //  - 対話/ストリーミング系と git diff/find/ps は素通し
-//  - npm/make/just 等の間接実行 (テストランナー) は context-mode へ deny で誘導
+//  - npm/make/just 等の間接実行 (テストランナー) は `rtk test` で包んで失敗行だけに畳む
 //  - それ以外は rtk rewrite をセグメント単位で適用 (exit 0/1/2/3 を尊重)
 import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { execSync, spawnSync } from 'node:child_process';
@@ -113,9 +113,10 @@ const EXCLUDE =
 // ps: rtk 0.42 系は rewrite を返すが subcommand 表に無く実行時に死ぬ
 const FORCE_PASSTHROUGH = [/^git\s+diff\b/, /^find\b/, /^ps\b/];
 
-// テストランナー系は内側ツールが隠れて rtk が効かないため context-mode へオフロード。
+// テストランナー系は内側ツールが隠れて rtk rewrite が効かないため、`rtk test` で
+// 実行ごと包んで失敗行だけに畳む。
 // `npm ci` (clean install) と区別するため `ci` は `run ci` のみ拾う。
-const CTX_PATTERNS = [
+const TEST_RUNNER_PATTERNS = [
   /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|test:[\w:-]+|quality|e2e|lint|check)\b/,
   /^(npm|pnpm|yarn|bun)\s+run\s+ci\b/,
   /^make\s+(test|e2e|quality|lint|ci|check)\b/,
@@ -141,6 +142,11 @@ function resolveRtk() {
 // rtk rewrite の exit code 規約: 0=ok / 1=N/A / 2=deny / 3=ask
 export function rewriteSegmentBody(rtk, body) {
   if (!body.trim()) return { action: 'keep' };
+  // テストランナーは内側ツールが隠れて rtk rewrite が効かない (exit 3 を返す) ので、
+  // `rtk test` で実行ごと包んで失敗行だけに畳む。exit code は透過される。
+  if (TEST_RUNNER_PATTERNS.some((re) => re.test(commandHead(body)))) {
+    return { action: 'replace', body: `${rtk} test ${body}` };
+  }
   const res = spawnSync(rtk, ['rewrite', body], { encoding: 'utf8' });
   const out = (res.stdout || '').trim();
   switch (res.status) {
@@ -164,22 +170,6 @@ function absInBody(rtk, body) {
   return body;
 }
 
-function denyToContextMode(command) {
-  const reason = [
-    '大量出力のため Bash ではなく context-mode で実行:',
-    `  ctx_execute(language: "shell", code: ${JSON.stringify(command)})`,
-    '要約と失敗のみ報告、詳細は ctx_search で。',
-  ].join('\n');
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: 'deny',
-      permissionDecisionReason: reason,
-    },
-  }));
-  process.exit(0);
-}
-
 function main() {
   let payload;
   try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch { allow(); }
@@ -190,14 +180,14 @@ function main() {
   const segs = tokens.filter((t) => t.kind === 'seg');
   const heads = segs.map((s) => commandHead(s.text));
 
-  // 0. `rtk init` はブロック（複合の一部でも）
-  if (heads.some((h) => /^rtk\s+init\b/.test(h))) {
+  // 0. `rtk init` はブロック（複合の一部でも）。`--help` は何も書き込まないので通す。
+  if (heads.some((h) => /^rtk\s+init\b/.test(h) && !/\s(-h|--help)\b/.test(h))) {
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
         permissionDecisionReason:
-          'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正フック/RTK.md が入り context-mode と競合）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
+          'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正の PreToolUse フックと指示ファイルが入り、このフックと二重に走る）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
       },
     }));
     process.exit(0);
@@ -206,21 +196,18 @@ function main() {
   // 1. 対話/ストリーミング・常時 passthrough 対象 → 素通し
   if (heads.some((h) => EXCLUDE.test(h) || FORCE_PASSTHROUGH.some((re) => re.test(h)))) allow();
 
-  // 2. テスト/ビルド等の重い間接実行 → context-mode へ deny で誘導
-  if (heads.some((h) => CTX_PATTERNS.some((re) => re.test(h)))) denyToContextMode(command);
-
-  // 3. 分割で壊れる shell 構文 (heredoc / 制御構文 / サブシェル等) → 全体 passthrough
+  // 2. 分割で壊れる shell 構文 (heredoc / 制御構文 / サブシェル等) → 全体 passthrough
   if (hasUnsafeShape(tokens, flags)) allow();
 
-  // 4. rtk 解決 (未導入なら passthrough)
+  // 3. rtk 解決 (未導入なら passthrough)
   const rtk = resolveRtk();
   if (rtk === '') allow();
 
-  // 5. セグメント数の上限 (fork コスト保護)
+  // 4. セグメント数の上限 (fork コスト保護)
   const MAX_SEGS = 16;
   if (segs.length > MAX_SEGS) allow();
 
-  // 6. セグメント単位で rewrite し、結果を組み立てる
+  // 5. セグメント単位で rewrite し、結果を組み立てる
   let needsAsk = false;
   let denyHit = false;
   let anyReplace = false;
@@ -239,15 +226,15 @@ function main() {
     pieces.push(prefix + absInBody(rtk, r.body) + tail);
   }
 
-  // 7. いずれかのセグメントが deny → Claude Code の native deny rule に委ねる
+  // 6. いずれかのセグメントが deny → Claude Code の native deny rule に委ねる
   if (denyHit) allow();
 
-  // 8. 書き換え対象なし → 素通し
+  // 7. 書き換え対象なし → 素通し
   if (!anyReplace) allow();
 
   const newCommand = pieces.join('');
 
-  // 9. ask: permissionDecision を omit してユーザー確認に回す
+  // 8. ask: permissionDecision を omit してユーザー確認に回す
   if (needsAsk) {
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
@@ -258,7 +245,7 @@ function main() {
     process.exit(0);
   }
 
-  // 10. 通常: 書き換えて allow
+  // 9. 通常: 書き換えて allow
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',

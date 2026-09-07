@@ -249,6 +249,27 @@ assert_eq "force 3-way: no base (first run) deletes nothing" \
 assert_eq "force 3-way: the first run writes a base snapshot" \
   "$([ -f "$bf" ] && echo yes || echo no)" "yes"
 
+# (c2) the fragment dropped the parent object too: the nested key still goes,
+# while a sibling the user added under that parent survives. Regression: the
+# parent-exists guard used to skip these, so `[mcp_servers.<plugin>]` stayed
+# behind whenever it was the fragment's only entry under that table.
+rm -f "$t" "$bf"
+printf '{"servers":{"gone":{"cmd":"x"}}}\n' >"$bf"
+printf '{"servers":{"gone":{"cmd":"x"},"mine":{"cmd":"y"}}}\n' >"$t"
+printf '{"other":1}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: a nested key is deleted even when the fragment dropped its parent" \
+  "$(jq -Sc .servers "$t")" '{"mine":{"cmd":"y"}}'
+
+# (c3) same shape, but the user edited the key since the base — it must survive.
+rm -f "$t" "$bf"
+printf '{"servers":{"gone":{"cmd":"x"}}}\n' >"$bf"
+printf '{"servers":{"gone":{"cmd":"edited"}}}\n' >"$t"
+printf '{"other":1}\n' >"$f"
+merge_json "$t" "$f" >/dev/null
+assert_eq "force 3-way: a manually-changed nested key survives a dropped parent" \
+  "$(jq -Sc .servers.gone.cmd "$t")" '"edited"'
+
 # (d) without --force, deletion never happens even when a base exists
 FORCE=0
 rm -f "$t" "$bf"
@@ -464,6 +485,31 @@ printf '{"b":2,"a":1}\n' >"$t"
 expect_true "_json_eq is key-order insensitive" _json_eq '{"a":1,"b":2}' "$t"
 expect_false "_json_eq detects a difference" _json_eq '{"a":1,"b":3}' "$t"
 expect_false "_json_eq is false for a missing file" _json_eq '{"a":1}' "$WORK/none.json"
+
+# --- common.sh: atomic_write -----------------------------------------------
+
+rm -f "$WORK/aw"
+printf 'new\n' >"$WORK/aw.tmp"
+atomic_write "$WORK/aw.tmp" "$WORK/aw"
+assert_eq "atomic_write renames the temp onto the target" \
+  "$(cat "$WORK/aw")" "new"
+assert_eq "atomic_write consumes the temp file" \
+  "$([ -e "$WORK/aw.tmp" ] && echo yes || echo no)" "no"
+
+# A bind-mounted target refuses rename (EBUSY) but accepts a write through the
+# inode. Force that path by making mv fail, and check the target keeps its inode.
+printf 'old\n' >"$WORK/aw"
+_aw_ino_before=$(stat -c %i "$WORK/aw")
+printf 'replaced\n' >"$WORK/aw.tmp"
+mv() { return 1; }
+atomic_write "$WORK/aw.tmp" "$WORK/aw"
+unset -f mv 2>/dev/null || unalias mv 2>/dev/null || true
+assert_eq "atomic_write falls back to copying when rename fails" \
+  "$(cat "$WORK/aw")" "replaced"
+assert_eq "the fallback writes through the existing inode" \
+  "$(stat -c %i "$WORK/aw")" "$_aw_ino_before"
+assert_eq "the fallback still consumes the temp file" \
+  "$([ -e "$WORK/aw.tmp" ] && echo yes || echo no)" "no"
 
 # --- common.sh: backup -----------------------------------------------------
 

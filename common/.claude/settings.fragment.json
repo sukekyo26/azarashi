@@ -37,23 +37,5 @@
       }
     ]
   },
-  "autoInstallIdeExtension": false,
-  "extraKnownMarketplaces": {
-    "context-mode": {
-      "source": {
-        "source": "github",
-        "repo": "mksglu/context-mode"
-      }
-    },
-    "claude-plugins-official": {
-      "source": {
-        "source": "github",
-        "repo": "anthropics/claude-plugins-official"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "context-mode@context-mode": true,
-    "typescript-lsp@claude-plugins-official": true
-  }
+  "autoInstallIdeExtension": false
 }

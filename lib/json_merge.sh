@@ -27,7 +27,11 @@ def walk_ok($o; $p):
          then {cur: (.cur[$k]), ok: true}
          else {cur: null, ok: false} end);
 def absent($o; $p): walk_ok($o; $p) | .ok | not;
-def parentObj($o; $p): walk_ok($o; $p[0:-1]) | (.ok and (.cur | type == "object"));
+# A parent missing from the fragment is fine — dropping the last fragment entry
+# under a table (e.g. [mcp_servers.<plugin>]) removes the table with it, and the
+# leaf must still be deletable. Only a parent that turned into a non-object
+# blocks the delete, since the path no longer means what the base recorded.
+def parentOk($o; $p): walk_ok($o; $p[0:-1]) | ((.ok | not) or (.cur | type == "object"));
 def force3($b; $t; $f):
   if ($f | type) == "object" and ($t | type) == "object" then
     ($b // {}) as $bb |
@@ -47,7 +51,7 @@ def force3($b; $t; $f):
     # the base (a manual edit turned an object into a scalar/array), treat it as a
     # mismatch and keep the key, rather than letting getpath abort the whole merge.
     | select(($p | length) > 0
-             and parentObj($f; $p)
+             and parentOk($f; $p)
              and absent($f; $p)
              and (walk_ok($t; $p) as $tw | $tw.ok and ($tw.cur == ($b | getpath($p)))))
     | $p ] as $del
@@ -138,7 +142,7 @@ _save_base() {
   mkdir -p "$(dirname "$BASE_FILE")" || die "mkdir failed: $BASE_FILE"
   _sb_tmp=$(mktemp "${BASE_FILE}.dotfiles-tmp.XXXXXX") || die "mktemp failed: $BASE_FILE"
   printf '%s\n' "$_sb_clean" >"$_sb_tmp" || die "write failed: $_sb_tmp"
-  mv "$_sb_tmp" "$BASE_FILE" || die "atomic move failed: $BASE_FILE"
+  atomic_write "$_sb_tmp" "$BASE_FILE" || die "write failed: $BASE_FILE"
 }
 
 # _show_deleted_keys <frag1> [frag2 ...] — under --force --dry-run, print the
@@ -258,7 +262,7 @@ merge_json() {
     rm -f "$_mj_tmp"
     die "merge produced invalid JSON, aborted: $_mj_target: $_mj_err"
   fi
-  mv "$_mj_tmp" "$_mj_target" || die "atomic move failed: $_mj_target"
+  atomic_write "$_mj_tmp" "$_mj_target" || die "write failed: $_mj_target"
   info "merged  : $_mj_target"
   # Snapshot the applied fragment for the next --force run's 3-way delete.
   [ "$FORCE" -eq 1 ] && _save_base "$@"

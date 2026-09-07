@@ -148,7 +148,7 @@ merge_toml() {
     rm -f "$_mt_tmp" $_mt_cleanup
     die "JSON-to-TOML conversion failed: $_mt_real_target: $_mt_err"
   fi
-  mv "$_mt_tmp" "$_mt_real_target" || die "atomic move failed: $_mt_real_target"
+  atomic_write "$_mt_tmp" "$_mt_real_target" || die "write failed: $_mt_real_target"
   info "merged  : $_mt_real_target"
 
   [ "$FORCE" -eq 1 ] && _save_base $_mt_json_frags

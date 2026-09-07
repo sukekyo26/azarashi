@@ -30,6 +30,26 @@ backup() {
   info "backed up: $_bk_dest"
 }
 
+# atomic_write <tmp> <target> — move <tmp> onto <target>, consuming <tmp> either way.
+# A bind-mounted target (devcontainers mount single files like ~/.claude.json) cannot
+# be replaced by rename: the mount pins the inode and mv fails with EBUSY. Writing
+# *through* the inode still works, so fall back to copying the bytes in. That write
+# is not atomic — a crash mid-copy truncates the target — so it stays a fallback,
+# and the backup taken before the call is what makes it recoverable.
+atomic_write() {
+  _aw_tmp=$1
+  _aw_target=$2
+  if mv "$_aw_tmp" "$_aw_target" 2>/dev/null; then
+    return 0
+  fi
+  if cat "$_aw_tmp" >"$_aw_target" 2>/dev/null; then
+    rm -f "$_aw_tmp"
+    return 0
+  fi
+  rm -f "$_aw_tmp"
+  return 1
+}
+
 # newest_backup <path> — print the most recent backup of <path>, if any.
 newest_backup() {
   _nb_base=$1
