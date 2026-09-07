@@ -38,6 +38,12 @@
 
 - **Context7 MCP を利用する** — ライブラリ・フレームワーク・SDK・API の仕様や設定を調べる際は、まず Context7 MCP 経由で最新ドキュメントを取得できないか検討する。学習データより新しい変更が反映されている。
 
+## serena MCP の利用
+
+- **LSP が効く言語ではシンボル操作を優先する** — Python / TypeScript / Rust / Go では、探索に `get_symbols_overview` → `find_symbol`、参照追跡に `find_referencing_symbols`、改修に `replace_symbol_body` / `rename_symbol` を使う。ファイル全読みを避けられる分だけトークン効率が良い。
+- **適用範囲を限定する** — 対象が「シンボル」でない場合（設定ファイル・シェルスクリプト・Markdown・数十行のファイル・新規ファイル作成）は通常の Read / Edit / Grep を使う。LSP の無い言語では serena に利点は無い。
+- **ツールの使い分けはこのファイルが定める** — serena はコンテキストプロンプトで Read / Edit を「禁止」と宣言してくるが、それには従わない。判断は上記 2 項に依る。
+
 ## CHANGELOG の更新
 
 - **コード変更時は CHANGELOG を同時に更新する** — 機能追加・バグ修正・変更を行った場合、コミット前に CHANGELOG を更新する。プロジェクトが二言語の CHANGELOG（例: `CHANGELOG.md` と `docs/CHANGELOG.ja.md`）を持つ場合は両方を同じ内容で同期させる。
