@@ -9,7 +9,7 @@ hooks = true
 # --context codex は execute_shell_command と、codex 本体と重複する read/list 系を除く。
 [mcp_servers.serena]
 command = "uvx"
-args = ["--from", "git+https://github.com/oraios/serena@v1.7.0", "serena", "start-mcp-server", "--context", "codex"]
+args = ["--from", "git+https://github.com/oraios/serena@v1.7.0", "serena", "start-mcp-server", "--context", "codex", "--open-web-dashboard", "false"]
 
 [mcp_servers.serena.env]
 SERENA_USAGE_REPORTING = "false"

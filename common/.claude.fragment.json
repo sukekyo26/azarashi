@@ -9,7 +9,9 @@
         "serena",
         "start-mcp-server",
         "--context",
-        "claude-code"
+        "claude-code",
+        "--open-web-dashboard",
+        "false"
       ],
       "env": {
         "SERENA_USAGE_REPORTING": "false"
