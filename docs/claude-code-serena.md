@@ -37,8 +37,20 @@ jq '.mcpServers.serena.alwaysLoad' ~/.claude.json
 
 以前は `ENABLE_TOOL_SEARCH=false` で Tool Search 自体を止めていたが、これだと全 MCP サーバーが
 常時ロードになる。`alwaysLoad` なら Serena だけを常時ロードにでき、他の MCP は遅延のままにできる。
-**fragment からキーを消しても既存の `settings.json` からは自動で消えない**（3-way 削除は `--force` 時のみ）
-ので、移行時は `./install.sh install --force` を一度実行して `ENABLE_TOOL_SEARCH` を落とすこと。
+代償として、`WebFetch` / `WebSearch` など低頻度の**組み込み**ツールも遅延対象に入り、
+初回利用時に `ToolSearch` が 1 回挟まる。
+
+移行時は `ENABLE_TOOL_SEARCH` を**手で消す**:
+
+```sh
+jq 'del(.env.ENABLE_TOOL_SEARCH)' ~/.claude/settings.json >/tmp/s.json &&
+  mv /tmp/s.json ~/.claude/settings.json
+```
+
+`./install.sh install --force` では消えない。3-way 削除が消せるのは
+`<settings>.fragment.base.json` に記録済みのキーだけで、`ENABLE_TOOL_SEARCH` は
+`--force` を一度も通らないまま 2-way union で入ったため base に無い。
+fragment 由来のキーでも、追加から削除までの間に `--force` が挟まらなければこの状態になる。
 
 ### 2. output style が有効か確認する
 
