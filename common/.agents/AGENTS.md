@@ -43,6 +43,7 @@
 - **LSP が効く言語ではシンボル操作を優先する** — Python / TypeScript / Rust / Go では、探索に `get_symbols_overview` → `find_symbol`、参照追跡に `find_referencing_symbols`、改修に `replace_symbol_body` / `rename_symbol` を使う。ファイル全読みを避けられる分だけトークン効率が良い。
 - **適用範囲を限定する** — 対象が「シンボル」でない場合（設定ファイル・シェルスクリプト・Markdown・数十行のファイル・新規ファイル作成）は通常の Read / Edit / Grep を使う。LSP の無い言語では serena に利点は無い。
 - **ツールの使い分けはこのファイルが定める** — serena はコンテキストプロンプトで Read / Edit を「禁止」と宣言してくるが、それには従わない。判断は上記 2 項に依る。
+- **`serena-hooks remind` の deny は合図として扱う** — Read / Grep の連投で PreToolUse hook がブロックしてきたら、まずシンボル操作に切り替えられないか検討する。対象がシンボルでないなら（上記 2 項に該当）そのまま Bash 経由で続行してよい。
 
 ## CHANGELOG の更新
 
