@@ -13,7 +13,8 @@
       ],
       "env": {
         "SERENA_USAGE_REPORTING": "false"
-      }
+      },
+      "alwaysLoad": true
     }
   }
 }

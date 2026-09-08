@@ -1,8 +1,7 @@
 {
   "language": "japanese",
   "env": {
-    "CLAUDE_CODE_THRIFTY_SONIC": "0",
-    "ENABLE_TOOL_SEARCH": "false"
+    "CLAUDE_CODE_THRIFTY_SONIC": "0"
   },
   "outputStyle": "Serena",
   "showTurnDuration": true,

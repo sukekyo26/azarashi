@@ -6,14 +6,14 @@ Claude Code が Serena のシンボル操作ツール（`find_symbol` 等）を�
 | 層 | 何をするか | 設定場所 | 配布 |
 | --- | --- | --- | --- |
 | システムプロンプト | output style で Serena のツール選択ルールを追加する | `common/.claude/output-styles/serena.md` + fragment の `outputStyle` | `install.sh` |
-| ツールのロード | MCP ツールを遅延ロードさせず常時ロードさせる | `common/.claude/settings.fragment.json` の `env` | `install.sh` |
+| ツールのロード | Serena の MCP ツールだけ遅延ロードから除外する | `common/.claude.fragment.json` の `alwaysLoad` | `install.sh` |
 | システムプロンプト | Bash 優先の指示を無効化する | 同上 | `install.sh` |
 
 すべて `install.sh` で配布されるため、**新しいコンテナでの手作業は無い**。
 
 ## 新しいコンテナ / ワークスペースでの手順
 
-### 1. dotfiles を配布する（env 2 つが入る）
+### 1. dotfiles を配布する
 
 ```sh
 cd ~/work/azarashi && ./install.sh install
@@ -23,14 +23,22 @@ cd ~/work/azarashi && ./install.sh install
 
 ```sh
 jq '.env' ~/.claude/settings.json
-# => { "CLAUDE_CODE_THRIFTY_SONIC": "0", "ENABLE_TOOL_SEARCH": "false" }
+# => { "CLAUDE_CODE_THRIFTY_SONIC": "0" }
+jq '.mcpServers.serena.alwaysLoad' ~/.claude.json
+# => true
 ```
 
 - `CLAUDE_CODE_THRIFTY_SONIC=0` — 「Read/Edit ではなく Bash で作業しろ」というシステムプロンプトを消す。
-  `"0"` は数値 0 と解釈されて **有効化** されるフラグ（`ENABLE_TOOL_SEARCH`）とは別物なので取り違えないこと。
-- `ENABLE_TOOL_SEARCH=false` — MCP ツールの遅延ロード（Tool Search）を止める。
-  これを入れないと Serena の 22 ツールはスキーマが読み込まれず、`ToolSearch` を挟まないと呼べない。
-  **`"0"` は逆に有効化される**（`aEn(e) === 0` が `tst` を返す）ので必ず `"false"`。
+- `alwaysLoad: true` — Serena のツールを Tool Search の遅延ロード対象から外し、常にプロンプトへ載せる。
+  これが無いと Serena の 22 ツールはスキーマが読み込まれず、`ToolSearch` を挟まないと呼べない。
+  副作用として、起動時に Serena の接続完了を待つ（5 秒でタイムアウト）。
+  公式ドキュメントはこのフィールドを http / sse / ws の項でしか説明していないが、
+  **stdio のスキーマにも入っている**（`claude` バイナリの zod スキーマで確認済み。2.1.263）。
+
+以前は `ENABLE_TOOL_SEARCH=false` で Tool Search 自体を止めていたが、これだと全 MCP サーバーが
+常時ロードになる。`alwaysLoad` なら Serena だけを常時ロードにでき、他の MCP は遅延のままにできる。
+**fragment からキーを消しても既存の `settings.json` からは自動で消えない**（3-way 削除は `--force` 時のみ）
+ので、移行時は `./install.sh install --force` を一度実行して `ENABLE_TOOL_SEARCH` を落とすこと。
 
 ### 2. output style が有効か確認する
 
@@ -48,6 +56,10 @@ Claude Code 組み込みの指示を残したまま、ツール選択ルール�
 - `settings.local.json` の `outputStyle` は user settings より優先される。効かないときはまずそこを見る。
 - 反映はセッション開始時のみ。`/clear` か再起動が必要。
 - output style は**メインの会話にのみ**適用され、subagent には効かない。
+
+**このファイルは公式出力のまま維持する。** ツール選択の緩和（既知の数行修正では通常の Read / Edit を使う等）
+を書きたくなったら、`common/.agents/AGENTS.md` の「serena MCP の利用」節に書く。ここを手で編集すると
+下の追従手順で消えるうえ、公式との差分が追えなくなる。
 
 Serena 側の override が更新されたら、以下で追従する:
 
