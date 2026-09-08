@@ -170,7 +170,17 @@ function absInBody(rtk, body) {
   return body;
 }
 
+// 配布先クライアント。mirror.conf でこのファイルは Codex にも配られるが、Codex は
+// `updatedInput` を `permissionDecision: "allow"` と併記した形しか受け付けず、それ以外は
+// hook 実行失敗として扱われて書き換えごと捨てられる (Claude Code では omit して良い)。
+// 既定は claude-code。
+function detectClient() {
+  const arg = process.argv.slice(2).find((a) => a.startsWith('--client='));
+  return arg ? arg.slice('--client='.length) : 'claude-code';
+}
+
 function main() {
+  const client = detectClient();
   let payload;
   try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch { allow(); }
   const command = payload?.tool_input?.command;
@@ -234,8 +244,11 @@ function main() {
 
   const newCommand = pieces.join('');
 
-  // 8. ask: permissionDecision を omit してユーザー確認に回す
-  if (needsAsk) {
+  // 8. ask: permissionDecision を omit して通常の権限フローに委ねる。
+  //    Codex はこの形を受け付けない (ask 未サポート・allow 以外の updatedInput はエラー) ので
+  //    9 と同じ allow + updatedInput に落とす。Codex の allow は PreToolUse の結果を
+  //    「書き換えた入力で継続」と解釈するだけで、後段の権限判定・サンドボックスは通常どおり動く。
+  if (needsAsk && client !== 'codex') {
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
