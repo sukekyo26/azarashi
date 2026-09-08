@@ -4,6 +4,7 @@
     "CLAUDE_CODE_THRIFTY_SONIC": "0",
     "ENABLE_TOOL_SEARCH": "false"
   },
+  "outputStyle": "Serena",
   "showTurnDuration": true,
   "spinnerTipsEnabled": false,
   "statusLine": {
