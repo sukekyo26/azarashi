@@ -11,6 +11,10 @@ set -euo pipefail
 # to pick up the latest release; non-fatal so startup still proceeds.
 npm install -g @openai/codex || true
 
+# serena / serena-hooks を PATH に置く。hooks は PreToolUse ごとに起動するので uvx の
+# 都度解決では遅すぎる。--force はピン変更を確実に反映させるため。
+uv tool install --force git+https://github.com/oraios/serena@v1.7.0 || true
+
 # Serena は言語サーバーを同梱せず PATH 上のものを起動するため、作業対象の 4 言語分を
 # ここで揃える。gopls だけは未導入だと Serena が RuntimeError で止まる（他は自前で
 # 取得を試みる）。go/rustup はイメージ側にあるので前提を足さない。いずれも非 fatal。
