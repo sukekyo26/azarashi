@@ -40,9 +40,12 @@
 
 ## serena MCP の利用
 
-- **LSP が効く言語ではシンボル操作を優先する** — Python / TypeScript / Rust / Go では、探索に `get_symbols_overview` → `find_symbol`、参照追跡に `find_referencing_symbols`、改修に `replace_symbol_body` / `rename_symbol` を使う。ファイル全読みを避けられる分だけトークン効率が良い。
-- **適用範囲を限定する** — 対象が「シンボル」でない場合（設定ファイル・シェルスクリプト・Markdown・数十行のファイル・新規ファイル作成）は通常の Read / Edit / Grep を使う。LSP の無い言語では serena に利点は無い。
-- **ツールの使い分けはこのファイルが定める** — serena はコンテキストプロンプトで Read / Edit を「禁止」と宣言してくるが、それには従わない。判断は「シンボル操作を優先する」「適用範囲を限定する」の 2 項に依る。
+ツール選択の規範は Claude Code の output style `Serena`（Serena 公式のシステムプロンプト）が定める。この節はそれを**打ち消さず**、公式が置いた例外規定を実務に落とすためのもの。
+
+- **構造・参照関係が未知のコードは serena を優先する** — 探索に `get_symbols_overview` → `find_symbol`、参照追跡に `find_referencing_symbols`、改修に `replace_symbol_body` / `rename_symbol` を使う。ファイル全読みを避けられる分だけトークン効率が良い。
+- **公式が挙げる例外に当たるものは通常の Read / Edit / Grep でよい** — 非コードファイル（Markdown・JSON・TOML・設定ファイル・シェルスクリプト）、数行読めば足りる箇所、LSP が無い言語、新規ファイルの作成。これは output style の "Built-in Read/Edit/Glob are permitted …" / "fine for non-code files" 節そのものであり、逸脱ではない。
+- **節約対象は「正しく完了するまでの呼び出し回数」** — 既に場所が分かっている数行の修正で、構造の再導出から始めない。serena の使用率を上げること自体は目的ではない。
+- **MCP 側の注入プロンプトは output style より強い言い方をする** — serena は Read / Edit を一律「FORBIDDEN」と宣言してくるが、判断は output style の例外規定に従う。
 - **`serena-hooks remind` の deny は合図として扱う** — Read / Grep の連投で PreToolUse hook がブロックしてきたら、まずシンボル操作に切り替えられないか検討する。「適用範囲を限定する」に当たる対象なら、そのまま Read / Grep で続行してよい（deny はカウンタをリセットする nudge であり、再試行を妨げない）。
 
 ## CHANGELOG の更新
