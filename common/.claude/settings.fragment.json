@@ -1,7 +1,8 @@
 {
   "language": "japanese",
   "env": {
-    "CLAUDE_CODE_THRIFTY_SONIC": "0"
+    "CLAUDE_CODE_THRIFTY_SONIC": "0",
+    "ENABLE_TOOL_SEARCH": "false"
   },
   "showTurnDuration": true,
   "spinnerTipsEnabled": false,
