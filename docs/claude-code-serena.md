@@ -46,6 +46,13 @@ claude() {
     ''|-*)
       if command -v serena >/dev/null 2>&1 &&
         sp=$(serena prompts print-cc-system-prompt-override 2>/dev/null) && [ -n "$sp" ]; then
+        sp="$sp
+
+# Environment
+cwd: $PWD
+today: $(date +%F)
+platform: $(uname -sro)
+"
         command claude --system-prompt "$sp" --system-prompt-snapshot on "$@"
       else
         command claude "$@"
@@ -63,6 +70,10 @@ exec zsh
 - サブコマンド（`claude mcp list` 等）は素通し。素の起動が必要なときは `command claude`。
 - `--system-prompt` を渡すとプロンプトスナップショットが off になるため
   `--system-prompt-snapshot on` を併用してキャッシュを効かせる。
+- 完全置換なので、ハーネスが描画する動的セクション（cwd / git status / 日付 /
+  platform / scratchpad パス）は失われ、**使い続けても復活しない**。実用上効くものだけ
+  `# Environment` として起動時に連結している。CLAUDE.md・skills 一覧・hook 出力・IDE 通知は
+  システムプロンプトではなく会話に注入されるため影響を受けない。
 
 ### 3. 動作確認
 
