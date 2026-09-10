@@ -5,18 +5,18 @@ Claude Code が Serena のシンボル操作ツール（`find_symbol` 等）を�
 
 | 層 | 何をするか | 設定場所 | 配布 |
 | --- | --- | --- | --- |
-| システムプロンプト | output style で Serena のツール選択ルールを追加する | `common/.claude/output-styles/serena.md` + fragment の `outputStyle` | `install.sh` |
-| ツールのロード | Serena の MCP ツールだけ遅延ロードから除外する | `common/.claude.fragment.json` の `alwaysLoad` | `install.sh` |
-| システムプロンプト | Bash 優先の指示を無効化する | 同上 | `install.sh` |
+| システムプロンプト | output style で Serena のツール選択ルールを追加する | `common/.claude/output-styles/serena.md` + fragment の `outputStyle` | `dotfiles` |
+| ツールのロード | Serena の MCP ツールだけ遅延ロードから除外する | `common/.claude.fragment.json` の `alwaysLoad` | `dotfiles` |
+| システムプロンプト | Bash 優先の指示を無効化する | 同上 | `dotfiles` |
 
-すべて `install.sh` で配布されるため、**新しいコンテナでの手作業は無い**。
+すべて `dotfiles` で配布されるため、**新しいコンテナでの手作業は無い**。
 
 ## 新しいコンテナ / ワークスペースでの手順
 
 ### 1. dotfiles を配布する
 
 ```sh
-cd ~/work/azarashi && ./install.sh install
+cd ~/work/azarashi && ./dotfiles install
 ```
 
 反映確認:
@@ -47,7 +47,7 @@ jq 'del(.env.ENABLE_TOOL_SEARCH)' ~/.claude/settings.json >/tmp/s.json &&
   mv /tmp/s.json ~/.claude/settings.json
 ```
 
-`./install.sh install --force` では消えない。3-way 削除が消せるのは
+`./dotfiles install --force` では消えない。3-way 削除が消せるのは
 `<settings>.fragment.base.json` に記録済みのキーだけで、`ENABLE_TOOL_SEARCH` は
 `--force` を一度も通らないまま 2-way union で入ったため base に無い。
 fragment 由来のキーでも、追加から削除までの間に `--force` が挟まらなければこの状態になる。

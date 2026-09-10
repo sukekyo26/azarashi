@@ -2,11 +2,11 @@
 # Converts TOML <-> JSON at the boundary via a vendored tomlkit (lib/toml_merge.py)
 # and reuses the existing jq-based merge. tomlkit makes the write comment- and
 # format-preserving and tolerates codex's unquoted '/' path keys.
-# Sourced by install.sh AFTER json_merge.sh.
+# Sourced by dotfiles AFTER json_merge.sh.
 # Requires: python3 (tomlkit is vendored under lib/vendor/), jq.
 
 # _toml_lib_dir — the lib/ dir holding toml_merge.py, resolved from whichever
-# entrypoint sourced us (install.sh sets REPO_DIR; test/run.sh sets SCRIPT_DIR).
+# entrypoint sourced us (dotfiles sets REPO_DIR; test/run.sh sets SCRIPT_DIR).
 _toml_lib_dir() {
   if [ -n "${REPO_DIR:-}" ]; then
     printf '%s/lib' "$REPO_DIR"

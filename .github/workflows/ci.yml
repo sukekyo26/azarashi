@@ -49,7 +49,7 @@ jobs:
       - run: sh test/run.sh
 
   e2e:
-    name: install.sh E2E (shipped-payload smoke)
+    name: dotfiles E2E (shipped-payload smoke)
     # Deploys the REAL common/ to prove the shipped payload installs cleanly.
     # Assertions are structural (no specific filenames) so editing the payload
     # never breaks this job; mechanism behavior is covered by e2e-mechanism.
@@ -64,15 +64,15 @@ jobs:
 
       - name: Dry-run on clean state — must not mutate HOME
         run: |
-          ./install.sh diff
+          ./dotfiles diff
           [ ! -e "$HOME/.claude" ]
           [ ! -e "$HOME/.agents" ]
           [ ! -e "$HOME/.copilot" ]
 
       - name: First install — and the real payload reports in-sync
         run: |
-          ./install.sh install
-          ./install.sh status | tee status.out
+          ./dotfiles install
+          ./dotfiles status | tee status.out
           ! grep -E '^[[:space:]]*(drift|missing|orphan)[[:space:]]*:' status.out
 
       - name: Layout invariants (structural, name-agnostic)
@@ -91,29 +91,29 @@ jobs:
 
       - name: Idempotency — second install must not relink or remerge
         run: |
-          ./install.sh install | tee install2.out
+          ./dotfiles install | tee install2.out
           ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
 
       - name: Uninstall removes managed symlinks (merged JSON intentionally remains)
         run: |
-          ./install.sh uninstall
+          ./dotfiles uninstall
           ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
           [ -f "$HOME/.claude/settings.json" ]
 
   e2e-mechanism:
-    name: install.sh E2E (mechanisms, synthetic fixture)
-    # Runs install.sh against a throwaway source tree with fixture-owned names,
+    name: dotfiles E2E (mechanisms, synthetic fixture)
+    # Runs dotfiles against a throwaway source tree with fixture-owned names,
     # so every mechanism assertion is independent of the shipped common/ payload
-    # (which changes often). install.sh resolves its source from its own dir, so
+    # (which changes often). dotfiles resolves its source from its own dir, so
     # copying it next to a synthetic common/ + users/ + mirror.conf is enough.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Build a throwaway source tree (real install.sh + lib, synthetic payload)
+      - name: Build a throwaway source tree (real dotfiles + lib, synthetic payload)
         run: |
           FX=$(mktemp -d); echo "FX=$FX" >> "$GITHUB_ENV"
-          cp install.sh "$FX/"; cp -r lib "$FX/"
+          cp dotfiles "$FX/"; cp -r lib "$FX/"
           mkdir -p "$FX/common/.agents/skills/demoskill" "$FX/common/.claude"
           printf 'CANONICAL (common)\n'              >"$FX/common/.agents/AGENTS.md"
           printf 'demo skill\n'                      >"$FX/common/.agents/skills/demoskill/SKILL.md"
@@ -136,7 +136,7 @@ jobs:
           printf '%s\n' '.codex/AGENTS.md        .agents/AGENTS.md' \
                         '.demo/INSTRUCTIONS.md   .agents/AGENTS.md' \
                         '.demo/skills            .agents/skills'    >"$FX/mirror.conf"
-          # install.sh remembers a --profile selection in the tree's git config,
+          # dotfiles remembers a --profile selection in the tree's git config,
           # so the fixture has to be a checkout for that path to be exercised
           git init -q "$FX"
           git -C "$FX" config user.email ci@example.com
@@ -148,7 +148,7 @@ jobs:
       - name: Common-only — layout, mirror, fragment, status, idempotency
         run: |
           cd "$FX"
-          ./install.sh install >/dev/null
+          ./dotfiles install >/dev/null
           # dot-directories are real dirs; only leaves are symlinked
           [ -d "$HOME/.agents" ] && [ ! -L "$HOME/.agents" ]
           [ -d "$HOME/.demo" ] && [ ! -L "$HOME/.demo" ]
@@ -163,9 +163,9 @@ jobs:
           # a fragment is merged into a real settings.json
           [ -f "$HOME/.claude/settings.json" ] && [ ! -L "$HOME/.claude/settings.json" ]
           jq -e '.commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
-          ./install.sh status | tee status.out
+          ./dotfiles status | tee status.out
           ! grep -E '^[[:space:]]*(drift|missing|orphan)[[:space:]]*:' status.out
-          ./install.sh install | tee install2.out
+          ./dotfiles install | tee install2.out
           ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
 
       - name: Common-only — force re-merge and 3-way delete
@@ -173,59 +173,59 @@ jobs:
           cd "$FX"
           # the fragment value wins over an edited target (fixture's own key)
           tmp=$(mktemp); jq '.commonOnly = 999' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
-          ./install.sh install --force | tee force.out
+          ./dotfiles install --force | tee force.out
           grep -qE '^[[:space:]]*merged[[:space:]]*:.*/\.claude/settings\.json$' force.out
           jq -e '.commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
           # a manually-added key survives --force; a second force is a no-op
           tmp=$(mktemp); jq '.myManualKey = true' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
-          ./install.sh install --force >/dev/null
+          ./dotfiles install --force >/dev/null
           jq -e '.myManualKey == true' "$HOME/.claude/settings.json" >/dev/null
-          ./install.sh install --force | tee force2.out
+          ./dotfiles install --force | tee force2.out
           ! grep -qE '^[[:space:]]*merged[[:space:]]*:' force2.out
-          rm -f "$HOME/.claude/settings.json"; ./install.sh install >/dev/null
+          rm -f "$HOME/.claude/settings.json"; ./dotfiles install >/dev/null
           # 3-way: a key in the base, gone from the fragment, is deleted; a
           # user-only key (never in the base) and a protected key are preserved
-          ./install.sh install --force >/dev/null
+          ./dotfiles install --force >/dev/null
           [ -f "$HOME/.claude/settings.fragment.base.json" ]
           tmp=$(mktemp); jq '.userOnly = 1 | .willBeRemoved = {"a":1}' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
           tmp=$(mktemp); jq '.willBeRemoved = {"a":1}' "$HOME/.claude/settings.fragment.base.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.fragment.base.json"
-          ./install.sh install --force >/dev/null
+          ./dotfiles install --force >/dev/null
           jq -e 'has("willBeRemoved") | not' "$HOME/.claude/settings.json" >/dev/null
           jq -e '.userOnly == 1' "$HOME/.claude/settings.json" >/dev/null
           tmp=$(mktemp); jq '.token = "SECRET"' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
-          ./install.sh install --force >/dev/null
+          ./dotfiles install --force >/dev/null
           jq -e '.token == "SECRET"' "$HOME/.claude/settings.json" >/dev/null
-          rm -f "$HOME/.claude/settings.json" "$HOME/.claude/settings.json.dotfiles-bak."*; ./install.sh install >/dev/null
+          rm -f "$HOME/.claude/settings.json" "$HOME/.claude/settings.json.dotfiles-bak."*; ./dotfiles install >/dev/null
 
       - name: Common-only — prune, clean-backups, doctor, missing mirror source
         run: |
           cd "$FX"
           # prune never removes a tool's own state under a managed dir
           mkdir -p "$HOME/.claude/session-env/s1"; : >"$HOME/.claude/session-env/s1/state"; : >"$HOME/.claude/own.txt"
-          ./install.sh install
+          ./dotfiles install
           [ -f "$HOME/.claude/session-env/s1/state" ] && [ -f "$HOME/.claude/own.txt" ]
-          rm -rf "$HOME/.claude/session-env" "$HOME/.claude/own.txt"; ./install.sh install
+          rm -rf "$HOME/.claude/session-env" "$HOME/.claude/own.txt"; ./dotfiles install
           # clean-backups: report-only lists; --keep 1 keeps the newest per original
           for ts in 20230101T000000Z 20250101T000000Z; do : >"$HOME/.claude/foo.dotfiles-bak.$ts"; done
-          ./install.sh clean-backups | tee cb.out
+          ./dotfiles clean-backups | tee cb.out
           grep -q '2 backup(s) found' cb.out
-          ./install.sh clean-backups --keep 1
+          ./dotfiles clean-backups --keep 1
           [ ! -e "$HOME/.claude/foo.dotfiles-bak.20230101T000000Z" ] && [ -e "$HOME/.claude/foo.dotfiles-bak.20250101T000000Z" ]
           [ -L "$HOME/.claude/demo.sh" ] # managed symlinks are untouched
           rm -f "$HOME/.claude/foo.dotfiles-bak."*
           # doctor: clean bill, then a moved-repo stale link flagged with nonzero exit
-          ./install.sh doctor >doc.out 2>&1; grep -q 'no broken or stale' doc.out
+          ./dotfiles doctor >doc.out 2>&1; grep -q 'no broken or stale' doc.out
           ln -s "/old/checkout/azarashi/common/.agents/AGENTS.md" "$HOME/.claude/stale"
-          if ./install.sh doctor >doc.out 2>&1; then echo "doctor should be nonzero"; cat doc.out; exit 1; fi
+          if ./dotfiles doctor >doc.out 2>&1; then echo "doctor should be nonzero"; cat doc.out; exit 1; fi
           grep -qE '^stale   : .*/\.claude/stale' doc.out
           # doctor --fix repairs what it finds: the dead stale link is dropped
-          ./install.sh doctor --fix | tee fix.out
+          ./dotfiles doctor --fix | tee fix.out
           grep -q 'repaired 1 issue' fix.out
           [ ! -L "$HOME/.claude/stale" ]
-          ./install.sh doctor >/dev/null
+          ./dotfiles doctor >/dev/null
           # a missing mirror source warns and is skipped, never fatal
           printf '%s\n' '.nope/MISSING.md   .agents/does-not-exist.md' >>mirror.conf
-          ./install.sh install 2>err.out
+          ./dotfiles install 2>err.out
           grep -q 'mirror source not found, skipping' err.out
           [ ! -e "$HOME/.nope/MISSING.md" ] && [ -L "$HOME/.codex/AGENTS.md" ]
           grep -v '.nope/MISSING.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
@@ -240,7 +240,7 @@ jobs:
             '.bad/abs    /etc/passwd' \
             '.bad/dots   ../../.agents/AGENTS.md' \
             '.bad/extra  .agents/AGENTS.md  third' >>mirror.conf
-          ./install.sh install 2>warn.out
+          ./dotfiles install 2>warn.out
           grep -qF "unsafe target (absolute or '..'): ../escape" warn.out
           grep -qF "unsafe source (absolute or '..'): /etc/passwd" warn.out
           grep -qF "unsafe source (absolute or '..'): ../../.agents/AGENTS.md" warn.out
@@ -250,12 +250,12 @@ jobs:
           # a valid rule alongside them still deploys
           [ -L "$HOME/.codex/AGENTS.md" ]
           mv mirror.conf.orig mirror.conf
-          ./install.sh install >/dev/null
+          ./dotfiles install >/dev/null
 
       - name: Common-only — uninstall
         run: |
           cd "$FX"
-          ./install.sh uninstall
+          ./dotfiles uninstall
           [ ! -e "$HOME/.agents" ]
           [ ! -e "$HOME/.codex/AGENTS.md" ]
           [ ! -e "$HOME/.demo/INSTRUCTIONS.md" ]
@@ -269,7 +269,7 @@ jobs:
       - name: Per-user — override, mirror-follows-override, fallback, layering, user-only
         run: |
           cd "$FX"
-          ./install.sh install --user fx >/dev/null
+          ./dotfiles install --user fx >/dev/null
           # a user file wins over common (plain leaf and the mirror's canonical source)
           case "$(readlink "$HOME/.claude/demo.sh")" in */users/fx/.claude/demo.sh) ;; *) echo "demo.sh override FAIL"; exit 1 ;; esac
           case "$(readlink "$HOME/.agents/AGENTS.md")" in */users/fx/.agents/AGENTS.md) ;; *) echo "AGENTS override FAIL"; exit 1 ;; esac
@@ -288,14 +288,14 @@ jobs:
           cd "$FX"
           # the user fragment value wins over an edited target
           tmp=$(mktemp); jq '.userKey = "edited"' "$HOME/.claude/settings.json" >"$tmp"; mv "$tmp" "$HOME/.claude/settings.json"
-          ./install.sh install --user fx --force | tee force.out
+          ./dotfiles install --user fx --force | tee force.out
           grep -qE '^[[:space:]]*merged[[:space:]]*:.*/\.claude/settings\.json$' force.out
           jq -e '.userKey == true' "$HOME/.claude/settings.json" >/dev/null
           # snapshot a base, then drop userKey from the user fragment: 3-way deletes it
-          ./install.sh install --user fx --force >/dev/null
+          ./dotfiles install --user fx --force >/dev/null
           [ -f "$HOME/.claude/settings.fragment.base.json" ]
           printf '{ "statusLine": { "x": "user" } }\n' >users/fx/.claude/settings.fragment.json
-          ./install.sh install --user fx --force >/dev/null
+          ./dotfiles install --user fx --force >/dev/null
           jq -e 'has("userKey") | not' "$HOME/.claude/settings.json" >/dev/null
           jq -e '.statusLine.x == "user"' "$HOME/.claude/settings.json" >/dev/null
 
@@ -304,14 +304,14 @@ jobs:
           cd "$FX"
           # switching to a user without that overlay dir prunes the overlay-only dir
           [ -d "$HOME/.fxtop" ] && [ ! -L "$HOME/.fxtop" ]
-          ./install.sh install --user nobody-no-dir | tee switch.out
+          ./dotfiles install --user nobody-no-dir | tee switch.out
           [ ! -e "$HOME/.fxtop" ]
           grep -qE '^[[:space:]]*pruned[[:space:]]*:.*\.fxtop$' switch.out
           # an invalid --user is rejected
-          ! ./install.sh install --user '../evil'
+          ! ./dotfiles install --user '../evil'
           # uninstall removes managed symlinks; the merged settings.json stays
-          ./install.sh install --user fx >/dev/null
-          ./install.sh uninstall --user fx >/dev/null
+          ./dotfiles install --user fx >/dev/null
+          ./dotfiles uninstall --user fx >/dev/null
           [ ! -e "$HOME/.agents" ]
           [ ! -e "$HOME/.codex/AGENTS.md" ]
           [ ! -e "$HOME/.demo/skills" ]
@@ -324,7 +324,7 @@ jobs:
       - name: Per-profile — override, mirror-follows-override, profile-only entry, persistence
         run: |
           cd "$FX"
-          ./install.sh install --profile bd >/dev/null
+          ./dotfiles install --profile bd >/dev/null
           # a profile file wins over common (plain leaf and the mirror's canonical source)
           case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd/.claude/demo.sh) ;; *) echo "profile override FAIL"; exit 1 ;; esac
           case "$(readlink "$HOME/.codex/AGENTS.md")" in */profiles/bd/.agents/AGENTS.md) ;; *) echo "mirror-follows-profile FAIL"; exit 1 ;; esac
@@ -337,7 +337,7 @@ jobs:
           jq -e '.statusLine.x == "profile" and .profileKey == true and .commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
           # the selection is remembered, so a later run needs no flag
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
-          ./install.sh install >/dev/null
+          ./dotfiles install >/dev/null
           case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd/.claude/demo.sh) ;; *) echo "persistence FAIL"; exit 1 ;; esac
 
       - name: Reset isolated HOME for the three-layer pass
@@ -346,11 +346,11 @@ jobs:
       - name: Three layers — user beats profile beats common, config report
         run: |
           cd "$FX"
-          ./install.sh install --user fx --profile bd >/dev/null
+          ./dotfiles install --user fx --profile bd >/dev/null
           case "$(readlink "$HOME/.claude/demo.sh")" in */users/fx/.claude/demo.sh) ;; *) echo "user-over-profile FAIL"; exit 1 ;; esac
           # every layer contributes; the highest one wins the shared key
           jq -e '.statusLine.x == "user" and .profileKey == true and .commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
-          ./install.sh config --user fx | tee config.out
+          ./dotfiles config --user fx | tee config.out
           grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd([[:space:]]|$)' config.out
           grep -qE '^[[:space:]]*layers[[:space:]]*:[[:space:]]*common < profiles/bd < users/fx$' config.out
 
@@ -358,30 +358,30 @@ jobs:
         run: |
           cd "$FX"
           # a later --profile wins over an earlier one, and both are remembered
-          ./install.sh install --user fx --profile bd --profile bd2 >/dev/null
+          ./dotfiles install --user fx --profile bd --profile bd2 >/dev/null
           case "$(readlink "$HOME/.claude/demo.sh")" in */users/fx/.claude/demo.sh) ;; *) echo "user still wins FAIL"; exit 1 ;; esac
           [ "$(git config --get-all dotfiles.profile | tr '\n' ' ')" = "bd bd2 " ]
           # re-specifying replaces the stored set instead of appending to it
-          ./install.sh install --user fx --profile bd >/dev/null
+          ./dotfiles install --user fx --profile bd >/dev/null
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
           # a dry-run or read-only command never rewrites the stored selection
-          ./install.sh install --user fx --profile bd2 --dry-run >/dev/null
-          ./install.sh status --user fx --profile bd2 >/dev/null
+          ./dotfiles install --user fx --profile bd2 --dry-run >/dev/null
+          ./dotfiles status --user fx --profile bd2 >/dev/null
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
           # unset-profile forgets it; the next install prunes the profile-only entry
           [ -d "$HOME/.bdtop" ] && [ ! -L "$HOME/.bdtop" ]
-          ./install.sh config --unset-profile
+          ./dotfiles config --unset-profile
           [ -z "$(git config --get-all dotfiles.profile || true)" ]
-          ./install.sh install --user fx | tee unset.out
+          ./dotfiles install --user fx | tee unset.out
           [ ! -e "$HOME/.bdtop" ]
           grep -qE '^[[:space:]]*pruned[[:space:]]*:.*\.bdtop$' unset.out
           # ...and the shared leaf falls back to the user layer
           case "$(readlink "$HOME/.claude/demo.sh")" in */users/fx/.claude/demo.sh) ;; *) echo "post-unset fallback FAIL"; exit 1 ;; esac
           # an invalid --profile is rejected
-          ! ./install.sh install --profile '../evil'
+          ! ./dotfiles install --profile '../evil'
           # uninstall removes profile-sourced links too
-          ./install.sh install --user fx --profile bd >/dev/null
-          ./install.sh uninstall >/dev/null
+          ./dotfiles install --user fx --profile bd >/dev/null
+          ./dotfiles uninstall >/dev/null
           ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
           [ -f "$HOME/.claude/settings.json" ]
 

@@ -60,7 +60,7 @@ usage() {
   cat <<'EOF'
 dotfiles installer — deploy common/ (plus optional overlays) into $HOME
 
-Usage: ./install.sh <command> [flags]
+Usage: ./dotfiles <command> [flags]
 
 Commands:
   install            Deploy everything under common/ (plus profiles/<name>/ and
@@ -242,7 +242,7 @@ resolve_user() {
 }
 
 # stored_profiles — print the remembered profile selection, one name per line.
-# Anchored at the repo with -C, because install.sh may be invoked from anywhere.
+# Anchored at the repo with -C, because dotfiles may be invoked from anywhere.
 # The checkout's own value is read first and, when set, used alone: --get-all
 # otherwise concatenates every level of the cascade, which would silently merge
 # a --global selection into the local one instead of replacing it.
@@ -862,7 +862,7 @@ doctor_classify() {
   _dc_target=$(readlink "$1")
   case "$_dc_target" in
     */common/.* | */profiles/*/.* | */users/*/.*)
-      printf 'stale   : %s -> %s (points outside the current repo — run ./install.sh install)\n' "$1" "$_dc_target"
+      printf 'stale   : %s -> %s (points outside the current repo — run ./dotfiles install)\n' "$1" "$_dc_target"
       ;;
   esac
 }
@@ -939,7 +939,7 @@ cmd_doctor() {
   [ -n "$_dr_problems" ] && printf '%s\n' "$_dr_problems"
   _dr_bk=$(list_backups | grep -c .)
   if [ "${_dr_bk:-0}" -gt 0 ]; then
-    log "$_dr_bk backup(s) present — run './install.sh clean-backups' to review or prune them."
+    log "$_dr_bk backup(s) present — run './dotfiles clean-backups' to review or prune them."
   fi
   if [ -n "$_dr_problems" ]; then
     log "doctor: $(printf '%s' "$_dr_problems" | grep -c .) issue(s) found"

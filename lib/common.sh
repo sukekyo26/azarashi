@@ -1,4 +1,4 @@
-# Shared helpers for install.sh. Sourced, not executed.
+# Shared helpers for dotfiles. Sourced, not executed.
 # Expects the caller to define: DRY_RUN, NO_BACKUP, FORCE (0/1).
 
 log() { printf '%s\n' "$*"; }

@@ -13,27 +13,28 @@ check: shellcheck-posix shellcheck-bash shfmt-check
 # Run the full local suite (lint + format + unit tests) — mirrors CI
 ci: check test
 
-# Lint install.sh, its sourced lib/, and the POSIX test runner as POSIX sh
+# Lint the dotfiles entrypoint, its sourced lib/, and the POSIX test runner as
+# POSIX sh. `dotfiles` has no extension, so it must be named explicitly here and
+# in .pre-commit-config.yaml — no *.sh glob will ever pick it up.
 shellcheck-posix:
-    shellcheck -s sh -x install.sh lib/*.sh test/*.sh
+    shellcheck -s sh -x dotfiles lib/*.sh test/*.sh
 
 # Lint the remaining (bash) scripts using their declared shebang
 shellcheck-bash:
     find . -name '*.sh' \
       -not -path './.git/*' \
-      -not -path './install.sh' \
       -not -path './lib/*' \
       -not -path './test/*' \
       -exec shellcheck -x {} +
 
 # Report shell formatting issues without changing files
 shfmt-check:
-    shfmt -d {{shfmt_opts_posix}} install.sh lib/ test/
+    shfmt -d {{shfmt_opts_posix}} dotfiles lib/ test/
     shfmt -d {{shfmt_opts_bash}} common
 
 # Format shell scripts in place
 shfmt:
-    shfmt -w {{shfmt_opts_posix}} install.sh lib/ test/
+    shfmt -w {{shfmt_opts_posix}} dotfiles lib/ test/
     shfmt -w {{shfmt_opts_bash}} common
 
 # Run the library unit tests (depends only on jq)

@@ -1,5 +1,7 @@
 minimum_pre_commit_version: "3.5.0"
 
+# The `dotfiles` entrypoint has no extension, so every POSIX-sh hook must name it
+# explicitly — no *.sh pattern will ever match it.
 repos:
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: v0.11.0
@@ -7,13 +9,13 @@ repos:
       - id: shellcheck
         alias: shellcheck-posix
         name: shellcheck (POSIX sh)
-        files: ^(install\.sh|lib/.*\.sh)$
+        files: ^(dotfiles|lib/.*\.sh)$
         args: ["-s", "sh", "-x"]
       - id: shellcheck
         alias: shellcheck-bash
         name: shellcheck (bash, shebang-driven)
         files: \.sh$
-        exclude: ^(install\.sh|lib/.*\.sh)$
+        exclude: ^(dotfiles|lib/.*\.sh)$
         args: ["-x"]
 
   - repo: https://github.com/scop/pre-commit-shfmt
@@ -21,7 +23,7 @@ repos:
     hooks:
       - id: shfmt
         alias: shfmt-posix
-        files: ^(install\.sh|lib/.*\.sh)$
+        files: ^(dotfiles|lib/.*\.sh)$
         args: ["-d", "-ln", "posix", "-i", "2", "-ci"]
       - id: shfmt
         alias: shfmt-bash

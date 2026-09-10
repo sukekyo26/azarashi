@@ -1,5 +1,5 @@
 # jq-based deep merge of one or more *.fragment.json into an existing JSON file.
-# Sourced by install.sh. Expects: DRY_RUN, NO_BACKUP, FORCE, MODE; helpers from common.sh.
+# Sourced by dotfiles. Expects: DRY_RUN, NO_BACKUP, FORCE, MODE; helpers from common.sh.
 
 # Keys never written into the target, even if a fragment mistakenly contains them.
 PROTECTED_KEY_RE='credentials|token|api[_-]?key|secret|password|firstLaunchAt'
