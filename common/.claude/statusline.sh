@@ -27,10 +27,24 @@ cache_read=$(jq -r '.context_window.current_usage.cache_read_input_tokens // 0' 
 cache_create=$(jq -r '.context_window.current_usage.cache_creation_input_tokens // 0' <<<"$input")
 
 # --- Bedrock cost calculation ---------------------------------------------
-# 価格テーブル: グローバルエンドポイント基準 (USD per 1M tokens)。
-# jp./us./eu./au./apac. の地理プロファイルと In-Region はグローバル比 +10%。
-# cache write 5m = input*1.25, 1h = input*2, cache read = input*0.1。
-# モデル追加時は下の jq の price() に行を足す。
+# 価格テーブル: Bedrock の Global クロスリージョン推論プロファイル基準
+# (USD per 1M tokens)。cache write 5m = input*1.25, 1h = input*2,
+# cache read = input*0.1。モデル追加時は下の jq の price() に行を足す。
+#
+# 料金の確認先 (2026-09-11 に下記で照合済み):
+#   Bedrock 料金表   https://aws.amazon.com/bedrock/pricing/
+#   モデル別の実額   https://aws.amazon.com/marketplace/pp/prodview-mv6skd5ti2kow
+#                    (Opus 4.8 Bedrock Edition。全ディメンションが Global 表記で
+#                     $5/$25、cache write $6.25 / $10.00、cache read $0.50)
+#   global の 10%安  https://docs.aws.amazon.com/bedrock/latest/userguide/global-cross-region-inference.html
+#   jp の +10% 実額  https://aws.amazon.com/jp/blogs/news/amazon-bedrock-now-supports-japan-cross-region-inference/
+#                    (Sonnet 4.5 jp = $3.3/$16.5 ← global $3/$15)
+#
+# 地理プロファイル (jp./us./eu./au./apac.) は Global 比 +10%。比較の基準は
+# In-Region ではなく Global である点に注意。In-Region (裸の anthropic.) の
+# +10% だけは AWS に明記が無く推定 — 過小評価を避けるため geo と同値にしている。
+# 現行世代に無い geo (Opus 5 は us/eu/au のみ) も、将来復活時に無言で ×1.0 と
+# なるのを防ぐため regex には残しておくこと。
 cost_mark=""
 if [[ -n "$transcript" && -r "$transcript" ]]; then
   size=$(stat -c %s "$transcript" 2>/dev/null || echo 0)
