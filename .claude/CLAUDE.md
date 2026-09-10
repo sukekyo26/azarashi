@@ -48,7 +48,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 
 **ディレクトリは実体・葉だけ symlink**: ディレクトリは常に実ディレクトリとして作成し、ファイル（葉）のみを個別 symlink する。`~/.claude` などが丸ごと symlink にならないため、ツールがそこへ書き込んでもリポジトリを汚さない。これが設計の中核制約 — ディレクトリ全体の symlink は作らない。
 
-**`*.fragment.json` の deep-merge**: fragment は対応する settings JSON へ deep-merge される。優先度は 既存値 > ユーザー fragment > プロファイル fragment > 共通 fragment（`--force` 時のみリポジトリ fragment が既存値に勝つ）。fragment だけが全レイヤーを合成し、他の走査はすべて単一勝者である点に注意。credentials/token 等の保護キーは常に温存。`--force` では **3-way 削除** を行い、前回適用 fragment を `<settings>.fragment.base.json` に記録して、fragment から消えたキーを（手動変更が無ければ）同期削除する。
+**`*.fragment.json` の deep-merge**: fragment は対応する settings JSON へ deep-merge される。優先度は 既存値 > ユーザー fragment > プロファイル fragment > 共通 fragment（`--force` 時のみリポジトリ fragment が既存値に勝つ）。fragment だけが全レイヤーを合成し、他の走査はすべて単一勝者である点に注意。**配列は上書きではなく追記**で、下位レイヤーの要素を残したまま上位レイヤーの新規要素を後ろに足す（完全一致は重複排除）。`hooks` のような集合的な配列で、プロファイルに 1 件足しただけで common の全 hook が消える事故を防ぐため。裏返しに、`mcpServers.<name>.args` のような**位置に意味がある配列は上位レイヤーから差し替えられず追記のみ**になる。credentials/token 等の保護キーは常に温存。`--force` では **3-way 削除** を行い、前回適用 fragment を `<settings>.fragment.base.json` に記録して、fragment から消えたキーを（手動変更が無ければ）同期削除する。
 
 **`*.fragment.toml` の deep-merge**: TOML fragment（例 `.codex/config.toml`）も同じ JSON マージ頭脳を再利用する。境界の TOML↔JSON 変換と書き戻しは同梱 `tomlkit` 経由（`lib/toml_merge.py`）で行い、**変更キーだけ**を差し込む。fragment が触れないキーはコメント・型・書式ごとそのまま保持される。一方、fragment が新規追加/変更する値は JSON 境界（date/time 型を持たない）を通るため、fragment 由来の date/time は文字列として書き戻る（既存の未変更値は影響なし）。非標準の `[projects./path]`（仕様違反の裸キー `/`）が混ざっていてもパース前にクォートして取り込み、出力は codex のリーダーが要求する仕様準拠のクォート形 `[projects."/path"]` で書く（入力に寛容・出力は valid）。
 
