@@ -3,7 +3,7 @@
 *~
 .DS_Store
 
-# install.sh backups (only created under $HOME, but ignore defensively)
+# backups created by ./dotfiles (only created under $HOME, but ignore defensively)
 *.dotfiles-bak.*
 
 # Python bytecode (the vendored tomlkit regenerates these at runtime)

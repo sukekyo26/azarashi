@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 概要
 
-`azarashi` は dotfiles 管理リポジトリ。`common/` 配下を `$HOME` へ symlink でデプロイし、任意で `profiles/<name>/`（環境レイヤー）と `users/<name>/`（個人レイヤー）を重ねる。本体は POSIX sh の `install.sh` と `lib/` のライブラリのみ。依存は `git` と `jq`、`*.fragment.toml` のマージに `python3` >= 3.9（`tomlkit` は `lib/vendor/` に同梱、`gh` は任意）。
+`azarashi` は dotfiles 管理リポジトリ。`common/` 配下を `$HOME` へ symlink でデプロイし、任意で `profiles/<name>/`（環境レイヤー）と `users/<name>/`（個人レイヤー）を重ねる。本体は POSIX sh の `dotfiles` と `lib/` のライブラリのみ。依存は `git` と `jq`、`*.fragment.toml` のマージに `python3` >= 3.9（`tomlkit` は `lib/vendor/` に同梱、`gh` は任意）。
 
 ## コマンド
 
@@ -22,19 +22,19 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 
 単一テストの実行: `test/run.sh` は lib 全体を検査する単一ランナー。個別ケースだけを走らせる仕組みはないので、`sh test/run.sh` で全件実行する。
 
-install.sh の主要サブコマンド:
+`./dotfiles` の主要サブコマンド:
 
 ```sh
-./install.sh install                 # デプロイ + orphan symlink 刈り取り
-./install.sh install --user alice    # users/alice/ を重ねる
-./install.sh install --profile bedrock # profiles/bedrock/ を重ねる（選択は git config に記憶される）
-./install.sh config                  # 解決された user / profiles / レイヤー順を表示
-./install.sh config --unset-profile  # 記憶したプロファイル選択を解除
-./install.sh diff                 # = install --dry-run（計画のみ）
-./install.sh status               # in-sync / drift / missing / orphan を報告
-./install.sh doctor               # 壊れた / 移動跡の管理 symlink を検査（read-only、異常時 nonzero）
-./install.sh uninstall            # 管理 symlink を除去（マージ済み JSON は残す）
-./install.sh clean-backups        # *.dotfiles-bak.* を一覧（--keep / --older-than 指定時のみ削除）
+./dotfiles install                 # デプロイ + orphan symlink 刈り取り
+./dotfiles install --user alice    # users/alice/ を重ねる
+./dotfiles install --profile bedrock # profiles/bedrock/ を重ねる（選択は git config に記憶される）
+./dotfiles config                  # 解決された user / profiles / レイヤー順を表示
+./dotfiles config --unset-profile  # 記憶したプロファイル選択を解除
+./dotfiles diff                 # = install --dry-run（計画のみ）
+./dotfiles status               # in-sync / drift / missing / orphan を報告
+./dotfiles doctor               # 壊れた / 移動跡の管理 symlink を検査（read-only、異常時 nonzero）
+./dotfiles uninstall            # 管理 symlink を除去（マージ済み JSON は残す）
+./dotfiles clean-backups        # *.dotfiles-bak.* を一覧（--keep / --older-than 指定時のみ削除）
 ```
 
 ## アーキテクチャ
@@ -56,7 +56,7 @@ install.sh の主要サブコマンド:
 
 ### 主要ファイル
 
-- `install.sh` — エントリポイント。POSIX sh。`lib/common.sh` と `lib/json_merge.sh` を source。
+- `dotfiles` — エントリポイント。POSIX sh。`lib/common.sh` と `lib/json_merge.sh` を source。
 - `lib/common.sh` — ログ（`log`/`info`/`warn`/`err`/`die`）、`backup`、`newest_backup`、symlink ヘルパー（`is_our_link` / `is_managed_link` / `link_path`）。
 - `lib/json_merge.sh` — fragment マージのコア（`merge_json` ほか）。
 - `lib/toml_merge.sh` — TOML fragment マージ（`merge_toml`）。境界変換と書き戻しを `lib/toml_merge.py` に委譲し、頭脳は `json_merge.sh` を再利用。
@@ -68,11 +68,13 @@ install.sh の主要サブコマンド:
 
 shellcheck と shfmt は **POSIX sh** と **bash** で別扱い。新規スクリプトを足すときはどちらのレイヤーかで対象パスが変わる:
 
-- **POSIX sh** 扱い: `install.sh` と `lib/*.sh`（shellcheck `-s sh`、shfmt `-ln posix`）。
+- **POSIX sh** 扱い: `dotfiles` と `lib/*.sh`（shellcheck `-s sh`、shfmt `-ln posix`）。
 - **bash** 扱い: それ以外の `*.sh`（特に `common/`、shebang 駆動）。
+
+**エントリポイント `dotfiles` は拡張子を持たない。** `*.sh` glob には**絶対に掛からない**ので、リント対象に含めるには `justfile` と `.pre-commit-config.yaml` の POSIX sh 側でファイル名を明示的に列挙する必要がある。ここから漏らすと、エラーにならず黙ってリント対象外になる。
 
 `.pre-commit-config.yaml` と `justfile` の両方にこの分割が反映されている。スクリプト追加時は対象 glob を両方で確認すること。
 
 ## CI
 
-`.github/workflows/ci.yml` が `just check`（lint）、`sh test/run.sh`（lib テスト）、`install.sh` の E2E（クリーン HOME での install / status / 冪等性 / `--force` 再マージと 3-way 削除 / prune 安全性 / clean-backups / doctor / uninstall / per-user overlay / per-profile overlay と選択の記憶・解除）を実行する。`just ci` がローカルでこの中核を再現する。
+`.github/workflows/ci.yml` が `just check`（lint）、`sh test/run.sh`（lib テスト）、`dotfiles` の E2E（クリーン HOME での install / status / 冪等性 / `--force` 再マージと 3-way 削除 / prune 安全性 / clean-backups / doctor / uninstall / per-user overlay / per-profile overlay と選択の記憶・解除）を実行する。`just ci` がローカルでこの中核を再現する。
