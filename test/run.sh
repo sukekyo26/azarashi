@@ -138,8 +138,31 @@ rm -f "$t"
 printf '{"p":[1]}\n' >"$WORK/f1.json"
 printf '{"p":[2]}\n' >"$WORK/f2.json"
 merge_json "$t" "$WORK/f1.json" "$WORK/f2.json" >/dev/null
-assert_eq "arrays: a later fragment replaces, never merges" \
-  "$(jq -Sc . "$t")" '{"p":[2]}'
+assert_eq "arrays: a later fragment appends to the earlier one, earlier first" \
+  "$(jq -Sc . "$t")" '{"p":[1,2]}'
+
+rm -f "$t"
+printf '{"p":[1,2]}\n' >"$WORK/f1.json"
+printf '{"p":[2,3]}\n' >"$WORK/f2.json"
+merge_json "$t" "$WORK/f1.json" "$WORK/f2.json" >/dev/null
+assert_eq "arrays: overlapping entries across layers are deduplicated" \
+  "$(jq -Sc . "$t")" '{"p":[1,2,3]}'
+
+# the layered hooks case: an overlay adding one entry must not drop the base's
+rm -f "$t"
+printf '{"h":{"Pre":[{"m":"B"}]},"e":{"A":"1"},"s":"common"}\n' >"$WORK/f1.json"
+printf '{"h":{"Pre":[{"m":"E"}]},"e":{"B":"2"},"s":"profile"}\n' >"$WORK/f2.json"
+merge_json "$t" "$WORK/f1.json" "$WORK/f2.json" >/dev/null
+assert_eq "layers: arrays append, objects deep-merge, scalars take the later value" \
+  "$(jq -Sc . "$t")" '{"e":{"A":"1","B":"2"},"h":{"Pre":[{"m":"B"},{"m":"E"}]},"s":"profile"}'
+
+rm -f "$t"
+printf '{"p":[1]}\n' >"$WORK/f1.json"
+printf '{"p":[2]}\n' >"$WORK/f2.json"
+printf '{"p":[3]}\n' >"$WORK/f3.json"
+merge_json "$t" "$WORK/f1.json" "$WORK/f2.json" "$WORK/f3.json" >/dev/null
+assert_eq "arrays: three layers append in order (common, profile, user)" \
+  "$(jq -Sc . "$t")" '{"p":[1,2,3]}'
 
 rm -f "$t"
 printf 'not json\n' >"$WORK/bad.json"

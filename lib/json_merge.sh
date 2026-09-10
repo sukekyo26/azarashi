@@ -77,16 +77,47 @@ def union_merge:
 [.[0], .[1]] | union_merge
 '
 
+# Combines two fragments from adjacent layers, later (right) wins. Objects merge
+# recursively; arrays keep the earlier layer's entries and append the later
+# layer's new ones, so an overlay adds to hooks/permissions instead of wiping the
+# base layer's. jq's `*` would replace the array outright — one hook in
+# profiles/<p>/ would silently drop every hook common/ defines.
+#
+# Deliberately not union_merge: that one is oriented for fragment-over-target and
+# puts the right side first. Here the earlier layer must come first so common/'s
+# hooks still run ahead of the overlay's.
+#
+# Trade-off: positional arrays (e.g. mcpServers.<name>.args) can only be appended
+# to by a higher layer, never replaced. Set-like arrays are the common case and
+# losing them silently is the worse failure, so append wins.
+# shellcheck disable=SC2016  # $l/$r/$k/$x are jq vars, not shell
+_FOLD_MERGE_JQ='
+def fold_merge:
+  if (.[0] | type) == "object" and (.[1] | type) == "object" then
+    .[0] as $l | .[1] as $r |
+    reduce (($l | keys) + ($r | keys) | unique)[] as $k (
+      {};
+      if ($l | has($k)) and ($r | has($k)) then
+        . + {($k): ([$l[$k], $r[$k]] | fold_merge)}
+      elif ($r | has($k)) then . + {($k): $r[$k]}
+      else . + {($k): $l[$k]} end)
+  elif (.[0] | type) == "array" and (.[1] | type) == "array" then
+    .[0] as $l | .[1] as $r |
+    $l + [$r[] | . as $x | select([$l[] | . == $x] | any | not)]
+  else .[1] end;
+'
+
 # _clean_fragment <frag1> [frag2 ...] — validate every fragment, then print the
-# left-to-right merged (later wins, so user over common) and sanitized (protected
-# keys removed) JSON. The single source of truth for "the fragment as applied",
-# shared by the merge and by the 3-way base snapshot.
+# left-to-right merged (later wins, so user over profile over common) and
+# sanitized (protected keys removed) JSON. The single source of truth for "the
+# fragment as applied", shared by the merge and by the 3-way base snapshot.
 _clean_fragment() {
   for _cf_f in "$@"; do
     _require_json "$_cf_f" "fragment"
   done
   jq -s --arg re "$PROTECTED_KEY_RE" \
-    'reduce .[1:][] as $x (.[0]; . * $x)
+    "$_FOLD_MERGE_JQ"'
+     reduce .[1:][] as $x (.[0]; [., $x] | fold_merge)
      | walk(if type == "object"
             then with_entries(select(.key | test("^(" + $re + ")$"; "i") | not))
             else . end)' \
