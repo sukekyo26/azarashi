@@ -1,8 +1,7 @@
 {
   "language": "japanese",
   "env": {
-    "CLAUDE_CODE_THRIFTY_SONIC": "0",
-    "ENABLE_TOOL_SEARCH": "false"
+    "CLAUDE_CODE_THRIFTY_SONIC": "0"
   },
   "outputStyle": "Serena",
   "showTurnDuration": true,
@@ -25,7 +24,7 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "\"$HOME/.claude/hooks/route-command-output.mjs\"" }
+          { "type": "command", "command": "\"$HOME/.claude/hooks/route-command-output.mjs\" --client=claude-code" }
         ]
       },
       {
