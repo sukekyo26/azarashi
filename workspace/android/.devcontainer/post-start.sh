@@ -28,7 +28,7 @@ cd ~/work/azarashi
 # Run ./dotfiles, echo its output live, and condense the actions into one line so
 # each container start shows at a glance what changed.
 log=$(mktemp)
- if ./dotfiles | tee "$log"; then rc=0; else rc=$?; fi
+if ./dotfiles | tee "$log"; then rc=0; else rc=$?; fi
 linked=$(grep -c '^  linked  :' "$log" || true)
 merged=$(grep -c '^  merged  :' "$log" || true)
 pruned=$(grep -c '^  pruned  :' "$log" || true)
