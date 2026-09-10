@@ -1,19 +1,22 @@
 #!/usr/bin/env sh
-# dotfiles installer — deploy common/ (plus an optional per-user overlay) into $HOME.
+# dotfiles installer — deploy common/ (plus optional overlays) into $HOME.
 #
-# Two source layers are mirrored into $HOME:
-#   common/        — shared base, deployed for everyone
-#   users/<name>/  — per-user overrides; same layout as common/, wins on conflict
-# The active user is resolved from --user, then `git config dotfiles.user`, then
-# `gh api user`. With no user (or no matching users/<name>/ dir) only common/ is
+# Source layers are mirrored into $HOME, lowest precedence first:
+#   common/           — shared base, deployed for everyone
+#   profiles/<name>/  — per-environment overrides (e.g. bedrock vs subscription)
+#   users/<name>/     — per-user overrides; highest precedence
+# Every layer has the same layout as common/. The active user is resolved from
+# --user, then `git config dotfiles.user`, then `gh api user`; the active
+# profiles from --profile (repeatable, later wins), then
+# `git config dotfiles.profile`. With no overlay resolved only common/ is
 # deployed, identical to a single-layer install.
 #
 # Directories are always materialized as real directories and only their leaf
-# files are symlinked (user files win over common). A whole-directory symlink is
-# never created, so a tool writing into e.g. ~/.claude never writes back into
-# the repo and no symlinked directory is left behind. *.fragment.json files are
-# deep-merged (common then user) into the matching settings JSON without
-# clobbering existing keys.
+# files are symlinked (the highest-precedence layer that has a leaf wins). A
+# whole-directory symlink is never created, so a tool writing into e.g.
+# ~/.claude never writes back into the repo and no symlinked directory is left
+# behind. *.fragment.json files are deep-merged in layer order (lowest first)
+# into the matching settings JSON without clobbering existing keys.
 #
 # mirror.conf (repo root) maps extra target paths to a single canonical source
 # (e.g. .claude/CLAUDE.md and .copilot/copilot-instructions.md to
@@ -40,6 +43,14 @@ MODE=install
 CLI_USER=""
 RESOLVED_USER=""
 USER_SRC=""
+USER_ORIGIN=""
+CLI_PROFILES=""
+RESOLVED_PROFILES=""
+PROFILE_ORIGIN=""
+UNSET_PROFILE=0
+LAYERS=common
+LAYERS_REV=common
+ALL_LAYERS=common
 
 . "$REPO_DIR/lib/common.sh"
 . "$REPO_DIR/lib/json_merge.sh"
@@ -47,13 +58,14 @@ USER_SRC=""
 
 usage() {
   cat <<'EOF'
-dotfiles installer — deploy common/ (plus an optional per-user overlay) into $HOME
+dotfiles installer — deploy common/ (plus optional overlays) into $HOME
 
 Usage: ./install.sh <command> [flags]
 
 Commands:
-  install            Deploy everything under common/ (and users/<name>/) into $HOME
-                     (default); also prunes orphaned symlinks (see --no-prune)
+  install            Deploy everything under common/ (plus profiles/<name>/ and
+                     users/<name>/) into $HOME (default); also prunes orphaned
+                     symlinks (see --no-prune)
   diff               Alias for: install --dry-run
   status             Report in-sync / drift / missing / orphan per entry
   uninstall          Remove managed symlinks; prune emptied directories
@@ -62,11 +74,20 @@ Commands:
   doctor             Report broken / stale / dangling managed symlinks; nonzero
                      exit if any are found (read-only). With --fix, repair them:
                      re-link stale links to the current repo, drop dead ones.
+  config             Report the resolved user, profiles and layer order
+                     (read-only). With --unset-profile, forget the remembered
+                     profile selection instead.
 
 Flags:
-  --user <name>      Overlay users/<name>/ on top of common/ (user files win).
-                     Default: git config dotfiles.user, else `gh api user`,
-                     else common/ only.
+  --user <name>      Overlay users/<name>/ on top of everything else (user files
+                     win). Default: git config dotfiles.user, else `gh api user`,
+                     else no user overlay.
+  --profile <name>   Overlay profiles/<name>/ between common/ and users/<name>/.
+                     Repeatable; a later --profile wins over an earlier one.
+                     On install the selection is remembered in
+                     `git config dotfiles.profile` and reused by later runs, so
+                     the flag is only needed when it changes.
+  --unset-profile    config: forget the remembered profile selection
   --dry-run          Print actions without applying them
   --no-backup        Skip backups before overwriting (default: backups on)
   --force            Re-link; re-merge fragments with the repo value winning over
@@ -99,14 +120,15 @@ is_our_link() {
 }
 
 # is_managed_link <path> — true if <path> is a deploy symlink, i.e. it points
-# at a deploy payload (common/ or users/). Stricter than is_our_link (which
-# matches any link into the repo): only deploy-created links are eligible for
-# pruning. Keyed off the static repo layout, not the currently-resolved user,
-# so prune/uninstall recognize links from any user (or when no user resolves).
+# at a deploy payload (common/, profiles/ or users/). Stricter than is_our_link
+# (which matches any link into the repo): only deploy-created links are eligible
+# for pruning. Keyed off the static repo layout, not the currently-resolved
+# layers, so prune/uninstall recognize links from any user or profile (or when
+# none resolves).
 is_managed_link() {
   [ -L "$1" ] || return 1
   case "$(readlink "$1")" in
-    "$COMMON_SRC"/* | "$REPO_DIR"/users/*) return 0 ;;
+    "$COMMON_SRC"/* | "$REPO_DIR"/profiles/* | "$REPO_DIR"/users/*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -175,12 +197,15 @@ restore_backup() { # restore newest backup only when the target is now absent
   mv "$_rb_bk" "$_rb" && info "restored: $_rb (from $(basename "$_rb_bk"))"
 }
 
-# --- user overlay resolution -----------------------------------------------
+# --- layer resolution ------------------------------------------------------
 
-# valid_username <name> — reject empties and anything that could escape users/.
-valid_username() {
+# valid_layer_name <name> — reject empties, whitespace and anything that could
+# escape the layer root. Whitespace matters beyond path safety: LAYERS and
+# ALL_LAYERS are IFS-split lists, so a name containing a space would silently
+# split into two bogus layers.
+valid_layer_name() {
   case $1 in
-    "" | */* | . | .. | *'*'* | *'?'*) return 1 ;;
+    "" | */* | . | .. | *'*'* | *'?'* | *[[:space:]]*) return 1 ;;
     *) return 0 ;;
   esac
 }
@@ -188,19 +213,22 @@ valid_username() {
 # resolve_user — pick the active user and, if users/<name>/ exists, set USER_SRC.
 # Order: --user, then `git config dotfiles.user`, then `gh api user`. An explicit
 # --user that is invalid is fatal; auto-detected values that are invalid are
-# skipped. With no user resolved, only common/ is deployed.
+# skipped. With no user resolved, no user overlay is applied.
 resolve_user() {
   if [ -n "$CLI_USER" ]; then
-    valid_username "$CLI_USER" || die "invalid --user value: $CLI_USER"
+    valid_layer_name "$CLI_USER" || die "invalid --user value: $CLI_USER"
     RESOLVED_USER=$CLI_USER
+    USER_ORIGIN="--user"
   else
     _ru=$(git config dotfiles.user 2>/dev/null) || _ru=""
-    if [ -n "$_ru" ] && valid_username "$_ru"; then
+    if [ -n "$_ru" ] && valid_layer_name "$_ru"; then
       RESOLVED_USER=$_ru
+      USER_ORIGIN="git config dotfiles.user"
     elif command -v gh >/dev/null 2>&1 &&
       _ru=$(gh api user --jq .login 2>/dev/null) &&
-      [ -n "$_ru" ] && valid_username "$_ru"; then
+      [ -n "$_ru" ] && valid_layer_name "$_ru"; then
       RESOLVED_USER=$_ru
+      USER_ORIGIN="gh api user"
     fi
   fi
 
@@ -209,8 +237,105 @@ resolve_user() {
     USER_SRC="$REPO_DIR/users/$RESOLVED_USER"
     log "user overlay: $USER_SRC"
   else
-    warn "user '$RESOLVED_USER' has no users/ directory — deploying common/ only"
+    warn "user '$RESOLVED_USER' has no users/ directory — ignoring the user overlay"
   fi
+}
+
+# stored_profiles — print the remembered profile selection, one name per line.
+# Anchored at the repo with -C, because install.sh may be invoked from anywhere.
+# The checkout's own value is read first and, when set, used alone: --get-all
+# otherwise concatenates every level of the cascade, which would silently merge
+# a --global selection into the local one instead of replacing it.
+stored_profiles() {
+  git -C "$REPO_DIR" config --local --get-all dotfiles.profile 2>/dev/null && return 0
+  git -C "$REPO_DIR" config --get-all dotfiles.profile 2>/dev/null
+}
+
+# resolve_profiles — pick the active profiles, in ascending precedence order.
+# Order: --profile (repeatable), then `git config dotfiles.profile`. An explicit
+# --profile is validated at parse time; a stored value that is invalid is warned
+# about and skipped rather than fatal, so a hand-edited config cannot brick the
+# tool. With no profile resolved, no profile overlay is applied.
+resolve_profiles() {
+  if [ -n "$CLI_PROFILES" ]; then
+    RESOLVED_PROFILES=$CLI_PROFILES
+    PROFILE_ORIGIN="--profile"
+  else
+    _rp_all=$(stored_profiles)
+    _rp_ifs=$IFS
+    IFS='
+'
+    for _rp in $_rp_all; do
+      if valid_layer_name "$_rp"; then
+        RESOLVED_PROFILES="${RESOLVED_PROFILES:+$RESOLVED_PROFILES }$_rp"
+      else
+        warn "ignoring unusable stored profile name: $_rp"
+      fi
+    done
+    IFS=$_rp_ifs
+    [ -n "$RESOLVED_PROFILES" ] && PROFILE_ORIGIN="git config dotfiles.profile"
+  fi
+
+  for _rp in $RESOLVED_PROFILES; do
+    if [ -d "$REPO_DIR/profiles/$_rp" ]; then
+      log "profile overlay: $REPO_DIR/profiles/$_rp"
+    else
+      warn "profile '$_rp' has no profiles/ directory — ignoring it"
+    fi
+  done
+}
+
+# remember_profiles — persist the --profile selection in the repo's git config
+# so later runs resolve the same layers without the flag. Written to --local
+# (the checkout's .git/config, never committed). Only a real install calls this:
+# a read-only or dry-run command must never rewrite the stored selection.
+# A repo without git config (e.g. a tarball copy) warns instead of failing —
+# the deploy itself already succeeded.
+remember_profiles() {
+  [ -n "$CLI_PROFILES" ] || return 0
+  [ "$(stored_profiles | tr '\n' ' ')" = "$CLI_PROFILES " ] && return 0
+  git -C "$REPO_DIR" config --local --unset-all dotfiles.profile 2>/dev/null
+  for _rmp in $CLI_PROFILES; do
+    git -C "$REPO_DIR" config --local --add dotfiles.profile "$_rmp" || {
+      warn "could not remember the profile selection (not a git checkout?)"
+      return 0
+    }
+  done
+  log "profile: $CLI_PROFILES (remembered)"
+}
+
+# resolve_layers — build the three layer lists from the resolved user/profiles.
+# LAYERS is precedence order, highest first, and drives every single-winner
+# lookup; LAYERS_REV is its reverse and drives fragment merges (last one wins).
+# ALL_LAYERS is every layer the repo could ever have deployed from, regardless
+# of the current selection, so prune/uninstall/doctor stay confined to the tree
+# the repo manages and still clean up a previous selection's leftovers.
+# All three are IFS-split lists of repo-relative paths, which is safe because
+# valid_layer_name rejects whitespace.
+resolve_layers() {
+  LAYERS=common
+  for _rl in $RESOLVED_PROFILES; do
+    # prepend, so a later --profile ends up ahead of an earlier one
+    [ -d "$REPO_DIR/profiles/$_rl" ] && LAYERS="profiles/$_rl $LAYERS"
+  done
+  [ -n "$USER_SRC" ] && LAYERS="users/$RESOLVED_USER $LAYERS"
+
+  LAYERS_REV=""
+  for _rl in $LAYERS; do
+    LAYERS_REV="$_rl${LAYERS_REV:+ $LAYERS_REV}"
+  done
+
+  ALL_LAYERS=common
+  for _rl in "$REPO_DIR"/profiles/*/ "$REPO_DIR"/users/*/; do
+    [ -d "$_rl" ] || continue
+    _rl=${_rl%/}
+    _rl_rel=${_rl#"$REPO_DIR"/}
+    if valid_layer_name "${_rl_rel#*/}"; then
+      ALL_LAYERS="$ALL_LAYERS $_rl_rel"
+    else
+      warn "ignoring layer directory with an unusable name: $_rl_rel"
+    fi
+  done
 }
 
 # --- recursive overlay deploy ----------------------------------------------
@@ -219,14 +344,16 @@ resolve_user() {
 # variables. A `for var in glob` list is fixed at expansion time, so reusing the
 # same loop-var name across the recursive call is safe — no `local` needed.
 
-# layer_src <rel> — print the highest-precedence layer path that has <rel>
-# (users/ over common/), or nothing if neither layer has it.
+# layer_src <rel> — print the highest-precedence active layer path that has
+# <rel>, or nothing if no layer has it. This is the single place precedence is
+# decided; every other walk defers to it rather than re-implementing the order.
 layer_src() {
-  if [ -n "$USER_SRC" ] && { [ -e "$USER_SRC/$1" ] || [ -L "$USER_SRC/$1" ]; }; then
-    printf '%s' "$USER_SRC/$1"
-  elif [ -e "$COMMON_SRC/$1" ] || [ -L "$COMMON_SRC/$1" ]; then
-    printf '%s' "$COMMON_SRC/$1"
-  fi
+  for _ls in $LAYERS; do
+    if [ -e "$REPO_DIR/$_ls/$1" ] || [ -L "$REPO_DIR/$_ls/$1" ]; then
+      printf '%s' "$REPO_DIR/$_ls/$1"
+      return 0
+    fi
+  done
 }
 
 # effective_src <rel> — layer_src for <rel>, or, when <rel> is a mirror target,
@@ -242,17 +369,14 @@ effective_src() {
   printf '%s' "$_es"
 }
 
-# any_layer_dir <rel> — true if common/ or any users/*/ has <rel> as a real
-# directory. Prune/uninstall use this to confine directory recursion and rmdir
-# to the tree the repo actually manages, so a tool's own real directory under a
-# managed dir (e.g. ~/.claude/session-env) is never traversed or removed.
+# any_layer_dir <rel> — true if any layer the repo could have deployed from has
+# <rel> as a real directory. Prune/uninstall use this to confine directory
+# recursion and rmdir to the tree the repo actually manages, so a tool's own
+# real directory under a managed dir (e.g. ~/.claude/session-env) is never
+# traversed or removed.
 any_layer_dir() {
-  if [ -d "$COMMON_SRC/$1" ] && [ ! -L "$COMMON_SRC/$1" ]; then
-    return 0
-  fi
-  for _ald in "$REPO_DIR"/users/*/; do
-    [ -d "$_ald" ] || continue
-    if [ -d "$_ald$1" ] && [ ! -L "$_ald$1" ]; then
+  for _ald in $ALL_LAYERS; do
+    if [ -d "$REPO_DIR/$_ald/$1" ] && [ ! -L "$REPO_DIR/$_ald/$1" ]; then
       return 0
     fi
   done
@@ -285,49 +409,43 @@ ensure_destdir() {
   mkdir -p "$1" || die "mkdir failed: $1"
 }
 
-# deploy_children <rel> — deploy the union of children of <rel>, user layer
-# first; common children whose name also exists in the user layer are skipped
-# (already handled), so each name is deployed once, user-first.
+# deploy_children <rel> — deploy the union of children of <rel> across the
+# active layers. A name is deployed only from the layer layer_src picks for it,
+# so each name is handled exactly once and precedence lives in one place.
 deploy_children() {
-  if [ -n "$USER_SRC" ] && [ -d "$USER_SRC/$1" ]; then
-    for _dc in "$USER_SRC/$1"/* "$USER_SRC/$1"/.*; do
+  for _dcl in $LAYERS; do
+    [ -d "$REPO_DIR/$_dcl/$1" ] || continue
+    for _dc in "$REPO_DIR/$_dcl/$1"/* "$REPO_DIR/$_dcl/$1"/.*; do
       [ -e "$_dc" ] || [ -L "$_dc" ] || continue
       case ${_dc##*/} in . | ..) continue ;; esac
+      [ "$(layer_src "$1/${_dc##*/}")" = "$_dc" ] || continue
       deploy_rel "$1/${_dc##*/}"
     done
-  fi
-  [ -d "$COMMON_SRC/$1" ] || return 0
-  for _dc in "$COMMON_SRC/$1"/* "$COMMON_SRC/$1"/.*; do
-    [ -e "$_dc" ] || [ -L "$_dc" ] || continue
-    case ${_dc##*/} in . | ..) continue ;; esac
-    if [ -n "$USER_SRC" ] &&
-      { [ -e "$USER_SRC/$1/${_dc##*/}" ] || [ -L "$USER_SRC/$1/${_dc##*/}" ]; }; then
-      continue
-    fi
-    deploy_rel "$1/${_dc##*/}"
   done
 }
 
-# deploy_fragment <rel> — merge the common then user versions of a fragment
-# into the matching JSON under $HOME (existing target keys still win).
+# deploy_fragment <rel> — merge every layer's version of a fragment into the
+# matching JSON under $HOME, lowest precedence first so a higher layer wins
+# (existing target keys still win over all of them).
 deploy_fragment() {
   _df_rel=$1
   _df_target="$HOME/${_df_rel%.fragment.json}.json"
   set --
-  [ -e "$COMMON_SRC/$_df_rel" ] && set -- "$@" "$COMMON_SRC/$_df_rel"
-  [ -n "$USER_SRC" ] && [ -e "$USER_SRC/$_df_rel" ] && set -- "$@" "$USER_SRC/$_df_rel"
+  for _dfl in $LAYERS_REV; do
+    [ -e "$REPO_DIR/$_dfl/$_df_rel" ] && set -- "$@" "$REPO_DIR/$_dfl/$_df_rel"
+  done
   [ "$#" -gt 0 ] || return 0
   merge_json "$_df_target" "$@"
 }
 
-# deploy_fragment_toml <rel> — merge the common then user versions of a TOML
-# fragment into the matching TOML under $HOME (existing target keys still win).
+# deploy_fragment_toml <rel> — same as deploy_fragment for a TOML fragment.
 deploy_fragment_toml() {
   _dft_rel=$1
   _dft_target="$HOME/${_dft_rel%.fragment.toml}.toml"
   set --
-  [ -e "$COMMON_SRC/$_dft_rel" ] && set -- "$@" "$COMMON_SRC/$_dft_rel"
-  [ -n "$USER_SRC" ] && [ -e "$USER_SRC/$_dft_rel" ] && set -- "$@" "$USER_SRC/$_dft_rel"
+  for _dftl in $LAYERS_REV; do
+    [ -e "$REPO_DIR/$_dftl/$_dft_rel" ] && set -- "$@" "$REPO_DIR/$_dftl/$_dft_rel"
+  done
   [ "$#" -gt 0 ] || return 0
   merge_toml "$_dft_target" "$@"
 }
@@ -568,41 +686,34 @@ prune_toplevel() {
 # --- top-level layer walk --------------------------------------------------
 
 # walk_top <action> — run <action> for each unique top-level entry name in the
-# active layers (user names first, then common names not present in the user
-# layer). Used by deploy. <action> is deploy | prune | uninstall.
+# active layers. As in deploy_children, a name is visited only from the layer
+# layer_src picks for it. Used by deploy. <action> is deploy | prune | uninstall.
 walk_top() {
-  if [ -n "$USER_SRC" ]; then
-    for _wt in "$USER_SRC"/* "$USER_SRC"/.*; do
+  for _wtl in $LAYERS; do
+    for _wt in "$REPO_DIR/$_wtl"/* "$REPO_DIR/$_wtl"/.*; do
       [ -e "$_wt" ] || [ -L "$_wt" ] || continue
       case ${_wt##*/} in . | ..) continue ;; esac
+      [ "$(layer_src "${_wt##*/}")" = "$_wt" ] || continue
       walk_top_do "$1" "${_wt##*/}"
     done
-  fi
-  for _wt in "$COMMON_SRC"/* "$COMMON_SRC"/.*; do
-    [ -e "$_wt" ] || [ -L "$_wt" ] || continue
-    case ${_wt##*/} in . | ..) continue ;; esac
-    if [ -n "$USER_SRC" ] &&
-      { [ -e "$USER_SRC/${_wt##*/}" ] || [ -L "$USER_SRC/${_wt##*/}" ]; }; then
-      continue
-    fi
-    walk_top_do "$1" "${_wt##*/}"
   done
 }
 
 # walk_all_top <action> — run <action> once for each distinct top-level entry
-# name the repo could ever have deployed (common/ plus every users/*/). Used by
-# prune and uninstall so a previously-selected user's leftovers are handled
-# regardless of the active user. Names are de-duplicated so status reports each
-# orphan once. <action> is prune | uninstall.
+# name the repo could ever have deployed (every layer in ALL_LAYERS). Used by
+# prune and uninstall so a previously-selected user's or profile's leftovers are
+# handled regardless of the active selection. Names are de-duplicated so status
+# reports each orphan once. <action> is prune | uninstall.
 walk_all_top() {
   _wat_seen=" "
-  for _wat in "$COMMON_SRC"/* "$COMMON_SRC"/.* \
-    "$REPO_DIR"/users/*/* "$REPO_DIR"/users/*/.*; do
-    [ -e "$_wat" ] || [ -L "$_wat" ] || continue
-    case ${_wat##*/} in . | ..) continue ;; esac
-    case "$_wat_seen" in *" ${_wat##*/} "*) continue ;; esac
-    _wat_seen="$_wat_seen${_wat##*/} "
-    walk_top_do "$1" "${_wat##*/}"
+  for _watl in $ALL_LAYERS; do
+    for _wat in "$REPO_DIR/$_watl"/* "$REPO_DIR/$_watl"/.*; do
+      [ -e "$_wat" ] || [ -L "$_wat" ] || continue
+      case ${_wat##*/} in . | ..) continue ;; esac
+      case "$_wat_seen" in *" ${_wat##*/} "*) continue ;; esac
+      _wat_seen="$_wat_seen${_wat##*/} "
+      walk_top_do "$1" "${_wat##*/}"
+    done
   done
 }
 
@@ -657,17 +768,18 @@ cmd_uninstall() {
 # Scans only the deploy tree (the dot-dirs the repo manages), never all of $HOME.
 list_backups() {
   _lb_seen=" "
-  for _lb in "$COMMON_SRC"/* "$COMMON_SRC"/.* \
-    "$REPO_DIR"/users/*/* "$REPO_DIR"/users/*/.*; do
-    [ -e "$_lb" ] || [ -L "$_lb" ] || continue
-    _lb_n=${_lb##*/}
-    case $_lb_n in . | ..) continue ;; esac
-    case "$_lb_seen" in *" $_lb_n "*) continue ;; esac
-    _lb_seen="$_lb_seen$_lb_n "
-    for _lb_b in "$HOME/$_lb_n".dotfiles-bak.*; do
-      { [ -e "$_lb_b" ] || [ -L "$_lb_b" ]; } && printf '%s\n' "$_lb_b"
+  for _lbl in $ALL_LAYERS; do
+    for _lb in "$REPO_DIR/$_lbl"/* "$REPO_DIR/$_lbl"/.*; do
+      [ -e "$_lb" ] || [ -L "$_lb" ] || continue
+      _lb_n=${_lb##*/}
+      case $_lb_n in . | ..) continue ;; esac
+      case "$_lb_seen" in *" $_lb_n "*) continue ;; esac
+      _lb_seen="$_lb_seen$_lb_n "
+      for _lb_b in "$HOME/$_lb_n".dotfiles-bak.*; do
+        { [ -e "$_lb_b" ] || [ -L "$_lb_b" ]; } && printf '%s\n' "$_lb_b"
+      done
+      [ -d "$HOME/$_lb_n" ] && find "$HOME/$_lb_n" -name '*.dotfiles-bak.*' -prune -print 2>/dev/null
     done
-    [ -d "$HOME/$_lb_n" ] && find "$HOME/$_lb_n" -name '*.dotfiles-bak.*' -prune -print 2>/dev/null
   done
 }
 
@@ -743,13 +855,13 @@ doctor_classify() {
     return 0
   fi
   [ -e "$1" ] && return 0
-  # A moved-repo deploy link points at a dot-entry under common/ or users/<u>/
-  # (this repo's payload layout). Match that shape rather than a bare /common/
-  # or /users/ substring, so unrelated broken symlinks that merely contain
-  # those segments are not misreported as stale.
+  # A moved-repo deploy link points at a dot-entry under common/, profiles/<p>/
+  # or users/<u>/ (this repo's payload layout). Match that shape rather than a
+  # bare /common/ or /users/ substring, so unrelated broken symlinks that merely
+  # contain those segments are not misreported as stale.
   _dc_target=$(readlink "$1")
   case "$_dc_target" in
-    */common/.* | */users/*/.*)
+    */common/.* | */profiles/*/.* | */users/*/.*)
       printf 'stale   : %s -> %s (points outside the current repo — run ./install.sh install)\n' "$1" "$_dc_target"
       ;;
   esac
@@ -759,18 +871,19 @@ doctor_classify() {
 # managed top-level entries (their subtrees plus the entries themselves).
 doctor_scan() {
   _ds_seen=" "
-  for _ds in "$COMMON_SRC"/* "$COMMON_SRC"/.* \
-    "$REPO_DIR"/users/*/* "$REPO_DIR"/users/*/.*; do
-    [ -e "$_ds" ] || [ -L "$_ds" ] || continue
-    _ds_n=${_ds##*/}
-    case $_ds_n in . | ..) continue ;; esac
-    case "$_ds_seen" in *" $_ds_n "*) continue ;; esac
-    _ds_seen="$_ds_seen$_ds_n "
-    doctor_classify "$HOME/$_ds_n"
-    [ -d "$HOME/$_ds_n" ] && [ ! -L "$HOME/$_ds_n" ] &&
-      find "$HOME/$_ds_n" -type l 2>/dev/null | while IFS= read -r _ds_l; do
-        doctor_classify "$_ds_l"
-      done
+  for _dsl in $ALL_LAYERS; do
+    for _ds in "$REPO_DIR/$_dsl"/* "$REPO_DIR/$_dsl"/.*; do
+      [ -e "$_ds" ] || [ -L "$_ds" ] || continue
+      _ds_n=${_ds##*/}
+      case $_ds_n in . | ..) continue ;; esac
+      case "$_ds_seen" in *" $_ds_n "*) continue ;; esac
+      _ds_seen="$_ds_seen$_ds_n "
+      doctor_classify "$HOME/$_ds_n"
+      [ -d "$HOME/$_ds_n" ] && [ ! -L "$HOME/$_ds_n" ] &&
+        find "$HOME/$_ds_n" -type l 2>/dev/null | while IFS= read -r _ds_l; do
+          doctor_classify "$_ds_l"
+        done
+    done
   done
 }
 
@@ -836,13 +949,46 @@ cmd_doctor() {
   return 0
 }
 
+# --- config ----------------------------------------------------------------
+
+# cmd_config — report the resolved overlays and the resulting layer order, or,
+# with --unset-profile, forget the stored profile selection. Reporting is
+# read-only; resolve_user/resolve_profiles have already warned about anything
+# that resolved to a missing directory.
+cmd_config() {
+  if [ "$UNSET_PROFILE" -eq 1 ]; then
+    _cf_was=$(stored_profiles | tr '\n' ' ')
+    if [ -z "$_cf_was" ]; then
+      log "no profile selection is stored"
+      return 0
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+      printf '  [dry-run] unset dotfiles.profile (was: %s)\n' "${_cf_was% }"
+      return 0
+    fi
+    git -C "$REPO_DIR" config --local --unset-all dotfiles.profile ||
+      die "could not unset dotfiles.profile in $REPO_DIR"
+    info "unset   : dotfiles.profile (was: ${_cf_was% })"
+    return 0
+  fi
+
+  info "user     : ${RESOLVED_USER:-(none)}${USER_ORIGIN:+  ($USER_ORIGIN)}"
+  info "profiles : ${RESOLVED_PROFILES:-(none)}${PROFILE_ORIGIN:+  ($PROFILE_ORIGIN)}"
+
+  _cf_order=""
+  for _cf in $LAYERS_REV; do
+    _cf_order="${_cf_order:+$_cf_order < }$_cf"
+  done
+  info "layers   : $_cf_order"
+}
+
 # --- argument parsing ------------------------------------------------------
 
 CMD=""
 
 while [ $# -gt 0 ]; do
   case $1 in
-    install | status | uninstall | clean-backups | doctor) CMD=$1 ;;
+    install | status | uninstall | clean-backups | doctor | config) CMD=$1 ;;
     diff)
       CMD=install
       DRY_RUN=1
@@ -855,6 +1001,16 @@ while [ $# -gt 0 ]; do
       }
       CLI_USER=$1
       ;;
+    --profile)
+      shift
+      [ $# -gt 0 ] || {
+        usage >&2
+        die "missing value for --profile"
+      }
+      valid_layer_name "$1" || die "invalid --profile value: $1"
+      CLI_PROFILES="${CLI_PROFILES:+$CLI_PROFILES }$1"
+      ;;
+    --unset-profile) UNSET_PROFILE=1 ;;
     --dry-run) DRY_RUN=1 ;;
     --no-backup) NO_BACKUP=1 ;;
     --force) FORCE=1 ;;
@@ -913,6 +1069,8 @@ printf '{}' | jq -e 'walk(.)' >/dev/null 2>&1 ||
   die "jq is too old: the fragment merge needs jq 1.6+ (the 'walk' builtin). Found: $(jq --version 2>/dev/null)"
 
 resolve_user
+resolve_profiles
+resolve_layers
 
 # --- dispatch --------------------------------------------------------------
 
@@ -921,6 +1079,9 @@ case $CMD in
     MODE=install
     [ "$DRY_RUN" -eq 1 ] && log "(dry-run — no changes will be made)"
     cmd_run
+    # remember only after a real deploy: a dry-run or a read-only command must
+    # never rewrite the stored selection
+    [ "$DRY_RUN" -eq 1 ] || remember_profiles
     log ""
     log "Done."
     ;;
@@ -941,6 +1102,9 @@ case $CMD in
     ;;
   doctor)
     cmd_doctor
+    ;;
+  config)
+    cmd_config
     ;;
   *)
     usage >&2

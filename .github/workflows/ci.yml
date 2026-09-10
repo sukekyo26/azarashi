@@ -126,9 +126,21 @@ jobs:
           printf '{ "statusLine": { "x": "user" }, "userKey": true }\n' \
             >"$FX/users/fx/.claude/settings.fragment.json"
           printf 'fx marker\n'                       >"$FX/users/fx/.fxtop/marker"
+          mkdir -p "$FX/profiles/bd/.agents" "$FX/profiles/bd/.claude" "$FX/profiles/bd/.bdtop" "$FX/profiles/bd2/.claude"
+          printf 'CANONICAL (profile bd)\n'          >"$FX/profiles/bd/.agents/AGENTS.md"
+          printf '#!/usr/bin/env bash\necho bd\n'    >"$FX/profiles/bd/.claude/demo.sh"
+          printf '{ "statusLine": { "x": "profile" }, "profileKey": true }\n' \
+            >"$FX/profiles/bd/.claude/settings.fragment.json"
+          printf 'bd marker\n'                       >"$FX/profiles/bd/.bdtop/marker"
+          printf '#!/usr/bin/env bash\necho bd2\n'   >"$FX/profiles/bd2/.claude/demo.sh"
           printf '%s\n' '.codex/AGENTS.md        .agents/AGENTS.md' \
                         '.demo/INSTRUCTIONS.md   .agents/AGENTS.md' \
                         '.demo/skills            .agents/skills'    >"$FX/mirror.conf"
+          # install.sh remembers a --profile selection in the tree's git config,
+          # so the fixture has to be a checkout for that path to be exercised
+          git init -q "$FX"
+          git -C "$FX" config user.email ci@example.com
+          git -C "$FX" config user.name ci
 
       - name: Setup isolated HOME
         run: echo "HOME=$(mktemp -d)" >> "$GITHUB_ENV"
@@ -303,6 +315,73 @@ jobs:
           [ ! -e "$HOME/.agents" ]
           [ ! -e "$HOME/.codex/AGENTS.md" ]
           [ ! -e "$HOME/.demo/skills" ]
+          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -f "$HOME/.claude/settings.json" ]
+
+      - name: Reset isolated HOME for the per-profile pass
+        run: echo "HOME=$(mktemp -d)" >> "$GITHUB_ENV"
+
+      - name: Per-profile — override, mirror-follows-override, profile-only entry, persistence
+        run: |
+          cd "$FX"
+          ./install.sh install --profile bd >/dev/null
+          # a profile file wins over common (plain leaf and the mirror's canonical source)
+          case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd/.claude/demo.sh) ;; *) echo "profile override FAIL"; exit 1 ;; esac
+          case "$(readlink "$HOME/.codex/AGENTS.md")" in */profiles/bd/.agents/AGENTS.md) ;; *) echo "mirror-follows-profile FAIL"; exit 1 ;; esac
+          # a source with no profile override falls back to common
+          case "$(readlink "$HOME/.demo/skills")" in */common/.agents/skills) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
+          # a profile-only top-level entry is a real dir whose leaves link into the profile layer
+          [ -d "$HOME/.bdtop" ] && [ ! -L "$HOME/.bdtop" ]
+          [ -L "$HOME/.bdtop/marker" ]
+          # fragment layering: the profile value wins over common, both layers' keys are present
+          jq -e '.statusLine.x == "profile" and .profileKey == true and .commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
+          # the selection is remembered, so a later run needs no flag
+          [ "$(git config --get-all dotfiles.profile)" = "bd" ]
+          ./install.sh install >/dev/null
+          case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd/.claude/demo.sh) ;; *) echo "persistence FAIL"; exit 1 ;; esac
+
+      - name: Reset isolated HOME for the three-layer pass
+        run: echo "HOME=$(mktemp -d)" >> "$GITHUB_ENV"
+
+      - name: Three layers — user beats profile beats common, config report
+        run: |
+          cd "$FX"
+          ./install.sh install --user fx --profile bd >/dev/null
+          case "$(readlink "$HOME/.claude/demo.sh")" in */users/fx/.claude/demo.sh) ;; *) echo "user-over-profile FAIL"; exit 1 ;; esac
+          # every layer contributes; the highest one wins the shared key
+          jq -e '.statusLine.x == "user" and .profileKey == true and .commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
+          ./install.sh config --user fx | tee config.out
+          grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd([[:space:]]|$)' config.out
+          grep -qE '^[[:space:]]*layers[[:space:]]*:[[:space:]]*common < profiles/bd < users/fx$' config.out
+
+      - name: Per-profile — multiple profiles, read-only runs, unset-profile prune, invalid
+        run: |
+          cd "$FX"
+          # a later --profile wins over an earlier one, and both are remembered
+          ./install.sh install --user fx --profile bd --profile bd2 >/dev/null
+          case "$(readlink "$HOME/.claude/demo.sh")" in */users/fx/.claude/demo.sh) ;; *) echo "user still wins FAIL"; exit 1 ;; esac
+          [ "$(git config --get-all dotfiles.profile | tr '\n' ' ')" = "bd bd2 " ]
+          # re-specifying replaces the stored set instead of appending to it
+          ./install.sh install --user fx --profile bd >/dev/null
+          [ "$(git config --get-all dotfiles.profile)" = "bd" ]
+          # a dry-run or read-only command never rewrites the stored selection
+          ./install.sh install --user fx --profile bd2 --dry-run >/dev/null
+          ./install.sh status --user fx --profile bd2 >/dev/null
+          [ "$(git config --get-all dotfiles.profile)" = "bd" ]
+          # unset-profile forgets it; the next install prunes the profile-only entry
+          [ -d "$HOME/.bdtop" ] && [ ! -L "$HOME/.bdtop" ]
+          ./install.sh config --unset-profile
+          [ -z "$(git config --get-all dotfiles.profile || true)" ]
+          ./install.sh install --user fx | tee unset.out
+          [ ! -e "$HOME/.bdtop" ]
+          grep -qE '^[[:space:]]*pruned[[:space:]]*:.*\.bdtop$' unset.out
+          # ...and the shared leaf falls back to the user layer
+          case "$(readlink "$HOME/.claude/demo.sh")" in */users/fx/.claude/demo.sh) ;; *) echo "post-unset fallback FAIL"; exit 1 ;; esac
+          # an invalid --profile is rejected
+          ! ./install.sh install --profile '../evil'
+          # uninstall removes profile-sourced links too
+          ./install.sh install --user fx --profile bd >/dev/null
+          ./install.sh uninstall >/dev/null
           ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
           [ -f "$HOME/.claude/settings.json" ]
 

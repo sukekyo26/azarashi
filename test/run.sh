@@ -89,6 +89,14 @@ assert_eq "later fragment (user) wins over the earlier one (common)" \
   "$(jq -Sc . "$t")" '{"a":2}'
 
 rm -f "$t"
+printf '{"a":"common","c":1}\n' >"$WORK/f1.json"
+printf '{"a":"profile","p":2}\n' >"$WORK/f2.json"
+printf '{"a":"user","u":3}\n' >"$WORK/f3.json"
+merge_json "$t" "$WORK/f1.json" "$WORK/f2.json" "$WORK/f3.json" >/dev/null
+assert_eq "three layers merge in order (common < profile < user)" \
+  "$(jq -Sc . "$t")" '{"a":"user","c":1,"p":2,"u":3}'
+
+rm -f "$t"
 printf '{"x":{"apiKey":"k","API_KEY":"k","ok":1},"token":"t","keep":2}\n' >"$f"
 merge_json "$t" "$f" >/dev/null
 assert_eq "protected keys are stripped (nested, case-insensitive)" \
