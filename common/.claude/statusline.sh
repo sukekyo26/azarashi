@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # Claude Code statusLine — reads session JSON on stdin, prints a single line.
+# Bedrock 利用時はトランスクリプトの usage を集計して実価格で再計算する（コストに
+# "~" が付く）。Anthropic API 直の場合は Claude Code が報告する total_cost_usd を
+# そのまま使う。どちらかはトランスクリプトのモデル ID から実行時に判定するので、
+# 環境ごとにスクリプトを分ける必要はない。
 # Wire up in ~/.claude/settings.json:
 #   "statusLine": { "type": "command", "command": "bash ~/.claude/statusline.sh", "padding": 0 }
 
@@ -14,13 +18,81 @@ added=$(jq -r '.cost.total_lines_added // 0' <<<"$input")
 removed=$(jq -r '.cost.total_lines_removed // 0' <<<"$input")
 ctx_pct=$(jq -r '.context_window.used_percentage // empty' <<<"$input")
 style=$(jq -r '.output_style.name // ""' <<<"$input")
+transcript=$(jq -r '.transcript_path // empty' <<<"$input")
 effort=$(jq -r '.effort.level // empty' <<<"$input")
 thinking=$(jq -r '.thinking.enabled // false' <<<"$input")
 worktree=$(jq -r '.workspace.git_worktree // empty' <<<"$input")
 version=$(jq -r '.version // empty' <<<"$input")
 cache_read=$(jq -r '.context_window.current_usage.cache_read_input_tokens // 0' <<<"$input")
 cache_create=$(jq -r '.context_window.current_usage.cache_creation_input_tokens // 0' <<<"$input")
-transcript=$(jq -r '.transcript_path // empty' <<<"$input")
+
+# --- Bedrock cost calculation ---------------------------------------------
+# 価格テーブル: グローバルエンドポイント基準 (USD per 1M tokens)。
+# jp./us./eu./au./apac. の地理プロファイルと In-Region はグローバル比 +10%。
+# cache write 5m = input*1.25, 1h = input*2, cache read = input*0.1。
+# モデル追加時は下の jq の price() に行を足す。
+cost_mark=""
+if [[ -n "$transcript" && -r "$transcript" ]]; then
+  size=$(stat -c %s "$transcript" 2>/dev/null || echo 0)
+  cache_file="${TMPDIR:-/tmp}/claude-statusline-cost-$(md5sum <<<"$transcript" | cut -d' ' -f1)"
+
+  if [[ -r "$cache_file" ]] && read -r cached_size cached_cost cached_mark <"$cache_file" &&
+    [[ "$cached_size" == "$size" ]]; then
+    if [[ -n "$cached_mark" ]]; then
+      cost=$cached_cost
+      cost_mark="~"
+    fi
+  else
+    result=$(jq -rn '
+      def price(m):
+        if   (m | test("fable|mythos")) then {i: 10.0, o: 50.0}
+        elif (m | test("opus"))         then {i: 5.0,  o: 25.0}
+        elif (m | test("sonnet"))       then {i: 3.0,  o: 15.0}
+        elif (m | test("haiku"))        then {i: 1.0,  o: 5.0}
+        else null end;
+      def mult(m):
+        if   (m | test("^global\\."))                 then 1.0
+        elif (m | test("^(jp|us|eu|au|apac)\\."))     then 1.1
+        elif (m | startswith("anthropic."))           then 1.1
+        else 1.0 end;
+      [ inputs | select(.message.usage? and .message.id?) ]
+      | unique_by(.message.id)
+      | map(.message
+          | (.model // "") as $m
+          | .usage as $u
+          | ($u.input_tokens // 0) as $in
+          | ($u.output_tokens // 0) as $out
+          | ($u.cache_read_input_tokens // 0) as $cr
+          | (if $u.cache_creation? then
+               [($u.cache_creation.ephemeral_5m_input_tokens // 0),
+                ($u.cache_creation.ephemeral_1h_input_tokens // 0)]
+             else
+               [($u.cache_creation_input_tokens // 0), 0]
+             end) as [$c5, $c1]
+          | price($m) as $p
+          | if $p == null then {cost: 0, bedrock: false}
+            else {
+              cost: (($in * $p.i + $out * $p.o
+                      + $c5 * $p.i * 1.25 + $c1 * $p.i * 2
+                      + $cr * $p.i * 0.1) * mult($m) / 1e6),
+              bedrock: ($m | contains("anthropic.claude"))
+            } end)
+      | [(map(.cost) | add // 0), (any(.bedrock))]
+      | @tsv
+    ' "$transcript" 2>/dev/null)
+
+    if [[ -n "$result" ]]; then
+      calc_cost=${result%%$'\t'*}
+      is_bedrock=${result##*$'\t'}
+      if [[ "$is_bedrock" == "true" ]]; then
+        cost=$calc_cost
+        cost_mark="~"
+      fi
+      printf '%s %s %s\n' "$size" "$calc_cost" "$cost_mark" >"$cache_file"
+    fi
+  fi
+fi
+# ---------------------------------------------------------------------------
 
 cwd_short="${cwd/#$HOME/'~'}"
 branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
@@ -157,7 +229,7 @@ printf '%s%s%s' "$C_DIR" "$cwd_short" "$C_RESET"
 [[ -n "$branch" ]] && printf ' %s(%s)%s%s' "$C_BRANCH" "$branch" "$C_RESET" "$worktree_tag"
 printf ' %s+%s%s/%s-%s%s\n' "$C_OK" "$added" "$C_RESET" "$C_DANGER" "$removed" "$C_RESET"
 
-printf '%s%s%s%s%s%s %s$%.3f%s%s%s%s\n' \
+printf '%s%s%s%s%s%s %s%s$%.3f%s%s%s%s\n' \
   "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
-  "$C_COST" "$cost" "$C_RESET" \
+  "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
   "$cache_segment" "$cache_ttl_segment" "$version_tag"

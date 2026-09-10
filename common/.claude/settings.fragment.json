@@ -8,7 +8,7 @@
   "spinnerTipsEnabled": false,
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.claude/statusline-bedrock.sh",
+    "command": "bash ~/.claude/statusline.sh",
     "refreshInterval": 10
   },
   "hooks": {
