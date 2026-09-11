@@ -63,6 +63,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 - `lib/toml_merge.py` — 同梱 `tomlkit`（`lib/vendor/tomlkit/`, MIT）を使う TOML↔JSON ブリッジ。フォーマット保持の書き戻しと codex 方言の正規化を担う。
 - `test/run.sh` — `lib/` のユニットテスト。グローバルはハーネスがケースごとに所有。
 - `common/` — 配布ペイロード（`.agents/`, `.claude/`, `.copilot/` の設定・statusline・hooks）。
+- `profiles/bedrock/` — Bedrock 環境レイヤー。`env.CLAUDE_CODE_USE_BEDROCK` のみを上書きする。`common/.claude/statusline.sh` は Bedrock と Anthropic API 直の**どちらもトランスクリプトのモデル ID から実行時に判定**するため、statusline はプロファイルで分けていない。
 
 ## リント / フォーマットの分割（重要）
 

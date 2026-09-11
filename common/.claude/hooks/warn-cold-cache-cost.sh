@@ -9,7 +9,7 @@
 # hook just surfaces the estimate as a `systemMessage`; at or above it blocks the
 # submit once so the user can reconsider, and a re-submit goes through.
 #
-# Mirrors the cold detection and Bedrock price table of statusline-bedrock.sh.
+# Mirrors the cold detection and Bedrock price table of statusline.sh.
 # Only the idle warm->cold case is flagged; /compact (deliberate, and whose
 # post-summary size is unknown here) is left alone.
 #
