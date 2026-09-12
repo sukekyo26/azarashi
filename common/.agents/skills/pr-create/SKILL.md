@@ -48,8 +48,7 @@ upstream が無ければ `git push -u origin <current>`、ahead なら `git push
 
 | 状況 | タイトル |
 |:-----|:--------|
-| 単一コミット | そのコミットメッセージ |
-| 複数コミット | `feat(scope): summary` 形式に集約 |
+| 通常の開発 PR | コミット数に依らず `feat(scope): summary` 形式で差分全体を要約する（単一コミットでもメッセージをそのまま流用しない） |
 | `develop → main` でバージョンアップあり | `develop` のリリースコミットと同一タイトル（`chore: release vX.Y.Z` 等。プロジェクト規約から取り、ハードコードしない） |
 | `develop → main` でバージョンアップなし | コミット内容を集約した通常タイトル |
 
