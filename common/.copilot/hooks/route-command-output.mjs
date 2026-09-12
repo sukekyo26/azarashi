@@ -124,6 +124,17 @@ const TEST_RUNNER_PATTERNS = [
   /^just\s+(test|e2e|quality|lint|ci|check)\b/,
 ];
 
+// Playwright は `rtk playwright test` に確定的に書き換える。rtk rewrite に任せると同じ
+// 結果を exit 3 (ask) で返して毎回権限確認になり、汎用 `rtk test` は末尾 5 行しか残さず
+// 失敗内容が落ちる。専用パーサーは JSON レポーターで走らせて PASS/FAIL と失敗詳細だけに畳む。
+// ランナー接頭辞 (npx/bunx/pnpm/yarn [exec]) は落とす: rtk 側が `npx --no-install` で
+// 起動し、ローカル・グローバルどちらの playwright にも解決できる。
+// test 以外 (install/codegen/show-report) はパーサーが効かず [RTK:PASSTHROUGH] の
+// ノイズが増えるだけなので rtk rewrite に渡さず素通し。playwright-cli は rtk が知らない
+// (exit 1) のでここでは扱わない。
+const PLAYWRIGHT_TEST = /^(?:(?:npx|bunx|pnpm|yarn)\s+(?:exec\s+)?)?playwright\s+test\b/;
+const PLAYWRIGHT_ANY = /^(?:(?:npx|bunx|pnpm|yarn)\s+(?:exec\s+)?)?playwright\b/;
+
 function resolveRtk() {
   const home = process.env.HOME || '';
   const candidates = [];
@@ -145,9 +156,13 @@ export function rewriteSegmentBody(rtk, body) {
   if (!body.trim()) return { action: 'keep' };
   // テストランナーは内側ツールが隠れて rtk rewrite が効かない (exit 3 を返す) ので、
   // `rtk test` で実行ごと包んで失敗行だけに畳む。exit code は透過される。
-  if (TEST_RUNNER_PATTERNS.some((re) => re.test(commandHead(body)))) {
+  const head = commandHead(body);
+  if (TEST_RUNNER_PATTERNS.some((re) => re.test(head))) {
     return { action: 'replace', body: `${rtk} test ${body}` };
   }
+  const pw = head.match(PLAYWRIGHT_TEST);
+  if (pw) return { action: 'replace', body: `${rtk} playwright test${head.slice(pw[0].length)}` };
+  if (PLAYWRIGHT_ANY.test(head)) return { action: 'keep' };
   const res = spawnSync(rtk, ['rewrite', body], { encoding: 'utf8' });
   const out = (res.stdout || '').trim();
   switch (res.status) {
