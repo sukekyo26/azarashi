@@ -7,9 +7,10 @@
 #   users/<name>/     — per-user overrides; highest precedence
 # Every layer has the same layout as common/. The active user is resolved from
 # --user, then `git config dotfiles.user`, then `gh api user`; the active
-# profiles from --profile (repeatable, later wins), then
-# `git config dotfiles.profile`. With no overlay resolved only common/ is
-# deployed, identical to a single-layer install.
+# profiles from --profile (repeatable, later wins), then $DOTFILES_PROFILE
+# (space-separated, not remembered), then `git config dotfiles.profile`. With
+# no overlay resolved only common/ is deployed, identical to a single-layer
+# install.
 #
 # Directories are always materialized as real directories and only their leaf
 # files are symlinked (the highest-precedence layer that has a leaf wins). A
@@ -86,7 +87,10 @@ Flags:
                      Repeatable; a later --profile wins over an earlier one.
                      On install the selection is remembered in
                      `git config dotfiles.profile` and reused by later runs, so
-                     the flag is only needed when it changes.
+                     the flag is only needed when it changes. Default: the
+                     DOTFILES_PROFILE environment variable (space-separated,
+                     later wins; never remembered), else the remembered
+                     selection, else no profile overlay.
   --unset-profile    config: forget the remembered profile selection
   --dry-run          Print actions without applying them
   --no-backup        Skip backups before overwriting (default: backups on)
@@ -252,14 +256,30 @@ stored_profiles() {
 }
 
 # resolve_profiles — pick the active profiles, in ascending precedence order.
-# Order: --profile (repeatable), then `git config dotfiles.profile`. An explicit
-# --profile is validated at parse time; a stored value that is invalid is warned
-# about and skipped rather than fatal, so a hand-edited config cannot brick the
-# tool. With no profile resolved, no profile overlay is applied.
+# Order: --profile (repeatable), then $DOTFILES_PROFILE (space-separated, later
+# wins), then `git config dotfiles.profile`. The env var is for a per-environment
+# selection (e.g. one devcontainer's start script) that must not be remembered:
+# the git config lives in the checkout, which several containers and the host
+# can share, so a remembered selection would leak into all of them. An explicit
+# --profile / env value is fatal when invalid; a stored value that is invalid is
+# warned about and skipped rather than fatal, so a hand-edited config cannot
+# brick the tool. With no profile resolved, no profile overlay is applied.
 resolve_profiles() {
   if [ -n "$CLI_PROFILES" ]; then
     RESOLVED_PROFILES=$CLI_PROFILES
     PROFILE_ORIGIN="--profile"
+  # A blank or whitespace-only value counts as unset, so it cannot silently
+  # shadow the stored selection with "no profile".
+  elif [ -n "$(printf '%s' "${DOTFILES_PROFILE:-}" | tr -d '[:space:]')" ]; then
+    # Split on IFS only: with pathname expansion left on, a value such as
+    # '[ab]' would resolve to whatever file happens to match in the cwd.
+    set -f
+    for _rp in $DOTFILES_PROFILE; do
+      valid_layer_name "$_rp" || die "invalid DOTFILES_PROFILE value: $_rp"
+      RESOLVED_PROFILES="${RESOLVED_PROFILES:+$RESOLVED_PROFILES }$_rp"
+    done
+    set +f
+    PROFILE_ORIGIN="DOTFILES_PROFILE"
   else
     _rp_all=$(stored_profiles)
     _rp_ifs=$IFS
