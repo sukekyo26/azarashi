@@ -48,6 +48,11 @@
 - **MCP 側の注入プロンプトは output style より強い言い方をする** — serena は Read / Edit を一律「FORBIDDEN」と宣言してくるが、判断は output style の例外規定に従う。
 - **`serena-hooks remind` の deny は合図として扱う** — Read / Grep の連投で PreToolUse hook がブロックしてきたら、まずシンボル操作に切り替えられないか検討する。「適用範囲を限定する」に当たる対象なら、そのまま Read / Grep で続行してよい（deny はカウンタをリセットする nudge であり、再試行を妨げない）。
 
+## ast-grep の利用
+
+- **構造パターンの検索・置換は ast-grep** — 「この形の呼び出しを全部」「この構文を一括で書き換え」は、Grep の正規表現（複数行・ネスト・空白揺れに弱い）や serena の名前検索（形では引けない）ではなく `ast-grep -p '<pattern>' -r '<rewrite>' -l <lang>` を使う。適用前に `-r` 無しで一致箇所を確認する。短縮名 `sg` は非推奨（警告が出る上、Debian の `/usr/bin/sg` と同名）なので使わない。
+- **名前が分かっているシンボルは serena、文字列・設定・非コードは Grep** — ast-grep は同名の別物やスコープを区別しない。定義・参照の追跡は `find_symbol` / `find_referencing_symbols`、Markdown・JSON・TOML・ログ文言は Grep のまま。
+
 ## CHANGELOG の更新
 
 - **コード変更時は CHANGELOG を同時に更新する** — 機能追加・バグ修正・変更を行った場合、コミット前に CHANGELOG を更新する。プロジェクトが二言語の CHANGELOG（例: `CHANGELOG.md` と `docs/CHANGELOG.ja.md`）を持つ場合は両方を同じ内容で同期させる。

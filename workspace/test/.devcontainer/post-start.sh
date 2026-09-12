@@ -21,6 +21,11 @@ uv tool install git+https://github.com/oraios/serena@v1.7.0 || true
 # 取得を試みる）。go/rustup はイメージ側にあるので前提を足さない。いずれも非 fatal。
 npm install -g typescript typescript-language-server pyright || true
 
+# ast-grep: 構造パターンでの検索・置換。Grep の正規表現と serena の名前検索の隙間
+# (形で探す・一括書き換え) を埋める。cocoon plugin に無いので npm。同梱の短縮名 `sg` は
+# 非推奨 (警告が出る) かつ Debian の /usr/bin/sg と同名なので、指示側は ast-grep で統一。非 fatal。
+npm install -g @ast-grep/cli@0.45.3 || true
+
 cd ~/work/azarashi
 
 # Run ./dotfiles, echo its output live, and condense the actions into one line so
