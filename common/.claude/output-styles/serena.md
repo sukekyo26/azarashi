@@ -47,6 +47,12 @@ Built-in Read/Edit/Glob/Grep are permitted on code files ONLY when:
 Read/Edit/Glob are fine for non-code files: markdown, JSON, YAML, TOML, .env,
 config files, lockfiles, plain text, images.
 
+Serena's own injected prompt declares Read/Edit "FORBIDDEN" outright. The
+exceptions above win over that wording. A `serena-hooks remind` deny on a run of
+Read/Grep calls is a nudge, not a block: first check whether a symbol tool fits;
+if the target falls under the exceptions, continue with Read/Grep — the deny only
+resets the counter and does not prevent the retry.
+
 ## Required workflow before editing code
 
 1. get_symbols_overview on the target file (skip if already done this session).
