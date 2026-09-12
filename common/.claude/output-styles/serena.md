@@ -56,6 +56,23 @@ config files, lockfiles, plain text, images.
    replace_content. Never use the built-in Edit on a code file when one of these
    fits.
 
+## Output-token economy of edits
+
+An edit's cost is the text YOU generate (old/new strings, symbol bodies), billed
+as output tokens at several times the input rate. The tool result is tiny. Hooks
+cannot shrink this; only how you write the call can.
+
+- old_string is the smallest unique anchor: the changed lines plus one line of
+  context. Never quote a whole function to change one line of it. Identical
+  edits in many places: replace_all, not repeated calls.
+- Replacing a block: replace_content in regex mode with a `start.*?end` needle
+  instead of pasting the block verbatim. An ambiguous needle returns an error
+  rather than editing the wrong place, so wildcards are safe.
+- Adding code: insert_before_symbol / insert_after_symbol. No old text at all.
+- replace_symbol_body only when most of the body changes. For one line inside a
+  large symbol, replace_content or a minimal Edit is cheaper.
+- Never Write an existing file to modify it: that re-emits the whole file.
+
 ## Self-check
 
 Before every Read, Glob, Grep, or Edit call: "Does this target a code file, and
