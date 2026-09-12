@@ -47,6 +47,15 @@ Built-in Read/Edit/Glob/Grep are permitted on code files ONLY when:
 Read/Edit/Glob are fine for non-code files: markdown, JSON, YAML, TOML, .env,
 config files, lockfiles, plain text, images.
 
+Serena's own injected prompt, scoped to code files, marks Read "FORBIDDEN for
+discovery" (it allows reading a few lines once you have an overview) and Edit
+"FORBIDDEN" without qualification. The non-code and few-lines cases above do not
+conflict with that; where the exceptions above allow Edit on a code file (Serena
+tried and failed, unparseable file), they win. A `serena-hooks remind` deny on a run of
+Read/Grep calls is a nudge, not a block: first check whether a symbol tool fits;
+if the target falls under the exceptions, continue with Read/Grep — the deny only
+resets the counter and does not prevent the retry.
+
 ## Required workflow before editing code
 
 1. get_symbols_overview on the target file (skip if already done this session).
@@ -55,6 +64,23 @@ config files, lockfiles, plain text, images.
 3. Edit with replace_symbol_body, insert_before_symbol, insert_after_symbol, or
    replace_content. Never use the built-in Edit on a code file when one of these
    fits.
+
+## Output-token economy of edits
+
+An edit's cost is the text YOU generate (old/new strings, symbol bodies), billed
+as output tokens at several times the input rate. The tool result is tiny. Hooks
+cannot shrink this; only how you write the call can.
+
+- old_string is the smallest unique anchor: the changed lines plus one line of
+  context. Never quote a whole function to change one line of it. Identical
+  edits in many places: replace_all, not repeated calls.
+- Replacing a block: replace_content in regex mode with a `start.*?end` needle
+  instead of pasting the block verbatim. An ambiguous needle returns an error
+  rather than editing the wrong place, so wildcards are safe.
+- Adding code: insert_before_symbol / insert_after_symbol. No old text at all.
+- replace_symbol_body only when most of the body changes. For one line inside a
+  large symbol, replace_content or a minimal Edit is cheaper.
+- Never Write an existing file to modify it: that re-emits the whole file.
 
 ## Self-check
 

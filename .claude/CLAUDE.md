@@ -21,6 +21,12 @@
 - profile の fragment には common と重複する項目を書かない。deep-merge で合成されるので、profile 側は差分だけを持つ。
 - 単一勝者ファイル（`hooks.json` 等）を profile で上書きすると common の内容が丸ごと消える。追記したいなら fragment 化する。
 
+## エージェント指示の置き場所
+
+- `common/.agents/` が正典。`AGENTS.md` は `mirror.conf` で Claude Code・Codex・Copilot の 3 つに配られ、`skills/` は Codex・Copilot が直接読み Claude Code には mirror される。どちらも 3 エージェント共有なので、**Claude Code に特化した内容を書かない** — Claude Code のツール名（Read / Edit / Grep / Glob / offset・limit）、output style、`serena-hooks`、Claude Code だけが動かす hook への言及はここに置かない。規則そのものは中立に書き、Claude Code 固有の手段は「Claude Code では …」と明示スコープした補足に留める。skills への言及は共有なので問題ない。
+- Claude Code 固有のツール選択・編集作法は `common/.claude/output-styles/serena.md`（system プロンプトとして展開される）に書く。AGENTS.md より強く効く上、他エージェントに漏れない。
+- Codex・Copilot に固有の内容も同様に、それぞれのレイヤー（`common/.codex/`・`common/.copilot/`）に置く。
+
 ## リント / フォーマットの分割
 
 shellcheck と shfmt は **POSIX sh** と **bash** で別扱い。新規スクリプトを足すときはどちらのレイヤーかで対象パスが変わる:
