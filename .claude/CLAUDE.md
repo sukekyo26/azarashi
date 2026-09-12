@@ -42,7 +42,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 **N レイヤーのミラーリング**: 優先度の低い順に `common/`（全員）→ `profiles/<name>/`（実行環境ごと。例: Bedrock 版と subscription 版で `env` や `statusLine.command` を変える）→ `users/<name>/`（個人）を重ねる。全レイヤーが同一構造で、競合時は上位が勝つ。
 
 - ユーザー解決順: `--user` → `git config dotfiles.user` → `gh api user` → いずれも無ければユーザーレイヤー無し。
-- プロファイル解決順: `--profile`（繰り返し指定可、後勝ち）→ `git config dotfiles.profile` → 無ければプロファイル無し。`install` は `--profile` の選択を `git config --local dotfiles.profile` に記憶するので、以後はフラグ不要。`--dry-run` と参照系コマンドは記憶を書き換えない。解除は `config --unset-profile`。
+- プロファイル解決順: `--profile`（繰り返し指定可、後勝ち）→ 環境変数 `DOTFILES_PROFILE`（空白区切り、後勝ち。**記憶されない**。git config は checkout に置かれホストと複数コンテナで共有されるため、1 環境だけの選択はこちらを使う）→ `git config dotfiles.profile` → 無ければプロファイル無し。`install` は `--profile` の選択を `git config --local dotfiles.profile` に記憶するので、以後はフラグ不要。`--dry-run` と参照系コマンドは記憶を書き換えない。解除は `config --unset-profile`。
 - レイヤーのリストは `resolve_layers` が `LAYERS`（優先度高→低）/ `LAYERS_REV`（fragment のマージ順、低→高）/ `ALL_LAYERS`（選択に依らない全レイヤー。prune / uninstall / doctor / clean-backups の走査範囲）の 3 変数に組み立てる。**レイヤー知識をこの 3 変数の外に散らさないこと。** 優先順位を決めるのは `layer_src` 1 箇所だけで、他の走査はすべてそれに委ねる。
 - レイヤー名は `valid_layer_name` で検証する。3 変数は IFS 分割されるリストなので、空白を含む名前は拒否される。
 

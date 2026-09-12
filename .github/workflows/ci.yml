@@ -340,6 +340,21 @@ jobs:
           ./dotfiles install >/dev/null
           case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd/.claude/demo.sh) ;; *) echo "persistence FAIL"; exit 1 ;; esac
 
+      - name: Per-profile — DOTFILES_PROFILE overrides the stored selection without remembering
+        run: |
+          cd "$FX"
+          DOTFILES_PROFILE=bd2 ./dotfiles install >/dev/null
+          case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd2/.claude/demo.sh) ;; *) echo "env profile FAIL"; exit 1 ;; esac
+          [ "$(git config --get-all dotfiles.profile)" = "bd" ]
+          DOTFILES_PROFILE=bd2 ./dotfiles config | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd2[[:space:]]+\(DOTFILES_PROFILE\)$'
+          # --profile still beats the env var
+          DOTFILES_PROFILE=bd2 ./dotfiles config --profile bd | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(--profile\)$'
+          # an invalid env value is fatal, like an invalid --profile
+          ! DOTFILES_PROFILE='../bd' ./dotfiles config >/dev/null 2>&1
+          # the stored selection is back in effect once the env var is gone
+          ./dotfiles install >/dev/null
+          case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd/.claude/demo.sh) ;; *) echo "stored after env FAIL"; exit 1 ;; esac
+
       - name: Reset isolated HOME for the three-layer pass
         run: echo "HOME=$(mktemp -d)" >> "$GITHUB_ENV"
 
