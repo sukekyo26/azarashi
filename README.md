@@ -34,9 +34,10 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 - `mirror.conf` — 1 つの正典ファイルを複数配布先へ symlink するミラー宣言。
 - `common/` — 全環境共通の配布ペイロード
   - `.agents/AGENTS.md`, `.agents/skills/` — エージェント共通指示とスキル（mirror.conf で `.claude/` `.codex/` `.copilot/` へ展開）
-  - `.claude/settings.fragment.json`, `.claude.fragment.json`（MCP: serena）, `.claude/hooks/`, `.claude/statusline.sh`, `.claude/output-styles/`
+  - `.agents/hooks/route-command-output.mjs` — 3 エージェント共通の PreToolUse(Bash) hook（rtk 経由の出力圧縮）。各エージェントの設定が `~/.agents/hooks/` を `--client=` 付きで直接呼ぶので mirror 不要
+  - `.claude/settings.fragment.json`, `.claude.fragment.json`（MCP: serena）, `.claude/hooks/`（Claude Code 専用の hook）, `.claude/statusline.sh`, `.claude/output-styles/`
   - `.codex/config.fragment.toml`, `.codex/hooks.json`
-  - `.copilot/settings.fragment.json`, `.copilot/hooks/`, `.copilot/statusline.sh`
+  - `.copilot/settings.fragment.json`, `.copilot/statusline.sh`
   - `.config/git/ignore`, `.config/starship.toml`
   - `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE/release.md` — プロジェクトに PR テンプレートが無いときの既定（`pr-create` スキルが通常 / リリースで使い分ける）
 - `profiles/<name>/` — 環境レイヤー（`--profile` で選択）

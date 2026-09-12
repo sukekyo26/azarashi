@@ -26,6 +26,7 @@
 - `common/.agents/` が正典。`AGENTS.md` は `mirror.conf` で Claude Code・Codex・Copilot の 3 つに配られ、`skills/` は Codex・Copilot が直接読み Claude Code には mirror される。どちらも 3 エージェント共有なので、**Claude Code に特化した内容を書かない** — Claude Code のツール名（Read / Edit / Grep / Glob / offset・limit）、output style、`serena-hooks`、Claude Code だけが動かす hook への言及はここに置かない。規則そのものは中立に書き、Claude Code 固有の手段は「Claude Code では …」と明示スコープした補足に留める。skills への言及は共有なので問題ない。
 - Claude Code 固有のツール選択・編集作法は `common/.claude/output-styles/serena.md`（system プロンプトとして展開される）に書く。AGENTS.md より強く効く上、他エージェントに漏れない。
 - Codex・Copilot に固有の内容も同様に、それぞれのレイヤー（`common/.codex/`・`common/.copilot/`）に置く。
+- 複数エージェントで動かす hook は `common/.agents/hooks/` に 1 ファイルで置き、各エージェントの設定から `~/.agents/hooks/` を `--client=` 付きで直接呼ぶ。mirror やコピーで配らない。エージェント間で hook の入出力 JSON が違う分は `CLIENT_IO` のアダプタに閉じ込め、判定ロジックを分岐させない。
 
 ## リント / フォーマットの分割
 

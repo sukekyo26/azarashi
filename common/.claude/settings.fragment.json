@@ -24,7 +24,7 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "\"$HOME/.claude/hooks/route-command-output.mjs\" --client=claude-code" }
+          { "type": "command", "command": "\"$HOME/.agents/hooks/route-command-output.mjs\" --client=claude-code" }
         ]
       },
       {
