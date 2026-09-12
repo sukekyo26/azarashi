@@ -27,7 +27,7 @@ repos:
         args: ["-d", "-ln", "posix", "-i", "2", "-ci"]
       - id: shfmt
         alias: shfmt-bash
-        files: ^common/.*\.sh$
+        files: ^(common|profiles)/.*\.sh$
         args: ["-d", "-i", "2", "-ci"]
 
   - repo: https://github.com/gitleaks/gitleaks

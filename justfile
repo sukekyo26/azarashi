@@ -30,12 +30,12 @@ shellcheck-bash:
 # Report shell formatting issues without changing files
 shfmt-check:
     shfmt -d {{shfmt_opts_posix}} dotfiles lib/ test/
-    shfmt -d {{shfmt_opts_bash}} common
+    shfmt -d {{shfmt_opts_bash}} common profiles
 
 # Format shell scripts in place
 shfmt:
     shfmt -w {{shfmt_opts_posix}} dotfiles lib/ test/
-    shfmt -w {{shfmt_opts_bash}} common
+    shfmt -w {{shfmt_opts_bash}} common profiles
 
 # Run the library unit tests (depends only on jq)
 test:
