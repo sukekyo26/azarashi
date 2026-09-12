@@ -4,11 +4,11 @@ Release PRs (develop → main) may use `chore: release vX.Y.Z`.
 -->
 
 ## Summary
-<!-- 1–2 sentences on the why: what problem this solves, what triggered the change -->
+<!-- 1–2 sentences on what this diff does. Describe the state after the change, not how you got there. -->
 
 
 ## Type of change
-<!-- Tick every applicable box. Aligns with Conventional Commits prefixes. -->
+<!-- Tick every applicable box, and keep the ones that don't apply. Aligns with Conventional Commits prefixes. -->
 - [ ] ✨ New feature (feat)
 - [ ] 🐛 Bug fix (fix)
 - [ ] 💥 Breaking change (BREAKING)
@@ -20,7 +20,7 @@ Release PRs (develop → main) may use `chore: release vX.Y.Z`.
 - [ ] 🔧 Build / CI / chore (chore)
 
 ## Changes
-<!-- Bullet list of the main changes — externally-visible diff, not implementation detail -->
+<!-- Bullet list of the externally-visible diff against the base branch, not implementation detail -->
 -
 -
 
@@ -33,11 +33,10 @@ None
 None
 
 ## Test plan
-- [ ] `just ci` is green locally
-- [ ] (when applicable) the E2E jobs in `.github/workflows/ci.yml` are green, or a manual `./dotfiles` install/status/uninstall round-trip verified
-- [ ] (when applicable) Affected CLI subcommands exercised manually
+- [ ] CI is green
+- [ ] (when applicable) Verified manually — describe what was exercised
 
 ## CHANGELOG
-<!-- Rule of thumb: does this change end-user or plugin-author behavior, config, or surface? If no, mark it out-of-scope. -->
-- [ ] Updated the `[Unreleased]` section of both `CHANGELOG.md` and `docs/CHANGELOG.ja.md`
+<!-- Rule of thumb: does this change end-user behavior, config, or surface? If no, mark it out of scope. -->
+- [ ] Updated the `[Unreleased]` section (every locale the project keeps)
 - [ ] Out of CHANGELOG scope (tests / CI / refactor / lint config / etc.)
