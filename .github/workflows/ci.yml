@@ -351,8 +351,15 @@ jobs:
           DOTFILES_PROFILE=bd2 ./dotfiles config --profile bd | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(--profile\)$'
           # an invalid env value is fatal, like an invalid --profile
           ! DOTFILES_PROFILE='../bd' ./dotfiles config >/dev/null 2>&1
-          # the value is split on whitespace only — '[l]ib' must not glob to the fixture's lib/
-          DOTFILES_PROFILE='[l]ib' ./dotfiles config 2>/dev/null | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*\[l\]ib[[:space:]]+\(DOTFILES_PROFILE\)$'
+          # glob metacharacters are rejected as names, and never expanded against the cwd
+          # first — '[l]ib' would otherwise match the fixture's lib/ (fatal, like --profile)
+          ! DOTFILES_PROFILE='[l]ib' ./dotfiles config >/dev/null 2>&1
+          ! ./dotfiles config --profile '[l]ib' >/dev/null 2>&1
+          # a stored '[l]ib' is reported by its literal name, not silently expanded to lib
+          git config --add dotfiles.profile '[l]ib'
+          ./dotfiles config 2>&1 | grep -qF "unusable stored profile name: [l]ib"
+          git config --unset dotfiles.profile '\[l\]ib'
+          [ "$(git config --get-all dotfiles.profile)" = "bd" ]
           # a blank env value counts as unset and falls back to the stored selection
           DOTFILES_PROFILE='  ' ./dotfiles config | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(git config dotfiles.profile\)$'
           # the stored selection is back in effect once the env var is gone

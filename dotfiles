@@ -203,13 +203,14 @@ restore_backup() { # restore newest backup only when the target is now absent
 
 # --- layer resolution ------------------------------------------------------
 
-# valid_layer_name <name> — reject empties, whitespace and anything that could
-# escape the layer root. Whitespace matters beyond path safety: LAYERS and
-# ALL_LAYERS are IFS-split lists, so a name containing a space would silently
-# split into two bogus layers.
+# valid_layer_name <name> — reject empties, whitespace, glob metacharacters and
+# anything that could escape the layer root. Whitespace and globs matter beyond
+# path safety: LAYERS and ALL_LAYERS are unquoted IFS-split lists, so a name
+# containing a space would silently split into two bogus layers and a name
+# containing * ? [ ] would be expanded against the cwd on every loop.
 valid_layer_name() {
   case $1 in
-    "" | */* | . | .. | *'*'* | *'?'* | *[[:space:]]*) return 1 ;;
+    "" | */* | . | .. | *'*'* | *'?'* | *'['* | *']'* | *[[:space:]]*) return 1 ;;
     *) return 0 ;;
   esac
 }
@@ -285,6 +286,9 @@ resolve_profiles() {
     _rp_ifs=$IFS
     IFS='
 '
+    # Raw input is expanded before it can be validated, so hold globbing off
+    # here as well; a stored '[ab]' must reach valid_layer_name intact.
+    set -f
     for _rp in $_rp_all; do
       if valid_layer_name "$_rp"; then
         RESOLVED_PROFILES="${RESOLVED_PROFILES:+$RESOLVED_PROFILES }$_rp"
@@ -292,6 +296,7 @@ resolve_profiles() {
         warn "ignoring unusable stored profile name: $_rp"
       fi
     done
+    set +f
     IFS=$_rp_ifs
     [ -n "$RESOLVED_PROFILES" ] && PROFILE_ORIGIN="git config dotfiles.profile"
   fi
