@@ -271,10 +271,14 @@ resolve_profiles() {
   # A blank or whitespace-only value counts as unset, so it cannot silently
   # shadow the stored selection with "no profile".
   elif [ -n "$(printf '%s' "${DOTFILES_PROFILE:-}" | tr -d '[:space:]')" ]; then
+    # Split on IFS only: with pathname expansion left on, a value such as
+    # '[ab]' would resolve to whatever file happens to match in the cwd.
+    set -f
     for _rp in $DOTFILES_PROFILE; do
       valid_layer_name "$_rp" || die "invalid DOTFILES_PROFILE value: $_rp"
       RESOLVED_PROFILES="${RESOLVED_PROFILES:+$RESOLVED_PROFILES }$_rp"
     done
+    set +f
     PROFILE_ORIGIN="DOTFILES_PROFILE"
   else
     _rp_all=$(stored_profiles)
