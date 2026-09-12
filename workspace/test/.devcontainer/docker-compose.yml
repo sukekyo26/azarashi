@@ -19,17 +19,20 @@ services:
       - "local:/home/${USERNAME}/.local"
       - "cocoon:/home/${USERNAME}/.cocoon"
       - "/var/run/docker.sock:/var/run/docker.sock"
+      - "aws:/home/${USERNAME}/.aws"
       - "bun:/home/${USERNAME}/.bun"
       - "claude:/home/${USERNAME}/.claude"
       - "copilot:/home/${USERNAME}/.copilot"
       - "config:/home/${USERNAME}/.config"
       - "npm:/home/${USERNAME}/.npm"
       - "npm-global:/home/${USERNAME}/.npm-global"
+      - "cargo:/home/${USERNAME}/.cargo"
+      - "rustup:/home/${USERNAME}/.rustup"
       - "${HOME:?HOME must be set on the host}/.claude.json:/home/${USERNAME}/.claude.json"
     ports:
-      - "3000:3000"
-      - "3001:3001"
-      - "8080:8080"
+      - "3000"
+      - "3001"
+      - "8080"
     tty: true
     init: true
     command: "sleep infinity"
@@ -45,6 +48,8 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_local"
   cocoon:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_cocoon"
+  aws:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_aws"
   bun:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_bun"
   claude:
@@ -57,6 +62,10 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_npm"
   npm-global:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_npm-global"
+  cargo:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_cargo"
+  rustup:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_rustup"
 secrets:
   sudo_password:
     file: ".env.local"

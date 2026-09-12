@@ -115,6 +115,7 @@ aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down",
 #   再現性が必要なら enable 配列にバージョンをインライン指定（例 "go=1.23.4", "node=latest"）。`cocoon lock` で latest を凍結。
 [plugins]
 enable = [
+    "aws-cli",
     "bun",
     "claude-code",
     "cocoon",
@@ -125,6 +126,7 @@ enable = [
     "gitleaks",
     "just",
     "node",
+    "rust",
     "rtk",
     "shellcheck",
     "shfmt",
@@ -182,7 +184,8 @@ packages = [
     "patch",
     "fzf",
     "bat",
-    "sqlite3"
+    "sqlite3",
+    "procps"
 ]
 
 # [apt.mirror] — 上流 apt URL を地域ミラーに書き換え。
@@ -208,11 +211,7 @@ packages = [
 # [ports] — コンテナへフォワードするホストポート。
 #   short form: [HOST_IP:][HOST:]CONTAINER[/PROTOCOL]。範囲 (3000-3005:3000-3005)、UDP、IPv6 [::1] バインドも可。
 [ports]
-forward = [
-    "3000:3000",
-    "3001:3001",
-    "8080:8080",
-]
+forward = ["3000", "3001", "8080"]
 
 # [volumes] — コンテナホーム配下に追加でマウントする named volume。
 #   コンテナ再作成をまたいで状態保持。書式: <ボリューム名> = <コンテナ内パス>。
