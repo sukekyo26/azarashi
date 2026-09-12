@@ -15,22 +15,23 @@ description: 'セマンティックバージョニングに従ってプロジェ
 - **バージョン表記の所在** — 現行バージョン文字列で全文検索し、**ヒットした箇所をすべて洗い出す**（`git grep -nF "$current_version"` — CHANGELOG の履歴行やロックファイルは除外）。ビルド時に注入される値とソース内のリテラルが二重に存在する言語（Go の ldflags + `version.go` など）は両方を lockstep で更新する。片方だけ直すとインストール経路によって表示が食い違う。
 - **リリース自動化** — `.github/workflows/` にタグ・リリース公開のワークフローがあるか、そのトリガー条件（タグ push / 特定ファイルの変更 / 手動）を確認する。
 - **リリースコミットの表記** — `git log --oneline --grep='release v'` で前例を見て揃える。前例が無ければ `chore: release vX.Y.Z`。
+- **CHANGELOG ファイル** — `changelog` スキルと同じ方法で検出する。**無ければ新規作成せず、CHANGELOG 関連の手順（下記 1 と 4）を丸ごとスキップする**。以降「CHANGELOG がある場合」と書かれた手順はすべてこの判定に従う。
 
 ## バージョン決定基準（SemVer）
 
-`## [Unreleased]` の内容から決める。
+CHANGELOG があれば `## [Unreleased]` の内容から、無ければ前回リリース以降のコミット（`git log <前回タグ or main>..HEAD`）の Conventional Commits プレフィックスから決める。
 
-| Unreleased の内容 | バージョン |
+| 内容 | バージョン |
 |:--|:--|
-| 破壊的変更（`**BREAKING**:`）を含む | **major** (X.0.0) |
-| 新機能（`Added`）を含む | **minor** (x.Y.0) |
-| `Changed` / `Fixed` / `Removed` のみ | **patch** (x.y.Z) |
+| 破壊的変更（`**BREAKING**:` / `feat!:` / `BREAKING CHANGE:`） | **major** (X.0.0) |
+| 新機能（`Added` / `feat:`） | **minor** (x.Y.0) |
+| それ以外（`Changed` / `Fixed` / `Removed` / `fix:` 等のみ） | **patch** (x.y.Z) |
 
 **pre-1.0（0.x）の例外**: SemVer §4「初期開発版はいつでも変更してよい」に該当する。破壊的変更があっても `1.0.0` には上げず **minor で吸収する**（0.4.0 → 0.5.0）。`1.0.0` は安定版リリースの意思表示なので、プロジェクトが 0.x 方針を続ける限り `0.y.z` に留める。上げるかどうかはユーザーに確認する。
 
 ## 実行手順
 
-### 1. Unreleased の精査
+### 1. Unreleased の精査（CHANGELOG がある場合）
 
 `## [Unreleased]` は前回リリースからの**正味の差分**を表す。バージョンを決める前に `changelog` スキルの「同一バージョン内の整理」「記載対象」に従って見直す。
 
@@ -40,13 +41,13 @@ description: 'セマンティックバージョニングに従ってプロジェ
 
 ### 2. バージョンを決定
 
-精査後の Unreleased から SemVer で決める。pre-1.0 の破壊的変更はユーザーに確認する。
+精査後の Unreleased（無ければコミット履歴）から SemVer で決める。pre-1.0 の破壊的変更はユーザーに確認する。
 
 ### 3. バージョン表記を一斉更新
 
 「プロジェクト固有情報の判定」で洗い出した箇所を**すべて**新バージョンに更新する。1 箇所でも取り残すと、表示バージョンとリリース実体がずれる。
 
-### 4. CHANGELOG をリリース節に切り出す
+### 4. CHANGELOG をリリース節に切り出す（CHANGELOG がある場合）
 
 ```markdown
 ## [Unreleased]
@@ -78,17 +79,16 @@ description: 'セマンティックバージョニングに従ってプロジェ
 `pr-create` スキルの手順で作成する。リリース PR 固有の要点:
 
 - **タイトルは `develop` 上のリリースコミットと同一**にする。
-- 本文はリリース専用テンプレート（`.github/PULL_REQUEST_TEMPLATE/release.md`、無ければ `~/.github/` の既定）に従い、`Released changes` に今回追加した `## [X.Y.Z]` 節の内容をそのまま転記する。
+- 本文はリリース専用テンプレート（`.github/PULL_REQUEST_TEMPLATE/release.md`、無ければ `~/.github/` の既定）に従う。`Released changes` には今回追加した `## [X.Y.Z]` 節の内容をそのまま転記する。CHANGELOG が無いプロジェクトでは、前回リリース以降のコミットから外部に見える変更を同じカテゴリ（Added / Changed / Fixed / Removed）で書き起こす。
 - **マージ方式は merge commit**。ここを squash すると `main` が `develop` の履歴から分岐し、次のリリースで全ファイルが衝突する。通常の開発 PR（→ `develop`）が squash なのと対照的なので取り違えない。
 - マージ後にリリース自動化（タグ・成果物・公開）が走るなら、その前提が満たされているか確認する。
 
 ## チェックリスト
 
-- [ ] Unreleased を精査した（相殺・対象外エントリを除去、全ロケール同期）
+- [ ] (CHANGELOG がある場合) Unreleased を精査した（相殺・対象外エントリを除去、全ロケール同期）
 - [ ] SemVer でバージョンを決定した（pre-1.0 の破壊的変更はユーザーに確認）
 - [ ] 現行バージョン文字列を全文検索し、ヒットした表記をすべて更新した
-- [ ] `## [X.Y.Z] - YYYY-MM-DD` を追加し、`[Unreleased]` は見出しだけ残した（全ロケール）
-- [ ] compare リンクを更新した（全ロケール）
+- [ ] (CHANGELOG がある場合) `## [X.Y.Z] - YYYY-MM-DD` を追加し、`[Unreleased]` は見出しだけ残し、compare リンクを更新した（全ロケール）
 - [ ] リリースコミットを PR 経由で `develop` に squash マージした
 - [ ] `develop` → `main` のリリース PR をリリーステンプレートで作成し、**merge commit** でマージする旨を確認した
 - [ ] CI がグリーン
