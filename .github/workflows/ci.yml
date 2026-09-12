@@ -351,6 +351,8 @@ jobs:
           DOTFILES_PROFILE=bd2 ./dotfiles config --profile bd | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(--profile\)$'
           # an invalid env value is fatal, like an invalid --profile
           ! DOTFILES_PROFILE='../bd' ./dotfiles config >/dev/null 2>&1
+          # a blank env value counts as unset and falls back to the stored selection
+          DOTFILES_PROFILE='  ' ./dotfiles config | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(git config dotfiles.profile\)$'
           # the stored selection is back in effect once the env var is gone
           ./dotfiles install >/dev/null
           case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd/.claude/demo.sh) ;; *) echo "stored after env FAIL"; exit 1 ;; esac

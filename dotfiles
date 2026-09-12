@@ -268,7 +268,9 @@ resolve_profiles() {
   if [ -n "$CLI_PROFILES" ]; then
     RESOLVED_PROFILES=$CLI_PROFILES
     PROFILE_ORIGIN="--profile"
-  elif [ -n "${DOTFILES_PROFILE:-}" ]; then
+  # A blank or whitespace-only value counts as unset, so it cannot silently
+  # shadow the stored selection with "no profile".
+  elif [ -n "$(printf '%s' "${DOTFILES_PROFILE:-}" | tr -d '[:space:]')" ]; then
     for _rp in $DOTFILES_PROFILE; do
       valid_layer_name "$_rp" || die "invalid DOTFILES_PROFILE value: $_rp"
       RESOLVED_PROFILES="${RESOLVED_PROFILES:+$RESOLVED_PROFILES }$_rp"
