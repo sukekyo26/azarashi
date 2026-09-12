@@ -31,12 +31,16 @@ description: '上流ブランチを merge で取り込む。作業ブランチ�
 
 - `git status` が clean。clean でなければ中断し、commit / stash をユーザーに促す。
 - 現在のブランチが `main` なら「上流なし」と報告して終了する。
-- 上流を決め（`develop` なら `main`、それ以外なら `develop`）、`git rev-list --count HEAD..origin/<upstream>` が 0 なら「取り込むものなし」と報告して終了する。
+- 上流を決め（`develop` なら `main`、それ以外なら `develop`）、**fetch してから**先行の有無を数える。リモート追跡 ref は fetch しない限り古いままで、数えるだけでは実際に進んだ上流を見落とす。
+
+```bash
+git fetch origin <upstream>
+git rev-list --count HEAD..origin/<upstream>   # 0 なら「取り込むものなし」と報告して終了
+```
 
 ### 2. 上流を取り込む
 
 ```bash
-git fetch origin <upstream>
 git merge origin/<upstream>
 ```
 
@@ -59,6 +63,6 @@ git merge origin/<upstream>
 
 - [ ] 作業ツリーが clean
 - [ ] 上流を判定した（`main` なら終了、`develop` なら上流は `main`）
-- [ ] 上流が先行しているか確認し、`origin/<upstream>` を fetch して merge（rebase していない）
+- [ ] 上流を fetch してから先行の有無を数え、先行していれば merge した（rebase していない）
 - [ ] 衝突した場合、自動解決せずユーザーに方針を確認した
 - [ ] 取り込み後に push し、CI のグリーンを確認した（`develop` が保護されている場合は PR 経由にした）
