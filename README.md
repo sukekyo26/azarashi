@@ -39,7 +39,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
   - `.copilot/settings.fragment.json`, `.copilot/hooks/`, `.copilot/statusline.sh`
   - `.config/git/ignore`, `.config/starship.toml`
 - `profiles/bedrock/` — Bedrock 環境レイヤー
-  - `.claude/settings.fragment.json` — `availableModels` / `enforceAvailableModels` / `modelOverrides`
+  - `.claude/settings.fragment.json` — `availableModels` / `enforceAvailableModels` / `modelOverrides` と `env`
 - `workspace/<name>/` — cocoon で生成する devcontainer 一式（`cocoon.toml` が正典、`.devcontainer/` は生成物、`post-start.sh` だけ手書き）
 
 ## 仕組み
@@ -66,7 +66,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 
 ### profiles/bedrock
 
-- Claude Code を Bedrock で使うときのモデル選択レイヤー。Bedrock モードの有効化（`CLAUDE_CODE_USE_BEDROCK=1`）自体はこのプロファイルでは行わず、環境側に任せる。`modelOverrides` でエイリアスを Global クロスリージョン推論プロファイル（`global.anthropic.*`）へ割り当て、`availableModels` + `enforceAvailableModels` で Bedrock に無いモデルへ落ちないようにする。Bedrock で使えないモデルは `pin:disabled` で塞ぐ。
+- Claude Code を Bedrock で使うためのレイヤー。`env.CLAUDE_CODE_USE_BEDROCK=1` で Bedrock モードにし、`modelOverrides` でエイリアスを Global クロスリージョン推論プロファイル（`global.anthropic.*`）へ割り当て、`availableModels` + `enforceAvailableModels` で Bedrock に無いモデルへ落ちないようにする。Bedrock で使えないモデルは `pin:disabled` で塞ぐ。
 - プロキシは挟まない。認証・リージョンは AWS の既定チェーン（`AWS_PROFILE` / `AWS_REGION` 等）に委ねる。
 - Codex はこのプロファイルの対象外。
 - `common/.claude/statusline.sh` は Bedrock / Anthropic 直のどちらもトランスクリプトのモデル ID から判定するので、statusline はプロファイルで分けていない。
