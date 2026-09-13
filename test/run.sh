@@ -824,6 +824,10 @@ FAKE
   # (g) rtk init is denied even inside a compound
   assert_eq "hook: rtk init in a compound is denied" \
     "$(hook_json 'ls; rtk init' | jq -r '.hookSpecificOutput.permissionDecision')" "deny"
+  assert_eq "hook: rtk init in a later pipeline stage is denied" \
+    "$(hook_json 'ls | rtk init' | jq -r '.hookSpecificOutput.permissionDecision')" "deny"
+  assert_eq "hook: rtk init --help is not denied" \
+    "$(hook_cmd 'rtk init --help')" "PASSTHROUGH"
 
   # (h) copilot payload shape
   assert_eq "hook: copilot client rewrites via modifiedArgs" \
