@@ -129,7 +129,7 @@ export function splitPrefix(seg) {
     const m2 = s.match(/^(?:sudo|command|env|nice|nohup|time)\s+/);
     if (m2) { prefix += m2[0]; s = s.slice(m2[0].length); continue; }
     // timeout は DURATION が必須なので、オプション (`-k 3` / `--foreground` 等) ごと読み飛ばす
-    const m3 = s.match(/^timeout\s+(?:(?:-[ks]|--kill-after|--signal)\s+\S+\s+|--?[\w-]+(?:=\S+)?\s+)*\d+(?:\.\d+)?[smhd]?\s+/);
+    const m3 = s.match(/^timeout\s+(?:(?:-[ks]|--kill-after|--signal)\s*\S+\s+|--?[\w-]+(?:=\S+)?\s+)*\d+(?:\.\d+)?[smhd]?\s+/);
     if (m3) { prefix += m3[0]; s = s.slice(m3[0].length); continue; }
     break;
   }

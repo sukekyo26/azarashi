@@ -805,6 +805,8 @@ FAKE
     "$(hook_cmd 'timeout 120 playwright test')" "timeout 120 $RTK playwright test"
   assert_eq "hook: timeout options and unit suffix are part of the prefix" \
     "$(hook_cmd 'timeout -k 3 5s ls')" "timeout -k 3 5s $RTK ls"
+  assert_eq "hook: timeout short option with attached value is part of the prefix" \
+    "$(hook_cmd 'timeout -k3 5s ls')" "timeout -k3 5s $RTK ls"
 
   # (f) heredocs: body kept verbatim, following commands still rewrite
   assert_eq "hook: heredoc body is verbatim and the next line rewrites" \
