@@ -3,6 +3,8 @@
 //  - 対話/ストリーミング系と git diff/find/ps は素通し
 //  - npm/make/just 等の間接実行 (テストランナー) は `rtk test` で包んで失敗行だけに畳む
 //  - それ以外は rtk rewrite をセグメント単位で適用 (exit 0/1/2/3 を尊重)
+// Claude Code / Codex / Copilot CLI の 3 つから同じファイルを呼ぶ (~/.agents/hooks/)。
+// 判定ロジックは共通で、hook の入出力 JSON の形だけ `--client=` で切り替える。
 import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -170,20 +172,47 @@ function absInBody(rtk, body) {
   return body;
 }
 
-// 配布先クライアント。mirror.conf でこのファイルは Codex にも配られるが、Codex は
-// `updatedInput` を `permissionDecision: "allow"` と併記した形しか受け付けず、それ以外は
-// hook 実行失敗として扱われて書き換えごと捨てられる (Claude Code では omit して良い)。
+// クライアントごとの hook 入出力スキーマ。判定ロジックはこの外に出さない。
+//  - claude-code: tool_input / hookSpecificOutput.updatedInput。ask は permissionDecision を
+//    omit して通常の権限フローに委ねる。
+//  - codex: 形式は claude-code と同じだが、`updatedInput` を `permissionDecision: "allow"` と
+//    併記した形しか受け付けず、それ以外は hook 実行失敗として書き換えごと捨てられる。
+//  - copilot: toolArgs / modifiedArgs のフラットな形。
 // 既定は claude-code。
+const CLIENT_IO = {
+  'claude-code': {
+    command: (p) => p?.tool_input?.command,
+    deny: (reason) => ({
+      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason },
+    }),
+    rewrite: (p, cmd, allowed) => ({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        ...(allowed && { permissionDecision: 'allow', permissionDecisionReason: 'RTK auto-rewrite' }),
+        updatedInput: { ...p.tool_input, command: cmd },
+      },
+    }),
+  },
+  copilot: {
+    command: (p) => p?.toolArgs?.command,
+    deny: (reason) => ({ permissionDecision: 'deny', permissionDecisionReason: reason }),
+    rewrite: (p, cmd, allowed) => ({ ...(allowed && { permissionDecision: 'allow' }), modifiedArgs: { command: cmd } }),
+  },
+};
+CLIENT_IO.codex = CLIENT_IO['claude-code'];
+
 function detectClient() {
   const arg = process.argv.slice(2).find((a) => a.startsWith('--client='));
-  return arg ? arg.slice('--client='.length) : 'claude-code';
+  const client = arg ? arg.slice('--client='.length) : 'claude-code';
+  return CLIENT_IO[client] ? client : 'claude-code';
 }
 
 function main() {
   const client = detectClient();
+  const io = CLIENT_IO[client];
   let payload;
   try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch { allow(); }
-  const command = payload?.tool_input?.command;
+  const command = io.command(payload);
   if (typeof command !== 'string' || command.trim() === '') allow();
 
   const { tokens, flags } = tokenize(command);
@@ -192,14 +221,9 @@ function main() {
 
   // 0. `rtk init` はブロック（複合の一部でも）。`--help` は何も書き込まないので通す。
   if (heads.some((h) => /^rtk\s+init\b/.test(h) && !/\s(-h|--help)\b/.test(h))) {
-    process.stdout.write(JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'deny',
-        permissionDecisionReason:
-          'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正の PreToolUse フックと指示ファイルが入り、このフックと二重に走る）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
-      },
-    }));
+    process.stdout.write(JSON.stringify(io.deny(
+      'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正の PreToolUse フックと指示ファイルが入り、このフックと二重に走る）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
+    )));
     process.exit(0);
   }
 
@@ -236,7 +260,7 @@ function main() {
     pieces.push(prefix + absInBody(rtk, r.body) + tail);
   }
 
-  // 6. いずれかのセグメントが deny → Claude Code の native deny rule に委ねる
+  // 6. いずれかのセグメントが deny → クライアントの native deny rule に委ねる
   if (denyHit) allow();
 
   // 7. 書き換え対象なし → 素通し
@@ -246,27 +270,11 @@ function main() {
 
   // 8. ask: permissionDecision を omit して通常の権限フローに委ねる。
   //    Codex はこの形を受け付けない (ask 未サポート・allow 以外の updatedInput はエラー) ので
-  //    9 と同じ allow + updatedInput に落とす。Codex の allow は PreToolUse の結果を
-  //    「書き換えた入力で継続」と解釈するだけで、後段の権限判定・サンドボックスは通常どおり動く。
-  if (needsAsk && client !== 'codex') {
-    process.stdout.write(JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        updatedInput: { ...payload.tool_input, command: newCommand },
-      },
-    }));
-    process.exit(0);
-  }
-
+  //    allow に落とす。Codex の allow は PreToolUse の結果を「書き換えた入力で継続」と
+  //    解釈するだけで、後段の権限判定・サンドボックスは通常どおり動く。
   // 9. 通常: 書き換えて allow
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: 'allow',
-      permissionDecisionReason: 'RTK auto-rewrite',
-      updatedInput: { ...payload.tool_input, command: newCommand },
-    },
-  }));
+  const allowed = !(needsAsk && client !== 'codex');
+  process.stdout.write(JSON.stringify(io.rewrite(payload, newCommand, allowed)));
   process.exit(0);
 }
 
