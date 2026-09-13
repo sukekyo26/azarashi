@@ -249,7 +249,7 @@ jobs:
           # a mirror target under a mirror-only dot-dir is pruned once its rule is
           # dropped, while the dir's remaining mirror is left alone
           cp mirror.conf mirror.conf.orig
-          grep -v '.demo/INSTRUCTIONS.md' mirror.conf.orig >mirror.conf
+          grep -vF '.demo/INSTRUCTIONS.md' mirror.conf.orig >mirror.conf
           ./dotfiles status | tee rule.out
           grep -qE '^[[:space:]]*orphan[[:space:]]*:.*/\.demo/INSTRUCTIONS\.md$' rule.out
           ./dotfiles install >/dev/null
