@@ -99,7 +99,7 @@ jobs:
       - name: Uninstall removes managed symlinks (merged JSON intentionally remains)
         run: |
           ./dotfiles uninstall
-          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -z "$(find "$HOME" -type l -lname "$PWD/*")" ]
           [ -f "$HOME/.claude/settings.json" ]
 
   e2e-mechanism:
@@ -291,7 +291,7 @@ jobs:
           [ ! -e "$HOME/.codex/AGENTS.md" ]
           [ ! -e "$HOME/.demo/INSTRUCTIONS.md" ]
           [ ! -e "$HOME/.demo/skills" ]
-          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -z "$(find "$HOME" -type l -lname "$PWD/*")" ]
           [ -f "$HOME/.claude/settings.json" ]
 
       - name: Reset isolated HOME for the per-user pass
@@ -348,7 +348,7 @@ jobs:
           [ ! -e "$HOME/.agents" ]
           [ ! -e "$HOME/.codex/AGENTS.md" ]
           [ ! -e "$HOME/.demo/skills" ]
-          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -z "$(find "$HOME" -type l -lname "$PWD/*")" ]
           [ -f "$HOME/.claude/settings.json" ]
 
       - name: Reset isolated HOME for the per-profile pass
@@ -380,9 +380,13 @@ jobs:
           DOTFILES_PROFILE=bd2 ./dotfiles install >/dev/null
           case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd2/.claude/demo.sh) ;; *) echo "env profile FAIL"; exit 1 ;; esac
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
-          DOTFILES_PROFILE=bd2 ./dotfiles config | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd2[[:space:]]+\(DOTFILES_PROFILE\)$'
+          # buffer `config` output before grepping: grep -q exits on the first
+          # match and would SIGPIPE dotfiles, which pipefail turns into a failure
+          DOTFILES_PROFILE=bd2 ./dotfiles config >cfg.out
+          grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd2[[:space:]]+\(DOTFILES_PROFILE\)$' cfg.out
           # --profile still beats the env var
-          DOTFILES_PROFILE=bd2 ./dotfiles config --profile bd | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(--profile\)$'
+          DOTFILES_PROFILE=bd2 ./dotfiles config --profile bd >cfg.out
+          grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(--profile\)$' cfg.out
           # an invalid env value is fatal, like an invalid --profile
           ! DOTFILES_PROFILE='../bd' ./dotfiles config >/dev/null 2>&1
           # glob metacharacters are rejected as names, and never expanded against the cwd
@@ -391,11 +395,13 @@ jobs:
           ! ./dotfiles config --profile '[l]ib' >/dev/null 2>&1
           # a stored '[l]ib' is reported by its literal name, not silently expanded to lib
           git config --add dotfiles.profile '[l]ib'
-          ./dotfiles config 2>&1 | grep -qF "unusable stored profile name: [l]ib"
+          ./dotfiles config >cfg.out 2>&1
+          grep -qF "unusable stored profile name: [l]ib" cfg.out
           git config --unset dotfiles.profile '\[l\]ib'
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
           # a blank env value counts as unset and falls back to the stored selection
-          DOTFILES_PROFILE='  ' ./dotfiles config | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(git config dotfiles.profile\)$'
+          DOTFILES_PROFILE='  ' ./dotfiles config >cfg.out
+          grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(git config dotfiles.profile\)$' cfg.out
           # the stored selection is back in effect once the env var is gone
           ./dotfiles install >/dev/null
           case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd/.claude/demo.sh) ;; *) echo "stored after env FAIL"; exit 1 ;; esac
@@ -443,7 +449,7 @@ jobs:
           # uninstall removes profile-sourced links too
           ./dotfiles install --user fx --profile bd >/dev/null
           ./dotfiles uninstall >/dev/null
-          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -z "$(find "$HOME" -type l -lname "$PWD/*")" ]
           [ -f "$HOME/.claude/settings.json" ]
 
   gitleaks:
