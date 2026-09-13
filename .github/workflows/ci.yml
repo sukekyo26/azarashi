@@ -215,7 +215,7 @@ jobs:
           grep -qE '^[[:space:]]*orphan[[:space:]]*:.*/\.claude/fxgone/deep/leaf$' vanish.out
           ./dotfiles install | tee vanish2.out
           grep -qE '^[[:space:]]*pruned[[:space:]]*:.*/\.claude/fxgone/deep/leaf$' vanish2.out
-          [ ! -e "$HOME/.claude/fxgone" ] && [ ! -L "$HOME/.claude/fxgone/deep/leaf" ]
+          [ ! -e "$HOME/.claude/fxgone" ]
           # clean-backups: report-only lists; --keep 1 keeps the newest per original
           for ts in 20230101T000000Z 20250101T000000Z; do : >"$HOME/.claude/foo.dotfiles-bak.$ts"; done
           ./dotfiles clean-backups | tee cb.out
