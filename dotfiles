@@ -408,17 +408,18 @@ any_layer_dir() {
   return 1
 }
 
-# has_managed_link <dir> — true if <dir> directly contains a deploy symlink.
+# has_managed_link <dir> — true if a deploy symlink exists anywhere under <dir>.
 # Lets prune/uninstall descend into a directory the repo no longer has (its last
 # source file was deleted or moved away) to collect the leaves it once deployed.
-# Depth 1 is enough: managed directories are always real, so a vanished
-# directory's orphans sit directly under it.
+# Must look at every depth: when a whole subtree vanishes (e.g. skills/<name>/
+# SKILL.md), the orphans sit below intermediate real directories.
 has_managed_link() {
-  for _hml in "$1"/* "$1"/.*; do
-    case ${_hml##*/} in . | ..) continue ;; esac
-    is_managed_link "$_hml" && return 0
-  done
-  return 1
+  [ -n "$(find "$1" -type l 2>/dev/null | while IFS= read -r _hml; do
+    if is_managed_link "$_hml"; then
+      printf x
+      break
+    fi
+  done)" ]
 }
 
 # ensure_destdir <dest> — make <dest> a real directory, backing up and removing
