@@ -103,10 +103,10 @@ export function tokenize(cmd) {
     const two = cmd.slice(i, i + 2);
     if (two === '&&' || two === '||') { pushSeg(); pushDelim(two); i += 2; continue; }
     if (c === '&') {
-      // fd リダイレクト (`2>&1`, `&>file`) はデリミタにしない
+      // fd リダイレクト (`2>&1`, `&>file`) と bash の `|&` (stderr 込みパイプ) はデリミタにしない
       const prev = i === 0 ? '' : cmd[i - 1];
       const next = i + 1 < cmd.length ? cmd[i + 1] : '';
-      if (prev === '>' || prev === '<' || next === '>') { current += c; i++; continue; }
+      if (prev === '>' || prev === '<' || prev === '|' || next === '>') { current += c; i++; continue; }
     }
     if (c === ';' || c === '&') { pushSeg(); pushDelim(c); i++; continue; }
     current += c; i++;

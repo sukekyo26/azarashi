@@ -793,6 +793,8 @@ FAKE
     "$(hook_cmd 'ls | wc -l')" "PASSTHROUGH"
   assert_eq "hook: rtk inside a pipeline is absolutised at every command position" \
     "$(hook_cmd 'sudo cat f | grep x')" "sudo $RTK cat f | $RTK grep x"
+  assert_eq "hook: bash |& is a pipe, not a background delimiter" \
+    "$(hook_cmd 'ls |& head')" "$RTK ls |& head"
   assert_eq "hook: test runner piped into tail is wrapped as a whole" \
     "$(hook_cmd 'npm test 2>&1 | tail -5')" "$RTK test npm test 2>&1 | tail -5"
 
