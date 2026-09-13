@@ -4,12 +4,13 @@ approvals_reviewer = "auto_review"
 [features]
 hooks = true
 
-# Serena は tag 固定で取得する。プラグイン版 (.mcp.json) は git のデフォルトブランチを
-# 引くため、レビューを経ない上流変更がそのまま実行される。
+# serena は `uv tool install` で tag 固定したものを使う（workspace/*/post-start.sh）。
+# プラグイン版 (.mcp.json) は git のデフォルトブランチを引くため、レビューを経ない
+# 上流変更がそのまま実行される。
 # --context codex は execute_shell_command と、codex 本体と重複する read/list 系を除く。
 [mcp_servers.serena]
-command = "uvx"
-args = ["--from", "git+https://github.com/oraios/serena@v1.7.0", "serena", "start-mcp-server", "--context", "codex", "--open-web-dashboard", "false"]
+command = "serena"
+args = ["start-mcp-server", "--context", "codex", "--project-from-cwd", "--open-web-dashboard", "false"]
 
 [mcp_servers.serena.env]
 SERENA_USAGE_REPORTING = "false"
