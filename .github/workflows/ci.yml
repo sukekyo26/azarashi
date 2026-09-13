@@ -79,7 +79,8 @@ jobs:
         run: |
           # top-level dot-directories are always real directories, never symlinks
           for d in .agents .claude .copilot; do
-            [ -d "$HOME/$d" ] && [ ! -L "$HOME/$d" ]
+            [ -d "$HOME/$d" ]
+            [ ! -L "$HOME/$d" ]
           done
           # no managed symlink dangles — every leaf resolves to a real source
           broken=$(find "$HOME" -type l ! -exec test -e {} \; -print)
@@ -87,7 +88,8 @@ jobs:
           # something was actually deployed as leaf symlinks
           [ -n "$(find "$HOME/.agents" -type l 2>/dev/null | head -1)" ]
           # a fragment is merged into a real settings.json (not a symlink)
-          [ -f "$HOME/.claude/settings.json" ] && [ ! -L "$HOME/.claude/settings.json" ]
+          [ -f "$HOME/.claude/settings.json" ]
+          [ ! -L "$HOME/.claude/settings.json" ]
 
       - name: Idempotency — second install must not relink or remerge
         run: |
@@ -97,7 +99,7 @@ jobs:
       - name: Uninstall removes managed symlinks (merged JSON intentionally remains)
         run: |
           ./dotfiles uninstall
-          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -z "$(find "$HOME" -type l -lname "$PWD/*")" ]
           [ -f "$HOME/.claude/settings.json" ]
 
   e2e-mechanism:
@@ -150,18 +152,26 @@ jobs:
           cd "$FX"
           ./dotfiles install >/dev/null
           # dot-directories are real dirs; only leaves are symlinked
-          [ -d "$HOME/.agents" ] && [ ! -L "$HOME/.agents" ]
-          [ -d "$HOME/.demo" ] && [ ! -L "$HOME/.demo" ]
+          [ -d "$HOME/.agents" ]
+          [ ! -L "$HOME/.agents" ]
+          [ -d "$HOME/.demo" ]
+          [ ! -L "$HOME/.demo" ]
           [ -L "$HOME/.agents/AGENTS.md" ]
-          [ -d "$HOME/.agents/skills" ] && [ ! -L "$HOME/.agents/skills" ]
+          [ -d "$HOME/.agents/skills" ]
+          [ ! -L "$HOME/.agents/skills" ]
           [ -L "$HOME/.agents/skills/demoskill/SKILL.md" ]
           # file mirrors resolve to the single canonical source
-          [ -L "$HOME/.codex/AGENTS.md" ] && cmp -s "$HOME/.codex/AGENTS.md" "$HOME/.agents/AGENTS.md"
-          [ -L "$HOME/.demo/INSTRUCTIONS.md" ] && cmp -s "$HOME/.demo/INSTRUCTIONS.md" "$HOME/.agents/AGENTS.md"
+          [ -L "$HOME/.codex/AGENTS.md" ]
+          cmp -s "$HOME/.codex/AGENTS.md" "$HOME/.agents/AGENTS.md"
+          [ -L "$HOME/.demo/INSTRUCTIONS.md" ]
+          cmp -s "$HOME/.demo/INSTRUCTIONS.md" "$HOME/.agents/AGENTS.md"
           # the directory mirror is a single dir symlink
-          [ -L "$HOME/.demo/skills" ] && [ -d "$HOME/.demo/skills" ] && [ -e "$HOME/.demo/skills/demoskill/SKILL.md" ]
+          [ -L "$HOME/.demo/skills" ]
+          [ -d "$HOME/.demo/skills" ]
+          [ -e "$HOME/.demo/skills/demoskill/SKILL.md" ]
           # a fragment is merged into a real settings.json
-          [ -f "$HOME/.claude/settings.json" ] && [ ! -L "$HOME/.claude/settings.json" ]
+          [ -f "$HOME/.claude/settings.json" ]
+          [ ! -L "$HOME/.claude/settings.json" ]
           jq -e '.commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
           ./dotfiles status | tee status.out
           ! grep -E '^[[:space:]]*(drift|missing|orphan)[[:space:]]*:' status.out
@@ -203,14 +213,58 @@ jobs:
           # prune never removes a tool's own state under a managed dir
           mkdir -p "$HOME/.claude/session-env/s1"; : >"$HOME/.claude/session-env/s1/state"; : >"$HOME/.claude/own.txt"
           ./dotfiles install
-          [ -f "$HOME/.claude/session-env/s1/state" ] && [ -f "$HOME/.claude/own.txt" ]
+          [ -f "$HOME/.claude/session-env/s1/state" ]
+          [ -f "$HOME/.claude/own.txt" ]
           rm -rf "$HOME/.claude/session-env" "$HOME/.claude/own.txt"; ./dotfiles install
+          # a subtree that vanished from the layer still gets its orphans pruned,
+          # at any depth, and the emptied directories go with them
+          mkdir -p common/.claude/fxgone/deep; : >common/.claude/fxgone/deep/leaf
+          ./dotfiles install >/dev/null
+          [ -L "$HOME/.claude/fxgone/deep/leaf" ]
+          rm -r common/.claude/fxgone
+          ./dotfiles status | tee vanish.out
+          grep -qE '^[[:space:]]*orphan[[:space:]]*:.*/\.claude/fxgone/deep/leaf$' vanish.out
+          ./dotfiles install | tee vanish2.out
+          grep -qE '^[[:space:]]*pruned[[:space:]]*:.*/\.claude/fxgone/deep/leaf$' vanish2.out
+          [ ! -e "$HOME/.claude/fxgone" ]
+          # a top-level dot-dir whose layer was deleted outright is still found
+          # (by the managed symlinks it holds): doctor, status, install, uninstall
+          mkdir -p users/gone/.gonetop; : >users/gone/.gonetop/marker
+          ./dotfiles install --user gone >/dev/null
+          [ -L "$HOME/.gonetop/marker" ]
+          rm -r users/gone
+          if ./dotfiles doctor >doc.out 2>&1; then echo "doctor should be nonzero"; cat doc.out; exit 1; fi
+          grep -qE '^broken  : .*/\.gonetop/marker' doc.out
+          ./dotfiles status | tee gone.out
+          grep -qE '^[[:space:]]*orphan[[:space:]]*:.*/\.gonetop/marker$' gone.out
+          ./dotfiles install | tee gone2.out
+          grep -qE '^[[:space:]]*pruned[[:space:]]*:.*/\.gonetop/marker$' gone2.out
+          [ ! -e "$HOME/.gonetop" ]
+          mkdir -p users/gone/.gonetop; : >users/gone/.gonetop/marker
+          ./dotfiles install --user gone >/dev/null
+          rm -r users/gone
+          ./dotfiles uninstall >/dev/null
+          [ ! -e "$HOME/.gonetop" ]
+          ./dotfiles install >/dev/null
+          # a mirror target under a mirror-only dot-dir is pruned once its rule is
+          # dropped, while the dir's remaining mirror is left alone
+          cp mirror.conf mirror.conf.orig
+          grep -vF '.demo/INSTRUCTIONS.md' mirror.conf.orig >mirror.conf
+          ./dotfiles status | tee rule.out
+          grep -qE '^[[:space:]]*orphan[[:space:]]*:.*/\.demo/INSTRUCTIONS\.md$' rule.out
+          ./dotfiles install >/dev/null
+          [ ! -e "$HOME/.demo/INSTRUCTIONS.md" ]
+          [ -L "$HOME/.demo/skills" ]
+          mv mirror.conf.orig mirror.conf
+          ./dotfiles install >/dev/null
+          [ -L "$HOME/.demo/INSTRUCTIONS.md" ]
           # clean-backups: report-only lists; --keep 1 keeps the newest per original
           for ts in 20230101T000000Z 20250101T000000Z; do : >"$HOME/.claude/foo.dotfiles-bak.$ts"; done
           ./dotfiles clean-backups | tee cb.out
           grep -q '2 backup(s) found' cb.out
           ./dotfiles clean-backups --keep 1
-          [ ! -e "$HOME/.claude/foo.dotfiles-bak.20230101T000000Z" ] && [ -e "$HOME/.claude/foo.dotfiles-bak.20250101T000000Z" ]
+          [ ! -e "$HOME/.claude/foo.dotfiles-bak.20230101T000000Z" ]
+          [ -e "$HOME/.claude/foo.dotfiles-bak.20250101T000000Z" ]
           [ -L "$HOME/.claude/demo.sh" ] # managed symlinks are untouched
           rm -f "$HOME/.claude/foo.dotfiles-bak."*
           # doctor: clean bill, then a moved-repo stale link flagged with nonzero exit
@@ -227,7 +281,8 @@ jobs:
           printf '%s\n' '.nope/MISSING.md   .agents/does-not-exist.md' >>mirror.conf
           ./dotfiles install 2>err.out
           grep -q 'mirror source not found, skipping' err.out
-          [ ! -e "$HOME/.nope/MISSING.md" ] && [ -L "$HOME/.codex/AGENTS.md" ]
+          [ ! -e "$HOME/.nope/MISSING.md" ]
+          [ -L "$HOME/.codex/AGENTS.md" ]
           grep -v '.nope/MISSING.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
 
       - name: Common-only — mirror.conf rejects unsafe and malformed rules
@@ -246,7 +301,9 @@ jobs:
           grep -qF "unsafe source (absolute or '..'): ../../.agents/AGENTS.md" warn.out
           grep -qF "malformed rule" warn.out
           # no unsafe/malformed rule is ever applied
-          [ ! -e "$HOME/.bad/abs" ] && [ ! -e "$HOME/.bad/dots" ] && [ ! -e "$HOME/.bad/extra" ]
+          [ ! -e "$HOME/.bad/abs" ]
+          [ ! -e "$HOME/.bad/dots" ]
+          [ ! -e "$HOME/.bad/extra" ]
           # a valid rule alongside them still deploys
           [ -L "$HOME/.codex/AGENTS.md" ]
           mv mirror.conf.orig mirror.conf
@@ -255,12 +312,17 @@ jobs:
       - name: Common-only — uninstall
         run: |
           cd "$FX"
+          # a subtree that vanished from the layer is still cleaned up on uninstall
+          mkdir -p common/.claude/fxgone/deep; : >common/.claude/fxgone/deep/leaf
+          ./dotfiles install >/dev/null
+          rm -r common/.claude/fxgone
           ./dotfiles uninstall
+          [ ! -e "$HOME/.claude/fxgone" ]
           [ ! -e "$HOME/.agents" ]
           [ ! -e "$HOME/.codex/AGENTS.md" ]
           [ ! -e "$HOME/.demo/INSTRUCTIONS.md" ]
           [ ! -e "$HOME/.demo/skills" ]
-          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -z "$(find "$HOME" -type l -lname "$PWD/*")" ]
           [ -f "$HOME/.claude/settings.json" ]
 
       - name: Reset isolated HOME for the per-user pass
@@ -278,7 +340,8 @@ jobs:
           # a source with no user override falls back to common
           case "$(readlink "$HOME/.demo/skills")" in */common/.agents/skills) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
           # a user-only top-level entry is a real dir whose leaves link into the user layer
-          [ -d "$HOME/.fxtop" ] && [ ! -L "$HOME/.fxtop" ]
+          [ -d "$HOME/.fxtop" ]
+          [ ! -L "$HOME/.fxtop" ]
           [ -L "$HOME/.fxtop/marker" ]
           # fragment layering: user value wins, both layers' keys are present
           jq -e '.statusLine.x == "user" and .userKey == true and .commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
@@ -303,7 +366,8 @@ jobs:
         run: |
           cd "$FX"
           # switching to a user without that overlay dir prunes the overlay-only dir
-          [ -d "$HOME/.fxtop" ] && [ ! -L "$HOME/.fxtop" ]
+          [ -d "$HOME/.fxtop" ]
+          [ ! -L "$HOME/.fxtop" ]
           ./dotfiles install --user nobody-no-dir | tee switch.out
           [ ! -e "$HOME/.fxtop" ]
           grep -qE '^[[:space:]]*pruned[[:space:]]*:.*\.fxtop$' switch.out
@@ -315,7 +379,7 @@ jobs:
           [ ! -e "$HOME/.agents" ]
           [ ! -e "$HOME/.codex/AGENTS.md" ]
           [ ! -e "$HOME/.demo/skills" ]
-          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -z "$(find "$HOME" -type l -lname "$PWD/*")" ]
           [ -f "$HOME/.claude/settings.json" ]
 
       - name: Reset isolated HOME for the per-profile pass
@@ -331,7 +395,8 @@ jobs:
           # a source with no profile override falls back to common
           case "$(readlink "$HOME/.demo/skills")" in */common/.agents/skills) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
           # a profile-only top-level entry is a real dir whose leaves link into the profile layer
-          [ -d "$HOME/.bdtop" ] && [ ! -L "$HOME/.bdtop" ]
+          [ -d "$HOME/.bdtop" ]
+          [ ! -L "$HOME/.bdtop" ]
           [ -L "$HOME/.bdtop/marker" ]
           # fragment layering: the profile value wins over common, both layers' keys are present
           jq -e '.statusLine.x == "profile" and .profileKey == true and .commonOnly == 1' "$HOME/.claude/settings.json" >/dev/null
@@ -346,9 +411,13 @@ jobs:
           DOTFILES_PROFILE=bd2 ./dotfiles install >/dev/null
           case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd2/.claude/demo.sh) ;; *) echo "env profile FAIL"; exit 1 ;; esac
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
-          DOTFILES_PROFILE=bd2 ./dotfiles config | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd2[[:space:]]+\(DOTFILES_PROFILE\)$'
+          # buffer `config` output before grepping: grep -q exits on the first
+          # match and would SIGPIPE dotfiles, which pipefail turns into a failure
+          DOTFILES_PROFILE=bd2 ./dotfiles config >cfg.out
+          grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd2[[:space:]]+\(DOTFILES_PROFILE\)$' cfg.out
           # --profile still beats the env var
-          DOTFILES_PROFILE=bd2 ./dotfiles config --profile bd | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(--profile\)$'
+          DOTFILES_PROFILE=bd2 ./dotfiles config --profile bd >cfg.out
+          grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(--profile\)$' cfg.out
           # an invalid env value is fatal, like an invalid --profile
           ! DOTFILES_PROFILE='../bd' ./dotfiles config >/dev/null 2>&1
           # glob metacharacters are rejected as names, and never expanded against the cwd
@@ -357,11 +426,13 @@ jobs:
           ! ./dotfiles config --profile '[l]ib' >/dev/null 2>&1
           # a stored '[l]ib' is reported by its literal name, not silently expanded to lib
           git config --add dotfiles.profile '[l]ib'
-          ./dotfiles config 2>&1 | grep -qF "unusable stored profile name: [l]ib"
+          ./dotfiles config >cfg.out 2>&1
+          grep -qF "unusable stored profile name: [l]ib" cfg.out
           git config --unset dotfiles.profile '\[l\]ib'
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
           # a blank env value counts as unset and falls back to the stored selection
-          DOTFILES_PROFILE='  ' ./dotfiles config | grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(git config dotfiles.profile\)$'
+          DOTFILES_PROFILE='  ' ./dotfiles config >cfg.out
+          grep -qE '^[[:space:]]*profiles[[:space:]]*:[[:space:]]*bd[[:space:]]+\(git config dotfiles.profile\)$' cfg.out
           # the stored selection is back in effect once the env var is gone
           ./dotfiles install >/dev/null
           case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd/.claude/demo.sh) ;; *) echo "stored after env FAIL"; exit 1 ;; esac
@@ -395,7 +466,8 @@ jobs:
           ./dotfiles status --user fx --profile bd2 >/dev/null
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
           # unset-profile forgets it; the next install prunes the profile-only entry
-          [ -d "$HOME/.bdtop" ] && [ ! -L "$HOME/.bdtop" ]
+          [ -d "$HOME/.bdtop" ]
+          [ ! -L "$HOME/.bdtop" ]
           ./dotfiles config --unset-profile
           [ -z "$(git config --get-all dotfiles.profile || true)" ]
           ./dotfiles install --user fx | tee unset.out
@@ -408,7 +480,7 @@ jobs:
           # uninstall removes profile-sourced links too
           ./dotfiles install --user fx --profile bd >/dev/null
           ./dotfiles uninstall >/dev/null
-          ! find "$HOME" -type l -lname "$PWD/*" | grep -q .
+          [ -z "$(find "$HOME" -type l -lname "$PWD/*")" ]
           [ -f "$HOME/.claude/settings.json" ]
 
   gitleaks:

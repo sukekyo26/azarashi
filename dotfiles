@@ -408,6 +408,20 @@ any_layer_dir() {
   return 1
 }
 
+# has_managed_link <dir> — true if a deploy symlink exists anywhere under <dir>.
+# Lets prune/uninstall descend into a directory the repo no longer has (its last
+# source file was deleted or moved away) to collect the leaves it once deployed.
+# Must look at every depth: when a whole subtree vanishes (e.g. skills/<name>/
+# SKILL.md), the orphans sit below intermediate real directories.
+has_managed_link() {
+  [ -n "$(find "$1" -type l 2>/dev/null | while IFS= read -r _hml; do
+    if is_managed_link "$_hml"; then
+      printf x
+      break
+    fi
+  done)" ]
+}
+
 # ensure_destdir <dest> — make <dest> a real directory, backing up and removing
 # a foreign file/symlink first (a managed deploy link is reconstructible, so it
 # is not backed up). No-op in status mode and (after printing) in dry-run, or
@@ -623,13 +637,16 @@ uninstall_rel() {
       case ${_uc##*/} in . | ..) continue ;; esac
       if is_managed_link "$_uc"; then
         remove_link "$_uc"
-      elif [ -d "$_uc" ] && [ ! -L "$_uc" ] && any_layer_dir "$1/${_uc##*/}"; then
-        # recurse only into directories the repo manages — never a tool's own dir
+      elif [ -d "$_uc" ] && [ ! -L "$_uc" ] &&
+        { any_layer_dir "$1/${_uc##*/}" || has_managed_link "$_uc"; }; then
+        # recurse only into directories the repo manages (or once deployed into
+        # and has since dropped) — never a tool's own dir
         uninstall_rel "$1/${_uc##*/}"
       fi
     done
-    if [ "$DRY_RUN" -ne 1 ] && any_layer_dir "$1" &&
-      [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ]; then
+    # every directory reached here is one the repo manages or once deployed
+    # into, so an emptied one is ours to drop
+    if [ "$DRY_RUN" -ne 1 ] && [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ]; then
       rmdir "$HOME/$1" 2>/dev/null && info "removed empty dir: $HOME/$1"
     fi
     return 0
@@ -681,14 +698,17 @@ prune_rel() {
     if is_managed_link "$_pr"; then
       # a managed symlink no longer sourced by an active layer is an orphan
       [ -n "$(effective_src "$1/${_pr##*/}")" ] || prune_one "$_pr"
-    elif [ -d "$_pr" ] && [ ! -L "$_pr" ] && any_layer_dir "$1/${_pr##*/}"; then
-      # recurse only into directories the repo manages — never a tool's own dir
+    elif [ -d "$_pr" ] && [ ! -L "$_pr" ] &&
+      { any_layer_dir "$1/${_pr##*/}" || has_managed_link "$_pr"; }; then
+      # recurse only into directories the repo manages (or once deployed into
+      # and has since dropped) — never a tool's own dir
       prune_rel "$1/${_pr##*/}"
     fi
   done
-  # a managed directory not sourced by any active layer, left empty, is an orphan
+  # a directory not sourced by any active layer, left empty, is an orphan: every
+  # directory reached here is one the repo manages or once deployed into
   if [ "$MODE" != status ] && [ "$DRY_RUN" -ne 1 ] &&
-    any_layer_dir "$1" && [ -z "$(effective_src "$1")" ]; then
+    [ -z "$(effective_src "$1")" ]; then
     rmdir "$HOME/$1" 2>/dev/null && info "pruned  : $HOME/$1"
   fi
 }
@@ -726,9 +746,20 @@ walk_top() {
 
 # walk_all_top <action> — run <action> once for each distinct top-level entry
 # name the repo could ever have deployed (every layer in ALL_LAYERS). Used by
-# prune and uninstall so a previously-selected user's or profile's leftovers are
-# handled regardless of the active selection. Names are de-duplicated so status
-# reports each orphan once. <action> is prune | uninstall.
+# prune, uninstall and doctor so a previously-selected user's or profile's
+# leftovers are handled regardless of the active selection. Names are
+# de-duplicated so status reports each orphan once. <action> is
+# prune | uninstall | doctor.
+#
+# A top-level dot-directory that no layer has any more can still hold managed
+# symlinks: its layer was deleted outright (users/<u>/ or profiles/<p>/), or it
+# was only ever a mirror target whose rule was dropped from mirror.conf. Those
+# are visited too, found by the symlinks they hold. Finding them means a full
+# `find -type l` over every non-layer dot-directory, ~/.cache and the like
+# included (sub-second even on a home with hundreds of thousands of entries,
+# and doctor already pays the same for the layer-owned ones); only a directory
+# that turns out to hold a managed symlink is then handed to the action.
+# Non-dot entries (~/work, ~/Documents, ...) are never scanned.
 walk_all_top() {
   _wat_seen=" "
   for _watl in $ALL_LAYERS; do
@@ -739,6 +770,14 @@ walk_all_top() {
       _wat_seen="$_wat_seen${_wat##*/} "
       walk_top_do "$1" "${_wat##*/}"
     done
+  done
+  for _wat in "$HOME"/.*; do
+    [ -d "$_wat" ] && [ ! -L "$_wat" ] || continue
+    case ${_wat##*/} in . | ..) continue ;; esac
+    case "$_wat_seen" in *" ${_wat##*/} "*) continue ;; esac
+    has_managed_link "$_wat" || continue
+    _wat_seen="$_wat_seen${_wat##*/} "
+    walk_top_do "$1" "${_wat##*/}"
   done
 }
 
@@ -752,6 +791,7 @@ walk_top_do() {
       ;;
     prune) prune_rel "$2" ;;
     uninstall) uninstall_rel "$2" ;;
+    doctor) doctor_top "$2" ;;
   esac
 }
 
@@ -892,24 +932,20 @@ doctor_classify() {
   esac
 }
 
+# doctor_top <name> — print a problem line for every unhealthy symlink at the
+# top-level entry $HOME/<name> and, when it is a real directory, in its subtree.
+doctor_top() {
+  doctor_classify "$HOME/$1"
+  [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ] &&
+    find "$HOME/$1" -type l 2>/dev/null | while IFS= read -r _dt_l; do
+      doctor_classify "$_dt_l"
+    done
+}
+
 # doctor_scan — print a problem line for every unhealthy symlink under the
 # managed top-level entries (their subtrees plus the entries themselves).
 doctor_scan() {
-  _ds_seen=" "
-  for _dsl in $ALL_LAYERS; do
-    for _ds in "$REPO_DIR/$_dsl"/* "$REPO_DIR/$_dsl"/.*; do
-      [ -e "$_ds" ] || [ -L "$_ds" ] || continue
-      _ds_n=${_ds##*/}
-      case $_ds_n in . | ..) continue ;; esac
-      case "$_ds_seen" in *" $_ds_n "*) continue ;; esac
-      _ds_seen="$_ds_seen$_ds_n "
-      doctor_classify "$HOME/$_ds_n"
-      [ -d "$HOME/$_ds_n" ] && [ ! -L "$HOME/$_ds_n" ] &&
-        find "$HOME/$_ds_n" -type l 2>/dev/null | while IFS= read -r _ds_l; do
-          doctor_classify "$_ds_l"
-        done
-    done
-  done
+  walk_all_top doctor
 }
 
 # doctor_unlink <path> — remove a symlink doctor flagged as a problem, honoring

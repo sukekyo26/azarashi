@@ -1,15 +1,72 @@
 approval_policy = "on-request"
 approvals_reviewer = "auto_review"
 
+# Claude Code の output style（.claude/output-styles/serena.md）に相当する。
+# developer ロールのメッセージとして組み込み system prompt に追記され、AGENTS.md
+# （user_instructions）より強く効く。AGENTS.md に書いただけでは Serena を使わないため。
+# model_instructions_file は組み込み prompt を丸ごと置換するので使わない。
+developer_instructions = '''
+# Tool selection (read this before every tool call on a code file)
+
+This project uses Serena, an MCP server that exposes semantic, symbol-aware tools
+for reading and editing code. Serena's tools are the PRIMARY tools for code work.
+Your built-in shell (cat / sed / grep / rg / find) and apply_patch are SECONDARY
+and must not be used on code files when a Serena equivalent exists.
+
+Do not rationalize the built-in tools with "the file is small," "I already know
+what I need," "this is one call versus three," or "the path is known" — those
+rationalizations produce worse results and are explicitly disallowed.
+
+## Mapping (use the right column, not the left)
+
+Task                                    Tool to use
+--------------------------------------  ----------------------------------------
+See a code file's structure             get_symbols_overview
+Read a specific symbol's body           find_symbol (include_body=true)
+Find a symbol by name across the repo   find_symbol
+Find references / callers               find_referencing_symbols
+Find declarations / implementations     find_declaration / find_implementations
+Search by text / regex                  search_for_pattern
+Edit a symbol's body                    replace_symbol_body
+Insert near a symbol                    insert_before_symbol / insert_after_symbol
+Pattern replace across files            replace_in_files
+Rename / delete a symbol                rename_symbol / safe_delete_symbol
+
+Shell reads (cat / sed / grep / rg) and apply_patch are permitted on code files
+ONLY when:
+- Serena has been tried on the target and failed, OR
+- The file is not parseable as code (generated, malformed, no language server), OR
+- You need to read a few lines and a symbolic read would be overkill, OR
+- You absolutely have to read the full file for some reason.
+
+Shell and apply_patch are fine for non-code files: markdown, JSON, YAML, TOML,
+.env, config files, lockfiles, plain text. Creating a new file is also fine.
+
+## Required workflow before editing code
+
+1. get_symbols_overview on the target file (skip if already done this session).
+2. find_symbol with include_body=true for the specific symbols you'll touch.
+   Read only the symbols you need — not the whole file.
+3. Edit with replace_symbol_body, insert_before_symbol, insert_after_symbol, or
+   replace_in_files. Never use apply_patch on a code file when one of these fits.
+
+## Self-check
+
+Before every shell read or apply_patch: "Does this target a code file, and does
+the mapping above name a Serena tool for this task?" If yes, switch. Do this
+check every time — not just once per session.
+'''
+
 [features]
 hooks = true
 
-# Serena は tag 固定で取得する。プラグイン版 (.mcp.json) は git のデフォルトブランチを
-# 引くため、レビューを経ない上流変更がそのまま実行される。
+# serena は `uv tool install` で tag 固定したものを使う（workspace/*/post-start.sh）。
+# プラグイン版 (.mcp.json) は git のデフォルトブランチを引くため、レビューを経ない
+# 上流変更がそのまま実行される。
 # --context codex は execute_shell_command と、codex 本体と重複する read/list 系を除く。
 [mcp_servers.serena]
-command = "uvx"
-args = ["--from", "git+https://github.com/oraios/serena@v1.7.0", "serena", "start-mcp-server", "--context", "codex", "--open-web-dashboard", "false"]
+command = "serena"
+args = ["start-mcp-server", "--context", "codex", "--project-from-cwd", "--open-web-dashboard", "false"]
 
 [mcp_servers.serena.env]
 SERENA_USAGE_REPORTING = "false"
