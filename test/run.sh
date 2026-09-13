@@ -826,6 +826,8 @@ FAKE
     "$(hook_json 'ls; rtk init' | jq -r '.hookSpecificOutput.permissionDecision')" "deny"
   assert_eq "hook: rtk init in a later pipeline stage is denied" \
     "$(hook_json 'ls | rtk init' | jq -r '.hookSpecificOutput.permissionDecision')" "deny"
+  assert_eq "hook: rtk init after bash |& is denied" \
+    "$(hook_json 'ls |& rtk init' | jq -r '.hookSpecificOutput.permissionDecision')" "deny"
   assert_eq "hook: rtk init --help is not denied" \
     "$(hook_cmd 'rtk init --help')" "PASSTHROUGH"
 

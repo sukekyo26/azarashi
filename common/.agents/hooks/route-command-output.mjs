@@ -293,7 +293,7 @@ function main() {
 
   // 0. `rtk init` はブロック（複合の一部でも、パイプラインの後段でも）。
   //    `--help` は何も書き込まないので通す。
-  if (heads.some((h) => /(?:^|\|\s*)rtk\s+init\b/.test(h) && !/\s(-h|--help)\b/.test(h))) {
+  if (heads.some((h) => /(?:^|\|&?\s*)rtk\s+init\b/.test(h) && !/\s(-h|--help)\b/.test(h))) {
     process.stdout.write(JSON.stringify(io.deny(
       'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正の PreToolUse フックと指示ファイルが入り、このフックと二重に走る）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
     )));
