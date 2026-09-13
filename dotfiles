@@ -408,6 +408,20 @@ any_layer_dir() {
   return 1
 }
 
+# has_managed_link <dir> — true if a deploy symlink exists anywhere under <dir>.
+# Lets prune/uninstall descend into a directory the repo no longer has (its last
+# source file was deleted or moved away) to collect the leaves it once deployed.
+# Must look at every depth: when a whole subtree vanishes (e.g. skills/<name>/
+# SKILL.md), the orphans sit below intermediate real directories.
+has_managed_link() {
+  [ -n "$(find "$1" -type l 2>/dev/null | while IFS= read -r _hml; do
+    if is_managed_link "$_hml"; then
+      printf x
+      break
+    fi
+  done)" ]
+}
+
 # ensure_destdir <dest> — make <dest> a real directory, backing up and removing
 # a foreign file/symlink first (a managed deploy link is reconstructible, so it
 # is not backed up). No-op in status mode and (after printing) in dry-run, or
@@ -623,13 +637,16 @@ uninstall_rel() {
       case ${_uc##*/} in . | ..) continue ;; esac
       if is_managed_link "$_uc"; then
         remove_link "$_uc"
-      elif [ -d "$_uc" ] && [ ! -L "$_uc" ] && any_layer_dir "$1/${_uc##*/}"; then
-        # recurse only into directories the repo manages — never a tool's own dir
+      elif [ -d "$_uc" ] && [ ! -L "$_uc" ] &&
+        { any_layer_dir "$1/${_uc##*/}" || has_managed_link "$_uc"; }; then
+        # recurse only into directories the repo manages (or once deployed into
+        # and has since dropped) — never a tool's own dir
         uninstall_rel "$1/${_uc##*/}"
       fi
     done
-    if [ "$DRY_RUN" -ne 1 ] && any_layer_dir "$1" &&
-      [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ]; then
+    # every directory reached here is one the repo manages or once deployed
+    # into, so an emptied one is ours to drop
+    if [ "$DRY_RUN" -ne 1 ] && [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ]; then
       rmdir "$HOME/$1" 2>/dev/null && info "removed empty dir: $HOME/$1"
     fi
     return 0
@@ -681,14 +698,17 @@ prune_rel() {
     if is_managed_link "$_pr"; then
       # a managed symlink no longer sourced by an active layer is an orphan
       [ -n "$(effective_src "$1/${_pr##*/}")" ] || prune_one "$_pr"
-    elif [ -d "$_pr" ] && [ ! -L "$_pr" ] && any_layer_dir "$1/${_pr##*/}"; then
-      # recurse only into directories the repo manages — never a tool's own dir
+    elif [ -d "$_pr" ] && [ ! -L "$_pr" ] &&
+      { any_layer_dir "$1/${_pr##*/}" || has_managed_link "$_pr"; }; then
+      # recurse only into directories the repo manages (or once deployed into
+      # and has since dropped) — never a tool's own dir
       prune_rel "$1/${_pr##*/}"
     fi
   done
-  # a managed directory not sourced by any active layer, left empty, is an orphan
+  # a directory not sourced by any active layer, left empty, is an orphan: every
+  # directory reached here is one the repo manages or once deployed into
   if [ "$MODE" != status ] && [ "$DRY_RUN" -ne 1 ] &&
-    any_layer_dir "$1" && [ -z "$(effective_src "$1")" ]; then
+    [ -z "$(effective_src "$1")" ]; then
     rmdir "$HOME/$1" 2>/dev/null && info "pruned  : $HOME/$1"
   fi
 }
