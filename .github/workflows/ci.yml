@@ -205,6 +205,16 @@ jobs:
           ./dotfiles install
           [ -f "$HOME/.claude/session-env/s1/state" ] && [ -f "$HOME/.claude/own.txt" ]
           rm -rf "$HOME/.claude/session-env" "$HOME/.claude/own.txt"; ./dotfiles install
+          # a directory that vanished from the layer still gets its orphans pruned
+          mkdir -p common/.claude/fxgone; : >common/.claude/fxgone/leaf
+          ./dotfiles install >/dev/null
+          [ -L "$HOME/.claude/fxgone/leaf" ]
+          rm -r common/.claude/fxgone
+          ./dotfiles status | tee vanish.out
+          grep -qE '^[[:space:]]*orphan[[:space:]]*:.*/\.claude/fxgone/leaf$' vanish.out
+          ./dotfiles install | tee vanish2.out
+          grep -qE '^[[:space:]]*pruned[[:space:]]*:.*/\.claude/fxgone/leaf$' vanish2.out
+          [ ! -e "$HOME/.claude/fxgone" ] && [ ! -L "$HOME/.claude/fxgone/leaf" ]
           # clean-backups: report-only lists; --keep 1 keeps the newest per original
           for ts in 20230101T000000Z 20250101T000000Z; do : >"$HOME/.claude/foo.dotfiles-bak.$ts"; done
           ./dotfiles clean-backups | tee cb.out
@@ -255,7 +265,12 @@ jobs:
       - name: Common-only — uninstall
         run: |
           cd "$FX"
+          # a directory that vanished from the layer is still cleaned up on uninstall
+          mkdir -p common/.claude/fxgone; : >common/.claude/fxgone/leaf
+          ./dotfiles install >/dev/null
+          rm -r common/.claude/fxgone
           ./dotfiles uninstall
+          [ ! -e "$HOME/.claude/fxgone" ]
           [ ! -e "$HOME/.agents" ]
           [ ! -e "$HOME/.codex/AGENTS.md" ]
           [ ! -e "$HOME/.demo/INSTRUCTIONS.md" ]
