@@ -150,6 +150,35 @@ exec zsh
 この場合 `outputStyle` は不要になる（同じ内容が override 本文に含まれるため）。
 override 本文は `Co-Authored-By: Claude Opus 4.7 (1M context)` をハードコードしている点にも注意。
 
+## Codex 版
+
+Codex にも同じ問題があり、対処も同じ構図で `config.toml` に閉じる。
+設定場所は `common/.codex/config.fragment.toml`、配布は `dotfiles`。
+
+| Claude Code | Codex | 備考 |
+| --- | --- | --- |
+| output style（追記型） | `developer_instructions = '''...'''` | `developer` ロールのメッセージとして組み込み prompt に追記される。AGENTS.md（`user_instructions`）より強く効く（Codex 自身の prompt.md が「system / developer 指示は AGENTS.md より常に優先」と明記） |
+| `--system-prompt`（完全置換） | `model_instructions_file = "path"` / `instructions = "..."` | 組み込み prompt を丸ごと捨てる。効かなかった場合の最終手段 |
+| `alwaysLoad` | 不要 | Codex は MCP ツールを遅延ロードしない |
+| `CLAUDE_CODE_THRIFTY_SONIC=0` | 不要 | Bash 優先の組み込み指示は無い |
+
+`developer_instructions` の中身は `serena.md` の `# Tool selection` 節を Codex 向けに書き換えたもの。
+ツール名が違う（Read / Edit / Grep → shell の `cat` / `sed` / `grep` / `rg` と `apply_patch`）のと、
+`--context codex` では `replace_content` / `read_file` / `find_file` / `list_dir` / `execute_shell_command`
+が外れて `search_for_pattern` / `replace_in_files` が残るので、対応表はそれに合わせてある。
+Serena に Codex 用の override 出力コマンドは無いので、公式追従は手動。
+
+- **トップレベルキーなので `[features]` 等のテーブルヘッダより前に書く。** 後ろに置くと
+  そのテーブルの子キー（`features.developer_instructions`）になり、黙って無視される。
+- 追記型でもファイル参照はできない（ファイル参照の `model_instructions_file` は置換型）。
+  そのため fragment に文字列をインラインで持つ。tomlkit のマージ後は `~/.codex/config.toml` 上で
+  1 行のエスケープ文字列になるが、TOML として正しく Codex は読める。
+- `mcp_servers` と同じく `hooks.json` ではないので、変更しても Codex の再承認は不要。
+- 反映確認: `./dotfiles install` 後に
+  `python3 -c 'import tomllib;print(tomllib.load(open("'"$HOME"'/.codex/config.toml","rb"))["developer_instructions"][:60])'`
+  でトップレベルに入っていること。効き具合は Claude Code の `/context` に相当する確認手段が無いので、
+  実際に `codex` を動かして Serena ツールが選ばれるか観察する。
+
 ## 出典
 
 - Serena 公式（override の推奨）: <https://oraios.github.io/serena/02-usage/030_clients.html>
