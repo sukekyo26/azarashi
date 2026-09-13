@@ -746,9 +746,16 @@ walk_top() {
 
 # walk_all_top <action> — run <action> once for each distinct top-level entry
 # name the repo could ever have deployed (every layer in ALL_LAYERS). Used by
-# prune and uninstall so a previously-selected user's or profile's leftovers are
-# handled regardless of the active selection. Names are de-duplicated so status
-# reports each orphan once. <action> is prune | uninstall.
+# prune, uninstall and doctor so a previously-selected user's or profile's
+# leftovers are handled regardless of the active selection. Names are
+# de-duplicated so status reports each orphan once. <action> is
+# prune | uninstall | doctor.
+#
+# A top-level dot-directory that no layer has any more can still hold managed
+# symlinks: its layer was deleted outright (users/<u>/ or profiles/<p>/), or it
+# was only ever a mirror target whose rule was dropped from mirror.conf. Those
+# are visited too, found by the symlinks they hold. Limited to dot-directories
+# so the scan never descends into the user's regular home tree.
 walk_all_top() {
   _wat_seen=" "
   for _watl in $ALL_LAYERS; do
@@ -759,6 +766,14 @@ walk_all_top() {
       _wat_seen="$_wat_seen${_wat##*/} "
       walk_top_do "$1" "${_wat##*/}"
     done
+  done
+  for _wat in "$HOME"/.*; do
+    [ -d "$_wat" ] && [ ! -L "$_wat" ] || continue
+    case ${_wat##*/} in . | ..) continue ;; esac
+    case "$_wat_seen" in *" ${_wat##*/} "*) continue ;; esac
+    has_managed_link "$_wat" || continue
+    _wat_seen="$_wat_seen${_wat##*/} "
+    walk_top_do "$1" "${_wat##*/}"
   done
 }
 
@@ -772,6 +787,7 @@ walk_top_do() {
       ;;
     prune) prune_rel "$2" ;;
     uninstall) uninstall_rel "$2" ;;
+    doctor) doctor_top "$2" ;;
   esac
 }
 
@@ -912,24 +928,20 @@ doctor_classify() {
   esac
 }
 
+# doctor_top <name> — print a problem line for every unhealthy symlink at the
+# top-level entry $HOME/<name> and, when it is a real directory, in its subtree.
+doctor_top() {
+  doctor_classify "$HOME/$1"
+  [ -d "$HOME/$1" ] && [ ! -L "$HOME/$1" ] &&
+    find "$HOME/$1" -type l 2>/dev/null | while IFS= read -r _dt_l; do
+      doctor_classify "$_dt_l"
+    done
+}
+
 # doctor_scan — print a problem line for every unhealthy symlink under the
 # managed top-level entries (their subtrees plus the entries themselves).
 doctor_scan() {
-  _ds_seen=" "
-  for _dsl in $ALL_LAYERS; do
-    for _ds in "$REPO_DIR/$_dsl"/* "$REPO_DIR/$_dsl"/.*; do
-      [ -e "$_ds" ] || [ -L "$_ds" ] || continue
-      _ds_n=${_ds##*/}
-      case $_ds_n in . | ..) continue ;; esac
-      case "$_ds_seen" in *" $_ds_n "*) continue ;; esac
-      _ds_seen="$_ds_seen$_ds_n "
-      doctor_classify "$HOME/$_ds_n"
-      [ -d "$HOME/$_ds_n" ] && [ ! -L "$HOME/$_ds_n" ] &&
-        find "$HOME/$_ds_n" -type l 2>/dev/null | while IFS= read -r _ds_l; do
-          doctor_classify "$_ds_l"
-        done
-    done
-  done
+  walk_all_top doctor
 }
 
 # doctor_unlink <path> — remove a symlink doctor flagged as a problem, honoring

@@ -227,6 +227,37 @@ jobs:
           ./dotfiles install | tee vanish2.out
           grep -qE '^[[:space:]]*pruned[[:space:]]*:.*/\.claude/fxgone/deep/leaf$' vanish2.out
           [ ! -e "$HOME/.claude/fxgone" ]
+          # a top-level dot-dir whose layer was deleted outright is still found
+          # (by the managed symlinks it holds): doctor, status, install, uninstall
+          mkdir -p users/gone/.gonetop; : >users/gone/.gonetop/marker
+          ./dotfiles install --user gone >/dev/null
+          [ -L "$HOME/.gonetop/marker" ]
+          rm -r users/gone
+          if ./dotfiles doctor >doc.out 2>&1; then echo "doctor should be nonzero"; cat doc.out; exit 1; fi
+          grep -qE '^broken  : .*/\.gonetop/marker' doc.out
+          ./dotfiles status | tee gone.out
+          grep -qE '^[[:space:]]*orphan[[:space:]]*:.*/\.gonetop/marker$' gone.out
+          ./dotfiles install | tee gone2.out
+          grep -qE '^[[:space:]]*pruned[[:space:]]*:.*/\.gonetop/marker$' gone2.out
+          [ ! -e "$HOME/.gonetop" ]
+          mkdir -p users/gone/.gonetop; : >users/gone/.gonetop/marker
+          ./dotfiles install --user gone >/dev/null
+          rm -r users/gone
+          ./dotfiles uninstall >/dev/null
+          [ ! -e "$HOME/.gonetop" ]
+          ./dotfiles install >/dev/null
+          # a mirror target under a mirror-only dot-dir is pruned once its rule is
+          # dropped, while the dir's remaining mirror is left alone
+          cp mirror.conf mirror.conf.orig
+          grep -v '.demo/INSTRUCTIONS.md' mirror.conf.orig >mirror.conf
+          ./dotfiles status | tee rule.out
+          grep -qE '^[[:space:]]*orphan[[:space:]]*:.*/\.demo/INSTRUCTIONS\.md$' rule.out
+          ./dotfiles install >/dev/null
+          [ ! -e "$HOME/.demo/INSTRUCTIONS.md" ]
+          [ -L "$HOME/.demo/skills" ]
+          mv mirror.conf.orig mirror.conf
+          ./dotfiles install >/dev/null
+          [ -L "$HOME/.demo/INSTRUCTIONS.md" ]
           # clean-backups: report-only lists; --keep 1 keeps the newest per original
           for ts in 20230101T000000Z 20250101T000000Z; do : >"$HOME/.claude/foo.dotfiles-bak.$ts"; done
           ./dotfiles clean-backups | tee cb.out
