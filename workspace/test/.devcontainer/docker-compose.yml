@@ -28,6 +28,7 @@ services:
       - "npm-global:/home/${USERNAME}/.npm-global"
       - "cargo:/home/${USERNAME}/.cargo"
       - "rustup:/home/${USERNAME}/.rustup"
+      - "playwright-browsers:/home/${USERNAME}/.cache/ms-playwright"
       - "${HOME:?HOME must be set on the host}/.claude.json:/home/${USERNAME}/.claude.json"
     ports:
       - "3000"
@@ -66,6 +67,8 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_cargo"
   rustup:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_rustup"
+  playwright-browsers:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_playwright-browsers"
 secrets:
   sudo_password:
     file: ".env.local"

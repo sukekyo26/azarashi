@@ -185,7 +185,37 @@ packages = [
     "fzf",
     "bat",
     "sqlite3",
-    "procps"
+    "procps",
+    # Playwright Chromium (headless) の共有ライブラリ。post-start.sh の
+    # `playwright install chromium` が落とすバイナリはこれが無いと起動しない。
+    # 出典: playwright-core/src/server/registry/nativeDeps.ts の debian13-x64
+    # (`playwright install-deps` 相当。root が要るのでイメージ側で入れる)。
+    "libasound2t64",
+    "libatk-bridge2.0-0t64",
+    "libatk1.0-0t64",
+    "libatspi2.0-0t64",
+    "libcairo2",
+    "libcups2t64",
+    "libdbus-1-3",
+    "libdrm2",
+    "libgbm1",
+    "libglib2.0-0t64",
+    "libnspr4",
+    "libnss3",
+    "libpango-1.0-0",
+    "libx11-6",
+    "libxcb1",
+    "libxcomposite1",
+    "libxdamage1",
+    "libxext6",
+    "libxfixes3",
+    "libxkbcommon0",
+    "libxrandr2",
+    "libfontconfig1",
+    "libfreetype6",
+    "fonts-liberation",
+    "fonts-noto-color-emoji",
+    "fonts-ipafont-gothic"
 ]
 
 # [apt.mirror] — 上流 apt URL を地域ミラーに書き換え。
@@ -217,6 +247,9 @@ forward = ["3000", "3001", "8080"]
 #   コンテナ再作成をまたいで状態保持。書式: <ボリューム名> = <コンテナ内パス>。
 # [volumes]
 # my-data = "/home/${USERNAME}/.my-tool"
+[volumes]
+# `playwright install` のブラウザ置き場。~150MB なのでコンテナ再作成のたびに落とさない。
+playwright-browsers = "/home/${USERNAME}/.cache/ms-playwright"
 
 # [env] — コンテナへ渡す環境変数。
 #   ${VAR} は `cocoon gen` 実行時にホストの環境変数を解決。

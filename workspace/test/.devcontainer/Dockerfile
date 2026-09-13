@@ -62,6 +62,32 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     bat \
     sqlite3 \
     procps \
+    libasound2t64 \
+    libatk-bridge2.0-0t64 \
+    libatk1.0-0t64 \
+    libatspi2.0-0t64 \
+    libcairo2 \
+    libcups2t64 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libglib2.0-0t64 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libx11-6 \
+    libxcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    libfontconfig1 \
+    libfreetype6 \
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    fonts-ipafont-gothic \
     && rm -rf /tmp/* /var/tmp/*
 
 # Plugin apt dependencies. The last apt layer because plugin selection is the
@@ -130,8 +156,8 @@ RUN echo 'autoload -Uz compinit && compinit' >> "$HOME/.zshrc" && \
 
 # Prepare volume mount directories with correct ownership
 USER root
-RUN mkdir -p /home/${USERNAME}/.aws /home/${USERNAME}/.bun /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.npm /home/${USERNAME}/.npm-global /home/${USERNAME}/.rustup && \
-    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.aws /home/${USERNAME}/.bun /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.npm /home/${USERNAME}/.npm-global /home/${USERNAME}/.rustup
+RUN mkdir -p /home/${USERNAME}/.aws /home/${USERNAME}/.bun /home/${USERNAME}/.cache /home/${USERNAME}/.cache/ms-playwright /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.npm /home/${USERNAME}/.npm-global /home/${USERNAME}/.rustup && \
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.aws /home/${USERNAME}/.bun /home/${USERNAME}/.cache /home/${USERNAME}/.cache/ms-playwright /home/${USERNAME}/.cargo /home/${USERNAME}/.claude /home/${USERNAME}/.config /home/${USERNAME}/.copilot /home/${USERNAME}/.npm /home/${USERNAME}/.npm-global /home/${USERNAME}/.rustup
 # Install cocoon
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \

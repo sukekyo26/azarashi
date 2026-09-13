@@ -26,6 +26,14 @@ npm install -g typescript typescript-language-server pyright || true
 # 非推奨 (警告が出る) かつ Debian の /usr/bin/sg と同名なので、指示側は ast-grep で統一。非 fatal。
 npm install -g @ast-grep/cli@0.45.3 || true
 
+# playwright-cli は MCP を使わずブラウザを操作する CLI (Bash 経由なのでツール定義を
+# 食わない)。playwright 本体も入れるのは `playwright install` でブラウザを落とすため。
+# 2 つは同じ Chromium リビジョンを要求する版に揃えること (ずれると 2 回落とす)。
+# ブラウザは cocoon.toml [volumes] の ~/.cache/ms-playwright に永続化され、
+# `playwright install` は既にあればスキップする。共有ライブラリは [apt] 側。非 fatal。
+npm install -g playwright@1.63.0 @playwright/cli@0.1.19 || true
+playwright install chromium || true
+
 cd ~/work/azarashi
 
 # Run ./dotfiles, echo its output live, and condense the actions into one line so
