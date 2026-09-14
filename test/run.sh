@@ -841,42 +841,35 @@ else
   printf '  skip - route-command-output.mjs tests (node not available)\n'
 fi
 
-# --- cache-audit.sh ----------------------------------------------------------
-# A synthetic project dir with one transcript of four assistant turns: first,
-# append inside a tool loop, a front miss at a user prompt after the permission
-# mode changed default->plan, and a 5m-tier turn after a 4000s idle gap (ttl).
-# The dir name starts with "-" like the real ones.
+# --- statusline.sh cache miss segment -----------------------------------------
+# Two synthetic transcripts: an append (cache_read covers the previous prefix)
+# keeps the `cache NN%` segment; a rebuild (cache_read=0 against a 1010-token
+# prefix) shows `💥miss <k>k $<usd>` priced at the opus 5m write rate.
 
-AUDIT="$SCRIPT_DIR/../common/.claude/cache-audit.sh"
-AUDIT_DIR=$(mktemp -d)
-mkdir -p "$AUDIT_DIR/-home-user-repo"
-cat >"$AUDIT_DIR/-home-user-repo/sess-1.jsonl" <<'EOF'
-{"type":"permission-mode","permissionMode":"default"}
-{"type":"user","timestamp":"2026-09-14T10:00:00.000Z","message":{"content":"hi"}}
+STATUSLINE="$SCRIPT_DIR/../common/.claude/statusline.sh"
+SL_DIR=$(mktemp -d)
+cat >"$SL_DIR/hit.jsonl" <<'EOF'
 {"type":"assistant","timestamp":"2026-09-14T10:00:01.000Z","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":1000}}}
-{"type":"user","timestamp":"2026-09-14T10:00:10.000Z","message":{"content":[{"type":"tool_result","content":"ok"}]}}
 {"type":"assistant","timestamp":"2026-09-14T10:00:11.000Z","message":{"id":"m2","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":1010,"cache_creation_input_tokens":100}}}
-{"type":"permission-mode","permissionMode":"plan"}
-{"type":"user","timestamp":"2026-09-14T10:00:20.000Z","message":{"content":"next"}}
-{"type":"assistant","timestamp":"2026-09-14T10:00:41.000Z","message":{"id":"m3","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":1200}}}
-{"type":"assistant","timestamp":"2026-09-14T11:07:21.000Z","message":{"id":"m4","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":1300}}}
 EOF
-audit_json=$(bash "$AUDIT" --dir "$AUDIT_DIR" --json)
-audit_class() { # <class> — turn count for that class
-  printf '%s' "$audit_json" | jq -r --arg c "$1" '.by_class[] | select(.class == $c) | .turns'
+cat >"$SL_DIR/miss.jsonl" <<'EOF'
+{"type":"assistant","timestamp":"2026-09-14T10:00:01.000Z","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":1000}}}
+{"type":"assistant","timestamp":"2026-09-14T10:00:11.000Z","message":{"id":"m2","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":40000}}}
+EOF
+statusline_out() { # <transcript> — second status line, ANSI stripped
+  jq -nc --arg t "$1" --arg d "$SL_DIR" \
+    '{transcript_path:$t, workspace:{current_dir:$d}, context_window:{current_usage:{cache_read_input_tokens:1010,cache_creation_input_tokens:100}}}' |
+    STATUSLINE_CACHE_TTL=999999999 bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g'
 }
-assert_eq "audit: counts every assistant turn" "$(printf '%s' "$audit_json" | jq -r '.turns')" "4"
-assert_eq "audit: first turn is class first" "$(audit_class first)" "1"
-assert_eq "audit: warm tail write is append" "$(audit_class append)" "1"
-assert_eq "audit: read=0 after permission-mode is front" "$(audit_class front)" "1"
-assert_eq "audit: idle past the 5m ttl is ttl" "$(audit_class ttl)" "1"
-assert_eq "audit: front miss reports the permission-mode change and the prompt boundary" \
-  "$(printf '%s' "$audit_json" | jq -r '.misses[0].cause')" "permission-mode:default->plan+user-prompt"
-assert_eq "audit: text report lists the class table" \
-  "$(bash "$AUDIT" --dir "$AUDIT_DIR" | grep -c '^front ')" "1"
-expect_true "audit: fails clearly on a missing dir" \
-  sh -c "! bash '$AUDIT' --dir '$AUDIT_DIR/none' >/dev/null 2>&1"
-rm -rf "$AUDIT_DIR"
+sl_hit=$(statusline_out "$SL_DIR/hit.jsonl")
+sl_miss=$(statusline_out "$SL_DIR/miss.jsonl")
+expect_true "statusline: append keeps the cache hit% segment" \
+  sh -c "printf '%s' '$sl_hit' | grep -q 'cache 90%'"
+expect_true "statusline: append does not show a miss" \
+  sh -c "! printf '%s' '$sl_hit' | grep -q miss"
+expect_true "statusline: rebuilt prefix shows miss with rewritten tokens and cost" \
+  sh -c "printf '%s' '$sl_miss' | grep -q 'miss 40k \$0.25'"
+rm -rf "$SL_DIR"
 
 # --- summary ---------------------------------------------------------------
 

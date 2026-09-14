@@ -35,7 +35,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 - `common/` — 全環境共通の配布ペイロード
   - `.agents/AGENTS.md`, `.agents/skills/` — エージェント共通指示とスキル（mirror.conf で `.claude/` `.codex/` `.copilot/` へ展開）
   - `.agents/hooks/route-command-output.mjs` — 3 エージェント共通の PreToolUse(Bash) hook（rtk 経由の出力圧縮）。各エージェントの設定が `~/.agents/hooks/` を `--client=` 付きで直接呼ぶので mirror 不要
-  - `.claude/settings.fragment.json`, `.claude.fragment.json`（MCP: serena）, `.claude/hooks/`（Claude Code 専用の hook）, `.claude/statusline.sh`, `.claude/cache-audit.sh`（キャッシュ監査、`docs/cache-audit.md`）, `.claude/output-styles/`
+  - `.claude/settings.fragment.json`, `.claude.fragment.json`（MCP: serena）, `.claude/hooks/`（Claude Code 専用の hook）, `.claude/statusline.sh`, `.claude/output-styles/`
   - `.codex/config.fragment.toml`, `.codex/hooks.json`
   - `.copilot/settings.fragment.json`, `.copilot/statusline.sh`
   - `.config/git/ignore`, `.config/starship.toml`
