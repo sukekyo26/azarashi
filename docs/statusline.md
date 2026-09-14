@@ -46,12 +46,18 @@ transcript の直近 2 ターンの usage を比較する。
 
 表示するのは書き直しの料金で、`cache_creation × 入力単価 × write 係数（5m: 1.25 / 1h: 2）× 地域係数`。価格表は Bedrock コスト再計算と同じもの。
 
-原因は transcript から確実に分かる場合だけ括弧で添える。
+原因は transcript に記録がある場合だけ括弧で添える。複数当てはまれば `+` で繋ぐ。[Claude Code のドキュメント](https://code.claude.com/docs/ja/prompt-caching)が挙げるキャッシュ無効化の原因のうち、判別できるのは次の 6 つ。
 
-- `(model switch)`: 直前ターンとモデルが違う。キャッシュはモデルごとに別なので必ず miss になる
-- `(compact)`: 2 ターンの間に `/compact` の境界がある
+| 表示 | 判別方法 |
+|---|---|
+| `model switch` | assistant レコードの `model` が直前ターンと違う |
+| `upgrade` | assistant レコードの `version`（Claude Code のバージョン）が違う |
+| `effort` | assistant レコードの `effort` が違う |
+| `output style` | 直近の `output_style` attachment の値が違う |
+| `tools changed` | 2 ターンの間に `deferred_tools_delta` attachment があり、ツールの追加か削除がある（MCP サーバーの接続・切断、プラグインの有効・無効） |
+| `compact` | 2 ターンの間に `compact_boundary` がある |
 
-原因が付かない miss は、権限モードの切替、CLAUDE.md や memory の編集、MCP サーバーやツール定義の変化、API 側のリトライのどれか。usage には system prompt の内訳が無いので、statusline からは特定できない。
+高速モードの切替、画像の蓄積、ツール全体の拒否は transcript に判別できる記録が無いので出せない。原因が付かない miss は、それらか、権限モードの切替、CLAUDE.md や memory の編集、API 側のリトライのどれか。
 
 miss は次のユーザー入力まで表示し続ける。ツールループ中は数秒ごとにターンが進むが、その間もずっと残るので「このターンで miss した」と読める。離席していても次に入力するまで見える。セッション最初のターンは比較対象が無いので miss にならない。
 

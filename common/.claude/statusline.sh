@@ -164,7 +164,11 @@ meta_segment=""
 # the API billed a cache write for the whole thing again. Show what that
 # rebuild cost as `💥miss $<usd> (<cause>)` until the next user prompt: the
 # whole turn that paid for the rebuild carries the notice, however long its
-# tool loop runs or however long the user is away, and the next prompt clears it. The cause is only named when
+# tool loop runs or however long the user is away, and the next prompt clears it.
+# Causes are named only when the transcript records them: model, Claude Code
+# version, effort or output style differing between the two turns, a tool list
+# delta (MCP server / plugin) or a /compact boundary between them. Anything
+# else (permission mode, CLAUDE.md / memory edits, retries) shows no cause. The cause is only named when
 # the transcript makes it unambiguous: the model changed between the two
 # turns, or a /compact boundary sits between them.
 cache_segment=""
@@ -188,16 +192,24 @@ if [[ -r "$transcript" ]]; then
     . as $all
     | [ range(length) as $i | $all[$i]
         | select(.type == "assistant" and .message.usage? and .message.id? and .timestamp?)
-        | {i: $i, ts: .timestamp, id: .message.id, m: (.message.model // ""), u: .message.usage} ]
+        | {i: $i, ts: .timestamp, id: .message.id, m: (.message.model // ""), u: .message.usage,
+           v: (.version // ""), e: (.effort // ""),
+           style: ([ $all[:$i][] | select(.type == "attachment" and .attachment.type == "output_style") | .attachment.style ] | last // "")} ]
     | group_by(.id) | map(.[0]) | sort_by(.ts) | . as $t
     | [ range(1; length) as $k | $t[$k-1] as $p | $t[$k] as $c
         | ((writes($p.u) | add) + ($p.u.input_tokens // 0) + ($p.u.cache_read_input_tokens // 0)) as $prev
         | ($c.u.cache_read_input_tokens // 0) as $read
         | select($read < ($prev * 0.9 | floor))
         | (writes($c.u)) as [$c5, $c1]
-        | (if $p.m != $c.m then "model switch"
-           elif ([ $all[$p.i+1:$c.i][] | select(.type == "system" and .subtype == "compact_boundary") ] | length) > 0 then "compact"
-           else "" end) as $cause
+        | ($all[$p.i+1:$c.i]) as $between
+        | ([ (if $p.m != $c.m then "model switch" else empty end),
+             (if $p.v != $c.v then "upgrade" else empty end),
+             (if $p.e != $c.e then "effort" else empty end),
+             (if $p.style != $c.style then "output style" else empty end),
+             (if any($between[]; .type == "attachment" and .attachment.type == "deferred_tools_delta"
+                     and ((.attachment.addedNames | length) + (.attachment.removedNames | length)) > 0) then "tools changed" else empty end),
+             (if any($between[]; .type == "system" and .subtype == "compact_boundary") then "compact" else empty end)
+           ] | join("+")) as $cause
         | {i: $c.i, usd: ((($c5 * 1.25 + $c1 * 2) * price($c.m) * mult($c.m) / 1e6 * 100 | round) / 100), cause: $cause} ]
     | last // empty
     # A user prompt is a text message; tool_result messages are the tool loop.
