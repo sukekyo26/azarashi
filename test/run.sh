@@ -843,17 +843,21 @@ fi
 
 # --- cache-audit.sh ----------------------------------------------------------
 # A synthetic project dir with one transcript of four assistant turns: first,
-# append, a front miss preceded by a permission-mode record, and a 5m-tier turn
-# after a 4000s idle gap (ttl). The dir name starts with "-" like the real ones.
+# append inside a tool loop, a front miss at a user prompt after the permission
+# mode changed default->plan, and a 5m-tier turn after a 4000s idle gap (ttl).
+# The dir name starts with "-" like the real ones.
 
 AUDIT="$SCRIPT_DIR/../common/.claude/cache-audit.sh"
 AUDIT_DIR=$(mktemp -d)
 mkdir -p "$AUDIT_DIR/-home-user-repo"
 cat >"$AUDIT_DIR/-home-user-repo/sess-1.jsonl" <<'EOF'
+{"type":"permission-mode","permissionMode":"default"}
 {"type":"user","timestamp":"2026-09-14T10:00:00.000Z","message":{"content":"hi"}}
 {"type":"assistant","timestamp":"2026-09-14T10:00:01.000Z","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":1000}}}
+{"type":"user","timestamp":"2026-09-14T10:00:10.000Z","message":{"content":[{"type":"tool_result","content":"ok"}]}}
 {"type":"assistant","timestamp":"2026-09-14T10:00:11.000Z","message":{"id":"m2","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":1010,"cache_creation_input_tokens":100}}}
-{"type":"permission-mode","timestamp":"2026-09-14T10:00:20.000Z"}
+{"type":"permission-mode","permissionMode":"plan"}
+{"type":"user","timestamp":"2026-09-14T10:00:20.000Z","message":{"content":"next"}}
 {"type":"assistant","timestamp":"2026-09-14T10:00:41.000Z","message":{"id":"m3","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":1200}}}
 {"type":"assistant","timestamp":"2026-09-14T11:07:21.000Z","message":{"id":"m4","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":1300}}}
 EOF
@@ -866,8 +870,8 @@ assert_eq "audit: first turn is class first" "$(audit_class first)" "1"
 assert_eq "audit: warm tail write is append" "$(audit_class append)" "1"
 assert_eq "audit: read=0 after permission-mode is front" "$(audit_class front)" "1"
 assert_eq "audit: idle past the 5m ttl is ttl" "$(audit_class ttl)" "1"
-assert_eq "audit: front miss names mode-switch as the cause" \
-  "$(printf '%s' "$audit_json" | jq -r '.misses[0].cause')" "mode-switch"
+assert_eq "audit: front miss reports the permission-mode change and the prompt boundary" \
+  "$(printf '%s' "$audit_json" | jq -r '.misses[0].cause')" "permission-mode:default->plan+user-prompt"
 assert_eq "audit: text report lists the class table" \
   "$(bash "$AUDIT" --dir "$AUDIT_DIR" | grep -c '^front ')" "1"
 expect_true "audit: fails clearly on a missing dir" \

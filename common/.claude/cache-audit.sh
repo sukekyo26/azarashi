@@ -16,8 +16,10 @@
 #   shrink   context got shorter within 5s — a retry or duplicate request
 #   mid      anything else — the prefix broke after the static head
 #
-# Causes are candidates inferred from the records between the two turns, not
-# verdicts. Price table and geo multipliers mirror statusline.sh.
+# Causes are candidates, not verdicts: a permission-mode / mode value that
+# changed since the previous turn, and whether the miss sits at a user prompt
+# (user-prompt) or inside a tool loop (tool-loop). Price table and geo
+# multipliers mirror statusline.sh.
 #
 # Usage: cache-audit.sh [--dir DIR] [--project SLUG] [--details] [--json]
 set -euo pipefail
@@ -80,7 +82,8 @@ def mult(m):
 def wmult(t): if t == "1h" then 2 else 1.25 end;
 def ttl(t): if t == "1h" then 3600 else 300 end;
 . as $all
-| [ range(length) as $i | $all[$i]
+| def last_value(idx; t; f): [ $all[:idx][] | select(.type == t) | .[f] ] | last;
+  [ range(length) as $i | $all[$i]
     | select(.type == "assistant" and .message.usage? and .timestamp?)
     | {i: $i, ts: .timestamp, id: .message.id, m: (.message.model // ""), u: .message.usage} ]
 | group_by(.id) | map(.[0]) | sort_by(.ts) | . as $t
@@ -101,10 +104,18 @@ def ttl(t): if t == "1h" then 3600 else 300 end;
    elif $read < 5000 then "front"
    elif $total < ($prev * 0.9 | floor) and $gap <= 5 then "shrink"
    else "mid" end) as $class
+# Mode records are written on every prompt, so only a changed value is a signal.
+| (if $p then
+     ((last_value($p.i; "permission-mode"; "permissionMode")) as $pm0 | (last_value($c.i; "permission-mode"; "permissionMode")) as $pm1
+      | (last_value($p.i; "mode"; "mode")) as $md0 | (last_value($c.i; "mode"; "mode")) as $md1
+      | [ (if $pm0 != $pm1 then "permission-mode:\($pm0)->\($pm1)" else empty end),
+          (if $md0 != $md1 then "mode:\($md0)->\($md1)" else empty end) ])
+   else [] end) as $changes
+| (if $p then ([ $all[$p.i+1:$c.i][] | select(.type == "user") | .message.content
+                | if type == "string" then true else any(.[]?; .type == "text") end ] | any)
+   else false end) as $at_prompt
 | (if $class == "front" or $class == "mid" then
-     ([ (if ($between | index("permission-mode")) or ($between | index("mode")) then "mode-switch" else empty end),
-        (if ($between | index("bridge-session")) then "bridge-session" else empty end) ]
-      | if length == 0 then "unknown" else join("+") end)
+     (($changes + [ if $at_prompt then "user-prompt" else "tool-loop" end ]) | join("+"))
    elif $class == "shrink" then "retry" else "" end) as $cause
 | (price($c.m) * mult($c.m) / 1e6) as $unit
 # Input-side cost: uncached input at 1x, cache reads at 0.1x, cache writes at the tier multiplier.
