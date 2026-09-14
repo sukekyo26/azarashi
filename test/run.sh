@@ -842,33 +842,53 @@ else
 fi
 
 # --- statusline.sh cache miss segment -----------------------------------------
-# Two synthetic transcripts: an append (cache_read covers the previous prefix)
-# keeps the `cache NN%` segment; a rebuild (cache_read=0 against a 1010-token
-# prefix) shows `💥miss <k>k $<usd>` priced at the opus 5m write rate.
+# Synthetic transcripts: an append (cache_read covers the previous prefix) keeps
+# the `cache NN%` segment; a rebuild (cache_read=0 against a 1010-token prefix)
+# shows `💥miss $<usd>` priced at the opus 5m write rate, with the cause named
+# when the model changed; the miss outlives a following append (tool loop)
+# inside the hold window and is gone outside it. Fixture timestamps are fixed,
+# so the hold window is pinned via STATUSLINE_MISS_HOLD.
 
 STATUSLINE="$SCRIPT_DIR/../common/.claude/statusline.sh"
 SL_DIR=$(mktemp -d)
-cat >"$SL_DIR/hit.jsonl" <<'EOF'
-{"type":"assistant","timestamp":"2026-09-14T10:00:01.000Z","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":1000}}}
-{"type":"assistant","timestamp":"2026-09-14T10:00:11.000Z","message":{"id":"m2","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":1010,"cache_creation_input_tokens":100}}}
-EOF
-cat >"$SL_DIR/miss.jsonl" <<'EOF'
-{"type":"assistant","timestamp":"2026-09-14T10:00:01.000Z","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":1000}}}
-{"type":"assistant","timestamp":"2026-09-14T10:00:11.000Z","message":{"id":"m2","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":40000}}}
-EOF
-statusline_out() { # <transcript> — second status line, ANSI stripped
+sl_turn() { # <id> <ts> <model> <read> <create> — one assistant transcript line
+  printf '{"type":"assistant","timestamp":"%s","message":{"id":"%s","model":"%s","usage":{"input_tokens":5,"cache_read_input_tokens":%s,"cache_creation_input_tokens":%s}}}\n' \
+    "$2" "$1" "$3" "$4" "$5"
+}
+{
+  sl_turn m1 2026-09-14T10:00:01.000Z claude-opus-5 0 1000
+  sl_turn m2 2026-09-14T10:00:11.000Z claude-opus-5 1005 100
+} >"$SL_DIR/hit.jsonl"
+{
+  sl_turn m1 2026-09-14T10:00:01.000Z claude-opus-5 0 1000
+  sl_turn m2 2026-09-14T10:00:11.000Z claude-opus-5 0 40000
+} >"$SL_DIR/miss.jsonl"
+{
+  sl_turn m1 2026-09-14T10:00:01.000Z claude-opus-5 0 1000
+  sl_turn m2 2026-09-14T10:00:11.000Z claude-sonnet-5 0 40000
+  sl_turn m3 2026-09-14T10:00:21.000Z claude-sonnet-5 40005 100
+} >"$SL_DIR/switch.jsonl"
+statusline_out() { # <transcript> [hold seconds] — second status line, ANSI stripped
   jq -nc --arg t "$1" --arg d "$SL_DIR" \
-    '{transcript_path:$t, workspace:{current_dir:$d}, context_window:{current_usage:{cache_read_input_tokens:1010,cache_creation_input_tokens:100}}}' |
-    STATUSLINE_CACHE_TTL=999999999 bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g'
+    '{transcript_path:$t, workspace:{current_dir:$d}, context_window:{current_usage:{cache_read_input_tokens:1005,cache_creation_input_tokens:100}}}' |
+    STATUSLINE_CACHE_TTL=999999999 STATUSLINE_MISS_HOLD="${2:-999999999}" bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g'
 }
 sl_hit=$(statusline_out "$SL_DIR/hit.jsonl")
 sl_miss=$(statusline_out "$SL_DIR/miss.jsonl")
+sl_switch=$(statusline_out "$SL_DIR/switch.jsonl")
+sl_expired=$(statusline_out "$SL_DIR/switch.jsonl" 1)
 expect_true "statusline: append keeps the cache hit% segment" \
   sh -c "printf '%s' '$sl_hit' | grep -q 'cache 90%'"
 expect_true "statusline: append does not show a miss" \
   sh -c "! printf '%s' '$sl_hit' | grep -q miss"
-expect_true "statusline: rebuilt prefix shows miss with rewritten tokens and cost" \
-  sh -c "printf '%s' '$sl_miss' | grep -q 'miss 40k \$0.25'"
+expect_true "statusline: rebuilt prefix shows the rebuild cost" \
+  sh -c "printf '%s' '$sl_miss' | grep -q 'miss \$0.25'"
+expect_true "statusline: a model change is named as the cause" \
+  sh -c "printf '%s' '$sl_switch' | grep -q 'miss \$0.15 (model switch)'"
+expect_true "statusline: the miss survives a following append inside the hold window" \
+  sh -c "printf '%s' '$sl_switch' | grep -q 'miss'"
+expect_true "statusline: the miss is dropped once the hold window has passed" \
+  sh -c "printf '%s' '$sl_expired' | grep -q 'cache 90%'"
 rm -rf "$SL_DIR"
 
 # --- summary ---------------------------------------------------------------

@@ -158,13 +158,15 @@ meta_segment=""
 [[ -n "$effort" && "$effort" != "null" ]] && meta_segment=" ${C_DIM}${effort}${C_RESET}"
 [[ "$thinking" == "true" ]] && meta_segment="${meta_segment} ${C_DIM}🧠${C_RESET}"
 
-# Prompt-cache health for the last turn. Normally `cache NN%` (read/(read+create)).
-# When the last turn re-wrote what the turn before had cached — its cache_read
-# fell below 90% of the previous prefix (input+read+create) — the prefix broke
-# somewhere and the API billed a cache write for the whole thing again. Show
-# that as `💥miss <rewritten>k $<cost>` so the price of the rebuild is visible
-# right when it happens (a permission-mode switch, an edited CLAUDE.md, a
-# retry ...). The first turn of a session has nothing to compare against.
+# Prompt-cache health. Normally `cache NN%` (read/(read+create) of the last turn).
+# When a turn re-wrote what the turn before had cached — its cache_read fell
+# below 90% of the previous prefix (input+read+create) — the prefix broke and
+# the API billed a cache write for the whole thing again. Show what that
+# rebuild cost as `💥miss $<usd> (<cause>)` for STATUSLINE_MISS_HOLD seconds
+# (default 15) after the miss, so the tool loop right after it does not wipe
+# the notice before anyone reads it. The cause is only named when
+# the transcript makes it unambiguous: the model changed between the two
+# turns, or a /compact boundary sits between them.
 cache_segment=""
 miss=""
 if [[ -r "$transcript" ]]; then
@@ -180,23 +182,32 @@ if [[ -r "$transcript" ]]; then
       elif (m | test("^(jp|us|eu|au|apac)\\.")) then 1.1
       elif (m | startswith("anthropic."))       then 1.1
       else 1.0 end;
-    [ .[] | select(.type == "assistant" and .message.usage? and .message.id? and .timestamp?) ]
-    | group_by(.message.id) | map(.[0]) | sort_by(.timestamp) | .[-2:]
-    | if length < 2 then empty else
-        (.[0].message.usage) as $p | (.[1].message.usage) as $u | (.[1].message.model // "") as $m
-        | (($p.input_tokens // 0) + ($p.cache_read_input_tokens // 0) + ($p.cache_creation_input_tokens // 0)) as $prev
-        | ($u.cache_read_input_tokens // 0) as $read
-        | (if $u.cache_creation? then
-             [($u.cache_creation.ephemeral_5m_input_tokens // 0), ($u.cache_creation.ephemeral_1h_input_tokens // 0)]
-           else [($u.cache_creation_input_tokens // 0), 0] end) as [$c5, $c1]
-        | if $read >= ($prev * 0.9 | floor) then empty
-          else "\(($c5 + $c1) / 1000 | round)\t\((($c5 * 1.25 + $c1 * 2) * price($m) * mult($m) / 1e6 * 100 | round) / 100)"
-          end
-      end' 2>/dev/null)
+    def writes(u): if u.cache_creation? then
+        [(u.cache_creation.ephemeral_5m_input_tokens // 0), (u.cache_creation.ephemeral_1h_input_tokens // 0)]
+      else [(u.cache_creation_input_tokens // 0), 0] end;
+    . as $all
+    | [ range(length) as $i | $all[$i]
+        | select(.type == "assistant" and .message.usage? and .message.id? and .timestamp?)
+        | {i: $i, ts: .timestamp, id: .message.id, m: (.message.model // ""), u: .message.usage} ]
+    | group_by(.id) | map(.[0]) | sort_by(.ts) | . as $t
+    | [ range(1; length) as $k | $t[$k-1] as $p | $t[$k] as $c
+        | ((writes($p.u) | add) + ($p.u.input_tokens // 0) + ($p.u.cache_read_input_tokens // 0)) as $prev
+        | ($c.u.cache_read_input_tokens // 0) as $read
+        | select($read < ($prev * 0.9 | floor))
+        | (writes($c.u)) as [$c5, $c1]
+        | (if $p.m != $c.m then "model switch"
+           elif ([ $all[$p.i+1:$c.i][] | select(.type == "system" and .subtype == "compact_boundary") ] | length) > 0 then "compact"
+           else "" end) as $cause
+        | "\($c.ts)\t\((($c5 * 1.25 + $c1 * 2) * price($c.m) * mult($c.m) / 1e6 * 100 | round) / 100)\t\($cause)" ]
+    | last // empty' 2>/dev/null)
 fi
 if [[ -n "$miss" ]]; then
-  IFS=$'\t' read -r miss_k miss_usd <<<"$miss"
-  cache_segment=$(printf ' %s💥miss %sk $%.2f%s' "$C_DANGER" "$miss_k" "$miss_usd" "$C_RESET")
+  IFS=$'\t' read -r miss_ts miss_usd miss_cause <<<"$miss"
+  miss_age=$(($(date +%s) - $(date -d "$miss_ts" +%s 2>/dev/null || echo 0)))
+  ((miss_age > ${STATUSLINE_MISS_HOLD:-15})) && miss=""
+fi
+if [[ -n "$miss" ]]; then
+  cache_segment=$(printf ' %s💥miss $%.2f%s%s' "$C_DANGER" "$miss_usd" "${miss_cause:+ ($miss_cause)}" "$C_RESET")
 elif ((cache_read + cache_create > 0)); then
   hit=$((cache_read * 100 / (cache_read + cache_create)))
   if ((hit >= 90)); then
