@@ -162,9 +162,9 @@ meta_segment=""
 # When a turn re-wrote what the turn before had cached — its cache_read fell
 # below 90% of the previous prefix (input+read+create) — the prefix broke and
 # the API billed a cache write for the whole thing again. Show what that
-# rebuild cost as `💥miss $<usd> (<cause>)` for STATUSLINE_MISS_HOLD seconds
-# (default 15) after the miss, so the tool loop right after it does not wipe
-# the notice before anyone reads it. The cause is only named when
+# rebuild cost as `💥miss $<usd> (<cause>)` until the next user prompt: the
+# whole turn that paid for the rebuild carries the notice, however long its
+# tool loop runs or however long the user is away, and the next prompt clears it. The cause is only named when
 # the transcript makes it unambiguous: the model changed between the two
 # turns, or a /compact boundary sits between them.
 cache_segment=""
@@ -198,15 +198,15 @@ if [[ -r "$transcript" ]]; then
         | (if $p.m != $c.m then "model switch"
            elif ([ $all[$p.i+1:$c.i][] | select(.type == "system" and .subtype == "compact_boundary") ] | length) > 0 then "compact"
            else "" end) as $cause
-        | "\($c.ts)\t\((($c5 * 1.25 + $c1 * 2) * price($c.m) * mult($c.m) / 1e6 * 100 | round) / 100)\t\($cause)" ]
-    | last // empty' 2>/dev/null)
+        | {i: $c.i, usd: ((($c5 * 1.25 + $c1 * 2) * price($c.m) * mult($c.m) / 1e6 * 100 | round) / 100), cause: $cause} ]
+    | last // empty
+    # A user prompt is a text message; tool_result messages are the tool loop.
+    | select(([ $all[.i+1:][] | select(.type == "user")
+                | .message.content | if type == "string" then true else any(.[]?; .type == "text") end ] | any) | not)
+    | "\(.usd)\t\(.cause)"' 2>/dev/null)
 fi
 if [[ -n "$miss" ]]; then
-  IFS=$'\t' read -r miss_ts miss_usd miss_cause <<<"$miss"
-  miss_age=$(($(date +%s) - $(date -d "$miss_ts" +%s 2>/dev/null || echo 0)))
-  ((miss_age > ${STATUSLINE_MISS_HOLD:-15})) && miss=""
-fi
-if [[ -n "$miss" ]]; then
+  IFS=$'\t' read -r miss_usd miss_cause <<<"$miss"
   cache_segment=$(printf ' %s💥miss $%.2f%s%s' "$C_DANGER" "$miss_usd" "${miss_cause:+ ($miss_cause)}" "$C_RESET")
 elif ((cache_read + cache_create > 0)); then
   hit=$((cache_read * 100 / (cache_read + cache_create)))
