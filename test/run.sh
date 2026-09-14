@@ -848,7 +848,9 @@ fi
 # drops it on the next prompt. The per-session state file lives under TMPDIR.
 
 STATUSLINE="$SCRIPT_DIR/../common/.claude/statusline.sh"
-SL_DIR=$(mktemp -d)
+# Under WORK so the EXIT/INT/TERM trap cleans it up.
+SL_DIR="$WORK/statusline"
+mkdir -p "$SL_DIR"
 statusline_out() { # <prompt_id> <prompt_cache-json> — lines 2 and 3 joined by " | ", ANSI stripped
   jq -nc --arg p "$1" --argjson pc "$2" --arg d "$SL_DIR" \
     '{session_id:"s1", prompt_id:$p, prompt_cache:$pc, model:{id:"claude-opus-5",display_name:"Opus"},
@@ -896,7 +898,6 @@ expect_true "statusline: the miss stays on its own third line below the rate lim
   sh -c "printf '%s' '$sl_rate_miss' | grep -q '^💥miss \$0.40 (tools_changed)\$'"
 expect_true "statusline: no prompt_cache on stdin shows no cache segment" \
   sh -c "! printf '%s' '$sl_none' | grep -q 'cache\|miss\|⏳'"
-rm -rf "$SL_DIR"
 
 # --- summary ---------------------------------------------------------------
 
