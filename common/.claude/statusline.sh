@@ -229,8 +229,8 @@ if [[ -n "$pc" ]]; then
     remaining=$((pc_expires - $(date +%s)))
     if ((remaining > 0)); then
       ((remaining <= 60)) && ttl_color=$C_WARN || ttl_color=$C_OK
-      cache_ttl_segment=$(printf ' %s⏳%d:%02d%s %s(%s)%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" "$C_RESET" \
-        "$C_DIM" "$(date -d "@$pc_expires" +%H:%M:%S)" "$C_RESET")
+      cache_ttl_segment=$(printf ' %s⏳%d:%02d (%s)%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" \
+        "$(date -d "@$pc_expires" +%H:%M:%S)" "$C_RESET")
     else
       cache_ttl_segment=" ${C_DANGER}❄️cold${C_RESET}"
     fi
