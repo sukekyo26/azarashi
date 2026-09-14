@@ -864,8 +864,8 @@ sl_second=$(statusline_out p4 "{\"warm\":true,\"caching_observed\":true,\"ttl\":
 sl_cold=$(statusline_out p5 "{\"warm\":false,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":null,\"last_miss_at\":2000,\"miss_recache_tokens\":60000,\"recache_tokens_if_cold\":5000}")
 sl_compact=$(statusline_out p6 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$far,\"last_miss_at\":2000,\"miss_recache_tokens\":60000,\"recache_tokens_if_cold\":null}")
 sl_none=$(jq -nc --arg d "$SL_DIR" '{workspace:{current_dir:$d}, model:{display_name:"Opus"}}' | TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g')
-expect_true "statusline: warm cache shows hit% and the ttl countdown" \
-  sh -c "printf '%s' '$sl_hit' | grep -q 'cache 90% ⏳'"
+expect_true "statusline: warm cache shows hit%, the ttl countdown and the expiry clock" \
+  sh -c "printf '%s' '$sl_hit' | grep -q 'cache 90% ⏳[0-9]*:[0-9][0-9] ($(date -d "@$far" +%H:%M))'"
 expect_true "statusline: a miss goes on a third line, priced from the recache delta, with the causes" \
   sh -c "printf '%s' '$sl_miss' | grep -q 'cache 90% ⏳.*|💥miss \$0.40 (model_changed+tools_changed)\$'"
 expect_true "statusline: the miss stays while prompt_id is unchanged" \

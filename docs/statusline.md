@@ -4,7 +4,7 @@
 
 ```
 ~/work/azarashi (develop) ⑂wt +12/-3
-Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳59:58 v2.1.0
+Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳59:58 (16:42) v2.1.0
 💥miss $0.89 (model_changed)
 ```
 
@@ -28,7 +28,7 @@ Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳5
 | `███░░░░░░░ 32%` | コンテキスト使用率。緑 < 60% ≤ 黄 < 80% ≤ 赤 |
 | `$1.234` | セッションの累計コスト（USD）。先頭に `~` が付くときは Bedrock 用に transcript から再計算した推定値 |
 | `cache 98%` | 直近ターンのキャッシュ hit 率 = cache_read / (cache_read + cache_creation)。緑 ≥ 90% > 黄 ≥ 50% > 赤 |
-| `⏳59:58` | プロンプトキャッシュが warm でいられる残り時間。残り 60 秒以下で黄 |
+| `⏳59:58 (16:42)` | プロンプトキャッシュが warm でいられる残り時間と、cold になる時刻。残り 60 秒以下で黄 |
 | `❄️cold` | TTL 切れ。次の送信でプレフィックス全体を cache write する |
 | `📦compact` | `/compact` 直後。次の送信で会話部分のキャッシュが再構築される |
 | `v2.1.0` | Claude Code のバージョン |
