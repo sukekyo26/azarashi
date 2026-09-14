@@ -867,7 +867,7 @@ sl_compact=$(statusline_out p6 "{\"warm\":true,\"caching_observed\":true,\"ttl\"
 sl_none=$(jq -nc --arg d "$SL_DIR" '{workspace:{current_dir:$d}, model:{display_name:"Opus"}}' | TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g')
 sl_rate=$(jq -nc --arg d "$SL_DIR" --argjson far "$far" '{workspace:{current_dir:$d}, model:{display_name:"Opus"},
     rate_limits:{five_hour:{used_percentage:18,resets_at:$far}, seven_day:{used_percentage:85,resets_at:$far}}}' |
-  TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n 3p | sed 's/\x1b\[[0-9;]*m//g')
+  TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g')
 sl_rate_miss=$(jq -nc --arg d "$SL_DIR" --argjson far "$far" '{session_id:"s2", prompt_id:"q1", workspace:{current_dir:$d}, model:{id:"claude-opus-5",display_name:"Opus"},
     rate_limits:{five_hour:{used_percentage:18,resets_at:$far}},
     prompt_cache:{warm:true,caching_observed:true,ttl:"1h",expires_at:$far,last_miss_at:1000,last_miss_cause:{causes:["tools_changed"]},miss_recache_tokens:40000,recache_tokens_if_cold:5}}' |
@@ -890,10 +890,10 @@ expect_true "statusline: a rewritten conversation shows compact" \
   sh -c "printf '%s' '$sl_compact' | grep -q '📦compact'"
 expect_true "statusline: exits 0 without a miss (a non-zero exit hides the whole status line)" \
   sh -c "jq -nc --arg d '$SL_DIR' '{workspace:{current_dir:\$d}}' | TMPDIR='$SL_DIR' bash '$STATUSLINE' >/dev/null"
-expect_true "statusline: rate limits render as gauges on the third line with their reset times" \
-  sh -c "printf '%s' '$sl_rate' | grep -q '^5h ▄▁▁▁▁▁▁▁▁▁ 18% ($(date -d "@$far" +%H:%M)) 7d ▄▄▄▄▄▄▄▄▁▁ 85% ($(date -d "@$far" +'%m/%d %H:%M'))\$'"
-expect_true "statusline: a miss follows the rate limits on the same third line" \
-  sh -c "printf '%s' '$sl_rate_miss' | grep -q '^5h ▄▁▁▁▁▁▁▁▁▁ 18% (.*) 💥miss \$0.40 (tools_changed)\$'"
+expect_true "statusline: rate limits render as gauges at the end of line 2 with their reset times" \
+  sh -c "printf '%s' '$sl_rate' | grep -q ' 5h █░░░░░░░░░ 18% ($(date -d "@$far" +%H:%M)) 7d ████████░░ 85% ($(date -d "@$far" +'%m/%d %H:%M'))\$'"
+expect_true "statusline: the miss stays on its own third line below the rate limits" \
+  sh -c "printf '%s' '$sl_rate_miss' | grep -q '^💥miss \$0.40 (tools_changed)\$'"
 expect_true "statusline: no prompt_cache on stdin shows no cache segment" \
   sh -c "! printf '%s' '$sl_none' | grep -q 'cache\|miss\|⏳'"
 rm -rf "$SL_DIR"

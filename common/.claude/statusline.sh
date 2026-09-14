@@ -132,14 +132,10 @@ if [[ -n "$style" && "$style" != "default" ]]; then
   style_tag=" ${C_DIM}{$style}${C_RESET}"
 fi
 
-# bar <percentage> [low] — a 10-cell gauge with the value, green < 60 <= yellow < 80 <= red.
-# Used for the context window and the subscription rate limits. `low` draws
-# the gauge with bottom-aligned half-height cells (▄ / ▁) so a gauge on the row
-# below a full-height one does not visually merge with it.
+# bar <percentage> — a 10-cell gauge with the value, green < 60 <= yellow < 80 <= red.
+# Used for the context window and the subscription rate limits.
 bar() {
   local pct_int=${1%%.*} bar_width=10 filled empty color fill_str empty_str
-  local fill_ch=█ empty_ch=░
-  [[ "${2:-}" == "low" ]] && fill_ch=▄ empty_ch=▁
   [[ "$pct_int" =~ ^[0-9]+$ ]] || pct_int=0
   ((pct_int > 100)) && pct_int=100
   filled=$((pct_int * bar_width / 100))
@@ -154,16 +150,16 @@ bar() {
   fi
   fill_str=$(printf '%*s' "$filled" '' | tr ' ' '#')
   empty_str=$(printf '%*s' "$empty" '' | tr ' ' '-')
-  printf '%s%s%s%s%s %s%s%%%s' "$color" "${fill_str//#/$fill_ch}" "$C_DIM" "${empty_str//-/$empty_ch}" "$C_RESET" "$color" "$pct_int" "$C_RESET"
+  printf '%s%s%s%s%s %s%s%%%s' "$color" "${fill_str//#/█}" "$C_DIM" "${empty_str//-/░}" "$C_RESET" "$color" "$pct_int" "$C_RESET"
 }
 
 ctx_segment=""
 [[ -n "$ctx_pct" ]] && ctx_segment=" $(bar "$ctx_pct")"
 
 # Subscription rate limits (Claude.ai Pro / Max, or a gateway spend limit).
-# Absent on Bedrock and API keys, so the line is simply not shown there. Each
-# window may be missing on its own; the 5h reset is a clock, the 7d one a date.
-rate_line=""
+# Absent on Bedrock and API keys, so nothing is shown there. Each window may
+# be missing on its own; the 5h reset is a clock, the 7d one a date.
+rate_segment=""
 for w in five_hour seven_day spend_limit; do
   IFS=$'\t' read -r used resets <<<"$(jq -r --arg w "$w" '.rate_limits[$w] | select(. != null) | [(.used_percentage // 0), (.resets_at // 0)] | @tsv' <<<"$input")"
   [[ -n "$used" ]] || continue
@@ -174,7 +170,7 @@ for w in five_hour seven_day spend_limit; do
   esac
   reset_str=""
   ((resets > 0)) && reset_str=" ${C_DIM}($(date -d "@$resets" +"$fmt"))${C_RESET}"
-  rate_line="${rate_line:+$rate_line }${C_DIM}${label}${C_RESET} $(bar "$used" low)${reset_str}"
+  rate_segment="${rate_segment} ${C_DIM}${label}${C_RESET} $(bar "$used")${reset_str}"
 done
 
 meta_segment=""
@@ -265,17 +261,17 @@ version_tag=""
 [[ -n "$version" ]] && version_tag=" ${C_DIM}v${version}${C_RESET}"
 
 # Stack the lines so the bar stays readable in a narrow terminal:
-# 1) project (cwd + branch + lines changed), 2) model + context + cost + cache,
-# 3) subscription rate limits and the cache miss notice, only when there is one.
+# 1) project (cwd + branch + lines changed), 2) model + context + cost + cache
+# + subscription rate limits, 3) the cache miss notice, only while there is one.
 # The +/- edit counts sit with the branch as a git-style diff stat.
 printf '%s%s%s' "$C_DIR" "$cwd_short" "$C_RESET"
 [[ -n "$branch" ]] && printf ' %s(%s)%s%s' "$C_BRANCH" "$branch" "$C_RESET" "$worktree_tag"
 printf ' %s+%s%s/%s-%s%s\n' "$C_OK" "$added" "$C_RESET" "$C_DANGER" "$removed" "$C_RESET"
 
-printf '%s%s%s%s%s%s %s%s$%.3f%s%s%s%s\n' \
+printf '%s%s%s%s%s%s %s%s$%.3f%s%s%s%s%s\n' \
   "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
   "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
-  "$cache_segment" "$cache_ttl_segment" "$version_tag"
-if [[ -n "$rate_line$miss_line" ]]; then
-  printf '%s\n' "${rate_line}${rate_line:+${miss_line:+ }}${miss_line}"
+  "$cache_segment" "$cache_ttl_segment" "$rate_segment" "$version_tag"
+if [[ -n "$miss_line" ]]; then
+  printf '%s\n' "$miss_line"
 fi
