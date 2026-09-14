@@ -223,7 +223,10 @@ if [[ -n "$pc" ]]; then
     miss_state="${TMPDIR:-/tmp}/claude-statusline-miss-$(md5sum <<<"${session_id:-$transcript}" | cut -d' ' -f1)"
     read -r s_miss_at s_prompt s_tokens s_total 2>/dev/null <"$miss_state" || { s_miss_at=0 s_prompt="" s_tokens=0 s_total=0; }
     if [[ "$s_miss_at" != "$pc_miss_at" ]]; then
-      s_tokens=$((pc_miss_tokens - s_total))
+      # A lower cumulative total than last stored (session stats reset, or a
+      # stale/reused state file) means the baseline is unknown: treat the
+      # whole reported total as this miss rather than show a negative price.
+      s_tokens=$((pc_miss_tokens > s_total ? pc_miss_tokens - s_total : pc_miss_tokens))
       s_prompt=$prompt_id
       printf '%s %s %s %s\n' "$pc_miss_at" "$prompt_id" "$s_tokens" "$pc_miss_tokens" >"$miss_state"
     fi
@@ -270,5 +273,5 @@ printf '%s%s%s%s%s%s %s%s$%.3f%s%s%s%s\n' \
   "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
   "$cache_segment" "$cache_ttl_segment" "$version_tag"
 if [[ -n "$rate_line$miss_line" ]]; then
-  printf '%s\n' "${rate_line}${rate_line:+${miss_line:+ }}${miss_line}"
+  printf '\n%s\n' "${rate_line}${rate_line:+${miss_line:+ }}${miss_line}"
 fi
