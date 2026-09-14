@@ -170,16 +170,18 @@ meta_segment=""
 # with a view of the system prompt and tool list that a transcript never has.
 # Segments:
 #   cache NN%          read/(read+create) of the last turn
-#   💥miss $X (cause)  the newest miss, priced, with Claude Code's own diagnosis
-#                      (model_changed, tools_changed, system_prompt_changed ...);
-#                      kept until the next user prompt (prompt_id changes) so a
-#                      tool loop right after the miss does not wipe it
+#   💥miss $X (cause)  on its own third line: the newest miss, priced, with
+#                      Claude Code's own diagnosis (model_changed, tools_changed,
+#                      system_prompt_changed ...); kept until the next user
+#                      prompt (prompt_id changes) so a tool loop right after the
+#                      miss does not wipe it
 #   ⏳m:ss / ❄️cold    time until the cached prefix goes cold / already cold
 #   📦compact          messages just rewritten (/compact or tool-result clearing);
 #                      the next request rebuilds the conversation cache
 # Nothing is shown before the first API response (.prompt_cache absent).
 cache_segment=""
 cache_ttl_segment=""
+miss_line=""
 pc=$(jq -c '.prompt_cache // empty' <<<"$input")
 if [[ -n "$pc" ]]; then
   IFS=$'\t' read -r pc_warm pc_ttl pc_expires pc_miss_at pc_causes pc_miss_tokens pc_recache_if_cold <<<"$(jq -r '
@@ -215,7 +217,7 @@ if [[ -n "$pc" ]]; then
       model_id=$(jq -r '.model.id // ""' <<<"$input")
       miss_usd=$(jq -n --arg m "$model_id" --arg t "$pc_ttl" --argjson n "$s_tokens" "$jq_price_defs"'
         (price($m) // {i: 0}).i * mult($m) * (if $t == "1h" then 2 else 1.25 end) * $n / 1e6')
-      cache_segment=$(printf ' %s💥miss $%.2f%s%s' "$C_DANGER" "$miss_usd" \
+      miss_line=$(printf '%s💥miss $%.2f%s%s' "$C_DANGER" "$miss_usd" \
         "$([[ "$pc_causes" != "-" ]] && printf ' (%s)' "$pc_causes")" "$C_RESET")
     fi
   fi
@@ -240,8 +242,9 @@ worktree_tag=""
 version_tag=""
 [[ -n "$version" ]] && version_tag=" ${C_DIM}v${version}${C_RESET}"
 
-# Stack two lines so the bar stays readable in a narrow terminal:
-# 1) project (cwd + branch + lines changed), 2) model + context + cost + cache.
+# Stack the lines so the bar stays readable in a narrow terminal:
+# 1) project (cwd + branch + lines changed), 2) model + context + cost + cache,
+# 3) the cache miss notice, only while there is one.
 # The +/- edit counts sit with the branch as a git-style diff stat.
 printf '%s%s%s' "$C_DIR" "$cwd_short" "$C_RESET"
 [[ -n "$branch" ]] && printf ' %s(%s)%s%s' "$C_BRANCH" "$branch" "$C_RESET" "$worktree_tag"
@@ -251,3 +254,4 @@ printf '%s%s%s%s%s%s %s%s$%.3f%s%s%s%s\n' \
   "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
   "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
   "$cache_segment" "$cache_ttl_segment" "$version_tag"
+[[ -n "$miss_line" ]] && printf '%s\n' "$miss_line"

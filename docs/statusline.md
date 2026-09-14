@@ -1,10 +1,11 @@
 # statusline の表示内容
 
-`common/.claude/statusline.sh` が Claude Code のステータスラインに描く 2 行の説明。入力は Claude Code が stdin に渡す JSON と、`transcript_path` が指すセッションの transcript（JSONL）。
+`common/.claude/statusline.sh` が Claude Code のステータスラインに描く 2 行（miss があるときは 3 行）の説明。入力は Claude Code が stdin に渡す JSON と、`transcript_path` が指すセッションの transcript（JSONL）。
 
 ```
 ~/work/azarashi (develop) ⑂wt +12/-3
 Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳59:58 v2.1.0
+💥miss $0.89 (model_changed)
 ```
 
 ## 1 行目: プロジェクト
@@ -27,13 +28,37 @@ Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳5
 | `███░░░░░░░ 32%` | コンテキスト使用率。緑 < 60% ≤ 黄 < 80% ≤ 赤 |
 | `$1.234` | セッションの累計コスト（USD）。先頭に `~` が付くときは Bedrock 用に transcript から再計算した推定値 |
 | `cache 98%` | 直近ターンのキャッシュ hit 率 = cache_read / (cache_read + cache_creation)。緑 ≥ 90% > 黄 ≥ 50% > 赤 |
-| `💥miss $0.89 (model_changed)` | Claude Code が miss と判定したリクエストの書き直し料金と原因（後述） |
 | `⏳59:58` | プロンプトキャッシュが warm でいられる残り時間。残り 60 秒以下で黄 |
 | `❄️cold` | TTL 切れ。次の送信でプレフィックス全体を cache write する |
 | `📦compact` | `/compact` 直後。次の送信で会話部分のキャッシュが再構築される |
 | `v2.1.0` | Claude Code のバージョン |
 
-`cache NN%` と `💥miss` は排他で、miss がある間は hit 率の代わりに miss を出す。
+## 3 行目: キャッシュ miss
+
+miss があるときだけ出る。次のユーザー入力で消える。
+
+```
+💥miss $0.89 (model_changed)
+```
+
+**意味**: 直前のリクエストで、本来キャッシュから読めたはずのプレフィックスを API が読めず、cache write として課金し直した。金額はその書き直し分の料金。通常の会話ではプレフィックスは末尾に追記されるだけなので、miss が出るのは何かがプレフィックスの途中を変えたとき。
+
+**原因**: 括弧内は Claude Code の判定。複数あれば `+` で繋ぐ。特定できなかった場合は括弧無し。
+
+| 原因 | 意味 | 自分の操作か |
+|---|---|---|
+| `model_changed` | モデルを切り替えた。キャッシュはモデルごとに別 | はい（`/model`） |
+| `cache_scope_or_ttl_changed` | キャッシュの TTL（5m / 1h）や範囲が変わった | 環境変数か Claude Code 側 |
+| `betas_changed` | API の beta フラグが変わった。モデル切替や機能の切替に伴う | ほぼ操作に伴う |
+| `messages_rewritten` | 会話履歴が書き換わった。`/compact`、古い tool_result の除去、リトライ | `/compact` なら はい |
+| `system_prompt_changed` | system prompt が変わった。CLAUDE.md・memory・output style・権限モード・hook の注入内容 | 場合による |
+| `tools_changed` | ツール一覧が増減した。MCP サーバーの接続・切断、プラグインの有効・無効、deferred tool の読み込み | 場合による |
+| `ttl_expired_5m` | 5 分の TTL を過ぎて放置した | はい（放置） |
+| `likely_server_side` | クライアント側に変化が無く、API 側の事情と推定 | いいえ |
+
+**見たら何をするか**: 自分の操作（モデル切替、`/compact`、output style 変更）の直後なら、その操作の料金を知るだけでよい。何もしていないのに `system_prompt_changed` や `tools_changed` が出るなら、CLAUDE.md・memory・MCP サーバー・プラグインの変化を疑う。`likely_server_side` は対処のしようが無い。
+
+原因の一覧は [Claude Code のドキュメント](https://code.claude.com/docs/ja/prompt-caching)を参照。
 
 ## キャッシュ関連セグメントの情報源
 
@@ -49,15 +74,13 @@ Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳5
 | `last_miss_at` / `last_miss_cause` | `💥miss` の表示と原因 |
 | `miss_recache_tokens` | miss で書き直したトークンの累計。直前の miss 時点との差分がこの miss の量 |
 
-## 💥miss の表示
+## 💥miss の判定と計算
 
-Claude Code が miss と判定した（キャッシュから読めたはずの分の 5% かつ 2,000 トークン以上を再処理し、compact やツール結果の除去では説明できない）リクエストがあると出る。
+Claude Code は、キャッシュから読めたはずの分の 5% かつ 2,000 トークン以上を再処理し、compact やツール結果の除去では説明できないリクエストを miss と数える。
 
-- 料金は `この miss で書き直したトークン × 入力単価 × write 係数 × 地域係数`。価格表は Bedrock コスト再計算と共通
-- 原因は Claude Code の `last_miss_cause.causes` をそのまま `+` で繋ぐ。`model_changed` / `tools_changed` / `system_prompt_changed` / `betas_changed` / `messages_rewritten` / `ttl_expired_5m` / `likely_server_side` など。Claude Code が原因を特定できなかった miss は括弧無し
-- miss が起きた `prompt_id` の間は表示し続け、次のユーザー入力で消える。ツールループが何分続いても、離席していても、次に入力するまで「このターンで miss した」と読める。miss ごとの差分と prompt_id は `$TMPDIR/claude-statusline-miss-<session>` に保持する
-
-miss が出たときに何かする必要があるかは原因次第。モデル切替・output style 変更・`/compact` のように自分の操作が原因なら、その操作の料金を知るだけでよい。`system_prompt_changed` や `tools_changed` が操作無しで出るなら、CLAUDE.md・memory・MCP サーバー・プラグインの変化を疑う。
+- 料金は `この miss で書き直したトークン × 入力単価 × write 係数（5m: 1.25 / 1h: 2）× 地域係数`。価格表は Bedrock コスト再計算と共通
+- `miss_recache_tokens` は累計なので、直前の miss 時点との差分をこの miss の量とする。差分と miss 発生時の `prompt_id` は `$TMPDIR/claude-statusline-miss-<session>` に保持する
+- `prompt_id` が変わる（次のユーザー入力）まで表示し続ける。ツールループが何分続いても、離席していても、次に入力するまで「このターンで miss した」と読める
 
 ## 関連
 

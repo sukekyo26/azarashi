@@ -849,11 +849,11 @@ fi
 
 STATUSLINE="$SCRIPT_DIR/../common/.claude/statusline.sh"
 SL_DIR=$(mktemp -d)
-statusline_out() { # <prompt_id> <prompt_cache-json> — second status line, ANSI stripped
+statusline_out() { # <prompt_id> <prompt_cache-json> — lines 2 and 3 joined by " | ", ANSI stripped
   jq -nc --arg p "$1" --argjson pc "$2" --arg d "$SL_DIR" \
     '{session_id:"s1", prompt_id:$p, prompt_cache:$pc, model:{id:"claude-opus-5",display_name:"Opus"},
       workspace:{current_dir:$d}, context_window:{current_usage:{cache_read_input_tokens:1005,cache_creation_input_tokens:100}}}' |
-    TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g'
+    TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n '2,3p' | sed 's/\x1b\[[0-9;]*m//g' | paste -sd'|'
 }
 far=$(($(date +%s) + 3000))
 sl_hit=$(statusline_out p1 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$far,\"last_miss_at\":null,\"miss_recache_tokens\":0,\"recache_tokens_if_cold\":5000}")
@@ -866,14 +866,14 @@ sl_compact=$(statusline_out p6 "{\"warm\":true,\"caching_observed\":true,\"ttl\"
 sl_none=$(jq -nc --arg d "$SL_DIR" '{workspace:{current_dir:$d}, model:{display_name:"Opus"}}' | TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g')
 expect_true "statusline: warm cache shows hit% and the ttl countdown" \
   sh -c "printf '%s' '$sl_hit' | grep -q 'cache 90% ⏳'"
-expect_true "statusline: a miss is priced from the recache delta and names the causes" \
-  sh -c "printf '%s' '$sl_miss' | grep -q 'miss \$0.40 (model_changed+tools_changed)'"
+expect_true "statusline: a miss goes on a third line, priced from the recache delta, with the causes" \
+  sh -c "printf '%s' '$sl_miss' | grep -q 'cache 90% ⏳.*|💥miss \$0.40 (model_changed+tools_changed)\$'"
 expect_true "statusline: the miss stays while prompt_id is unchanged" \
   sh -c "printf '%s' '$sl_loop' | grep -q 'miss \$0.40'"
-expect_true "statusline: the miss is dropped on the next prompt" \
-  sh -c "printf '%s' '$sl_next' | grep -q 'cache 90%'"
+expect_true "statusline: the third line is dropped on the next prompt" \
+  sh -c "! printf '%s' '$sl_next' | grep -q '|'"
 expect_true "statusline: a later miss is priced on its own delta at the 5m rate" \
-  sh -c "printf '%s' '$sl_second' | grep -q 'miss \$0.12 ⏳'"
+  sh -c "printf '%s' '$sl_second' | grep -q '|💥miss \$0.12\$'"
 expect_true "statusline: an expired prefix shows cold" \
   sh -c "printf '%s' '$sl_cold' | grep -q '❄️cold'"
 expect_true "statusline: a rewritten conversation shows compact" \
