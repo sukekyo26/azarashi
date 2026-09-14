@@ -841,70 +841,45 @@ else
   printf '  skip - route-command-output.mjs tests (node not available)\n'
 fi
 
-# --- statusline.sh cache miss segment -----------------------------------------
-# Synthetic transcripts: an append (cache_read covers the previous prefix) keeps
-# the `cache NN%` segment; a rebuild (cache_read=0 against a 1010-token prefix)
-# shows `💥miss $<usd>` priced at the opus 5m write rate, with the cause named
-# when the model changed; the miss outlives a following tool_result + append
-# (tool loop) but not a following user prompt.
+# --- statusline.sh prompt cache segments --------------------------------------
+# Claude Code passes .prompt_cache on stdin; the statusline prices the newest
+# miss (miss_recache_tokens delta at the opus 1h write rate), names Claude
+# Code's diagnosed causes, keeps the notice while prompt_id is unchanged, and
+# drops it on the next prompt. The per-session state file lives under TMPDIR.
 
 STATUSLINE="$SCRIPT_DIR/../common/.claude/statusline.sh"
 SL_DIR=$(mktemp -d)
-sl_user() { # <content-json> — one user transcript line
-  printf '{"type":"user","message":{"content":%s}}\n' "$1"
+statusline_out() { # <prompt_id> <prompt_cache-json> — second status line, ANSI stripped
+  jq -nc --arg p "$1" --argjson pc "$2" --arg d "$SL_DIR" \
+    '{session_id:"s1", prompt_id:$p, prompt_cache:$pc, model:{id:"claude-opus-5",display_name:"Opus"},
+      workspace:{current_dir:$d}, context_window:{current_usage:{cache_read_input_tokens:1005,cache_creation_input_tokens:100}}}' |
+    TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g'
 }
-sl_turn() { # <id> <ts> <model> <read> <create> [version] — one assistant transcript line
-  printf '{"type":"assistant","timestamp":"%s","version":"%s","message":{"id":"%s","model":"%s","usage":{"input_tokens":5,"cache_read_input_tokens":%s,"cache_creation_input_tokens":%s}}}\n' \
-    "$2" "${6:-2.0.0}" "$1" "$3" "$4" "$5"
-}
-{
-  sl_turn m1 2026-09-14T10:00:01.000Z claude-opus-5 0 1000
-  sl_turn m2 2026-09-14T10:00:11.000Z claude-opus-5 1005 100
-} >"$SL_DIR/hit.jsonl"
-{
-  sl_turn m1 2026-09-14T10:00:01.000Z claude-opus-5 0 1000
-  sl_turn m2 2026-09-14T10:00:11.000Z claude-opus-5 0 40000
-} >"$SL_DIR/miss.jsonl"
-{
-  sl_turn m1 2026-09-14T10:00:01.000Z claude-opus-5 0 1000
-  sl_turn m2 2026-09-14T10:00:11.000Z claude-sonnet-5 0 40000
-  sl_user '[{"type":"tool_result","content":"ok"}]'
-  sl_turn m3 2026-09-14T10:00:21.000Z claude-sonnet-5 40005 100
-} >"$SL_DIR/switch.jsonl"
-{
-  sl_turn m1 2026-09-14T10:00:01.000Z claude-opus-5 0 1000
-  printf '{"type":"attachment","attachment":{"type":"deferred_tools_delta","addedNames":["mcp__x__y"],"removedNames":[]}}\n'
-  sl_turn m2 2026-09-14T10:00:11.000Z claude-opus-5 0 40000 2.1.0
-} >"$SL_DIR/multi.jsonl"
-{
-  cat "$SL_DIR/switch.jsonl"
-  sl_user '"next question"'
-  sl_turn m4 2026-09-14T10:00:31.000Z claude-sonnet-5 40110 50
-} >"$SL_DIR/prompted.jsonl"
-statusline_out() { # <transcript> — second status line, ANSI stripped
-  jq -nc --arg t "$1" --arg d "$SL_DIR" \
-    '{transcript_path:$t, workspace:{current_dir:$d}, context_window:{current_usage:{cache_read_input_tokens:1005,cache_creation_input_tokens:100}}}' |
-    STATUSLINE_CACHE_TTL=999999999 bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g'
-}
-sl_hit=$(statusline_out "$SL_DIR/hit.jsonl")
-sl_miss=$(statusline_out "$SL_DIR/miss.jsonl")
-sl_switch=$(statusline_out "$SL_DIR/switch.jsonl")
-sl_prompted=$(statusline_out "$SL_DIR/prompted.jsonl")
-sl_multi=$(statusline_out "$SL_DIR/multi.jsonl")
-expect_true "statusline: append keeps the cache hit% segment" \
-  sh -c "printf '%s' '$sl_hit' | grep -q 'cache 90%'"
-expect_true "statusline: append does not show a miss" \
-  sh -c "! printf '%s' '$sl_hit' | grep -q miss"
-expect_true "statusline: rebuilt prefix shows the rebuild cost" \
-  sh -c "printf '%s' '$sl_miss' | grep -q 'miss \$0.25'"
-expect_true "statusline: a model change is named as the cause" \
-  sh -c "printf '%s' '$sl_switch' | grep -q 'miss \$0.15 (model switch)'"
-expect_true "statusline: an upgrade and a tool list delta are both named" \
-  sh -c "printf '%s' '$sl_multi' | grep -q 'miss \$0.25 (upgrade+tools changed)'"
-expect_true "statusline: the miss survives the tool loop of the same turn" \
-  sh -c "printf '%s' '$sl_switch' | grep -q 'miss'"
-expect_true "statusline: the miss is dropped after the next user prompt" \
-  sh -c "printf '%s' '$sl_prompted' | grep -q 'cache 90%'"
+far=$(($(date +%s) + 3000))
+sl_hit=$(statusline_out p1 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$far,\"last_miss_at\":null,\"miss_recache_tokens\":0,\"recache_tokens_if_cold\":5000}")
+sl_miss=$(statusline_out p2 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$far,\"last_miss_at\":1000,\"last_miss_cause\":{\"causes\":[\"model_changed\",\"tools_changed\"]},\"miss_recache_tokens\":40000,\"recache_tokens_if_cold\":5000}")
+sl_loop=$(statusline_out p2 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$far,\"last_miss_at\":1000,\"last_miss_cause\":{\"causes\":[\"model_changed\",\"tools_changed\"]},\"miss_recache_tokens\":40000,\"recache_tokens_if_cold\":5000}")
+sl_next=$(statusline_out p3 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$far,\"last_miss_at\":1000,\"last_miss_cause\":{\"causes\":[\"model_changed\",\"tools_changed\"]},\"miss_recache_tokens\":40000,\"recache_tokens_if_cold\":5000}")
+sl_second=$(statusline_out p4 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"5m\",\"expires_at\":$far,\"last_miss_at\":2000,\"last_miss_cause\":null,\"miss_recache_tokens\":60000,\"recache_tokens_if_cold\":5000}")
+sl_cold=$(statusline_out p5 "{\"warm\":false,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":null,\"last_miss_at\":2000,\"miss_recache_tokens\":60000,\"recache_tokens_if_cold\":5000}")
+sl_compact=$(statusline_out p6 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$far,\"last_miss_at\":2000,\"miss_recache_tokens\":60000,\"recache_tokens_if_cold\":null}")
+sl_none=$(jq -nc --arg d "$SL_DIR" '{workspace:{current_dir:$d}, model:{display_name:"Opus"}}' | TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g')
+expect_true "statusline: warm cache shows hit% and the ttl countdown" \
+  sh -c "printf '%s' '$sl_hit' | grep -q 'cache 90% ⏳'"
+expect_true "statusline: a miss is priced from the recache delta and names the causes" \
+  sh -c "printf '%s' '$sl_miss' | grep -q 'miss \$0.40 (model_changed+tools_changed)'"
+expect_true "statusline: the miss stays while prompt_id is unchanged" \
+  sh -c "printf '%s' '$sl_loop' | grep -q 'miss \$0.40'"
+expect_true "statusline: the miss is dropped on the next prompt" \
+  sh -c "printf '%s' '$sl_next' | grep -q 'cache 90%'"
+expect_true "statusline: a later miss is priced on its own delta at the 5m rate" \
+  sh -c "printf '%s' '$sl_second' | grep -q 'miss \$0.12 ⏳'"
+expect_true "statusline: an expired prefix shows cold" \
+  sh -c "printf '%s' '$sl_cold' | grep -q '❄️cold'"
+expect_true "statusline: a rewritten conversation shows compact" \
+  sh -c "printf '%s' '$sl_compact' | grep -q '📦compact'"
+expect_true "statusline: no prompt_cache on stdin shows no cache segment" \
+  sh -c "! printf '%s' '$sl_none' | grep -q 'cache\|miss\|⏳'"
 rm -rf "$SL_DIR"
 
 # --- summary ---------------------------------------------------------------
