@@ -272,6 +272,8 @@ printf '%s%s%s%s%s%s %s%s$%.3f%s%s%s%s\n' \
   "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
   "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
   "$cache_segment" "$cache_ttl_segment" "$version_tag"
+# The spacer row is a braille blank (U+2800): Claude Code drops rows that are
+# empty or whitespace-only, and the gauges on rows 2 and 3 touch without it.
 if [[ -n "$rate_line$miss_line" ]]; then
-  printf '\n%s\n' "${rate_line}${rate_line:+${miss_line:+ }}${miss_line}"
+  printf '\u2800\n%s\n' "${rate_line}${rate_line:+${miss_line:+ }}${miss_line}"
 fi
