@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // PreToolUse(Bash) hook: 重い/冗長な出力を圧縮またはオフロードしてトークンを節約。
-//  - 対話/ストリーミング系と git diff/find/ps は素通し
+//  - コマンドを `;` `&&` `||` `&` 改行でセグメントに分け、セグメント単位で判定・書き換える
+//  - 対話/ストリーミング系と git diff/find/ps、制御構文、heredoc はそのセグメントだけ素通し
 //  - npm/make/just 等の間接実行 (テストランナー) は `rtk test` で包んで失敗行だけに畳む
-//  - それ以外は rtk rewrite をセグメント単位で適用 (exit 0/1/2/3 を尊重)
+//  - それ以外は rtk rewrite に渡す (exit 0/1/2/3 を尊重)。パイプラインは割らず rtk に委ねる
 // Claude Code / Codex / Copilot CLI の 3 つから同じファイルを呼ぶ (~/.agents/hooks/)。
 // 判定ロジックは共通で、hook の入出力 JSON の形だけ `--client=` で切り替える。
 import { readFileSync, existsSync, realpathSync } from 'node:fs';
@@ -13,14 +14,46 @@ function allow() {
   process.exit(0);
 }
 
+// コマンドを rewrite 単位 (`;` `&&` `||` `&` 改行で区切った 1 つ分) に分割する。
+// パイプ `|` では割らない: `ls | wc -l` を据え置くか `ls | head` を書き換えるかは rtk が
+// パイプライン全体を見て判断するので、片側だけ渡すとその判断を迂回して下流の入力が変わる。
+// 引用符・バッククォート・括弧 `( )` `$( )` `<( )` `{ ...; }` の内側も割らず 1 セグメントに
+// 保って rtk に丸ごと渡す (rtk はサブシェル入りを exit 1 で据え置く)。
+// heredoc は `<<` を含むセグメントに heredoc=true を立てて書き換え対象から外し、本文は raw
+// トークンとして原文のまま保持する。終端行が見つからないときだけ flags.unparsable を立てる。
 export function tokenize(cmd) {
   const tokens = [];
-  const flags = { hasHeredoc: false, hasSubshell: false, hasGroup: false, hasProcSub: false };
+  const flags = { unparsable: false };
   let current = '';
+  let currentHeredoc = false;
   let quote = null;
+  let paren = 0;
+  let brace = 0;
+  const pending = [];
   let i = 0;
-  const pushSeg = () => { tokens.push({ kind: 'seg', text: current }); current = ''; };
+  const pushSeg = () => {
+    tokens.push({ kind: 'seg', text: current, heredoc: currentHeredoc });
+    current = ''; currentHeredoc = false;
+  };
   const pushDelim = (text) => { tokens.push({ kind: 'delim', text }); };
+  const nested = () => paren > 0 || brace > 0;
+  // 改行の直後に、pending の heredoc 本文を終端行まで読む。消費した文字数を返す。
+  const readHeredocBodies = () => {
+    let j = i;
+    while (pending.length) {
+      const { delim, stripTabs } = pending.shift();
+      for (;;) {
+        if (j > cmd.length) { flags.unparsable = true; return cmd.length - i; }
+        let end = cmd.indexOf('\n', j);
+        if (end === -1) end = cmd.length;
+        const line = cmd.slice(j, end);
+        j = end;
+        if ((stripTabs ? line.replace(/^\t+/, '') : line) === delim) break;
+        j = end + 1;
+      }
+    }
+    return j - i;
+  };
   while (i < cmd.length) {
     const c = cmd[i];
     if (quote) {
@@ -29,35 +62,57 @@ export function tokenize(cmd) {
       if (c === quote) quote = null;
       i++; continue;
     }
-    if (c === '"' || c === "'") { quote = c; current += c; i++; continue; }
+    if (c === '"' || c === "'" || c === '`') { quote = c; current += c; i++; continue; }
     if (c === '\\' && i + 1 < cmd.length) { current += c + cmd[i + 1]; i += 2; continue; }
     if (c === '<' && cmd[i + 1] === '<' && cmd[i + 2] === '<') { current += '<<<'; i += 3; continue; }
-    // heredoc は delimiter 形式 (`EOF` / `'EOF'` / `\EOF` 等) を問わず一律 unsafe にする
-    if (c === '<' && cmd[i + 1] === '<') { flags.hasHeredoc = true; current += '<<'; i += 2; continue; }
-    if ((c === '<' || c === '>') && cmd[i + 1] === '(') {
-      flags.hasProcSub = true; current += cmd.slice(i, i + 2); i += 2; continue;
+    if (c === '<' && cmd[i + 1] === '<') {
+      // delimiter は `EOF` / `'EOF'` / `"EOF"` / `\EOF`。`<<-` は終端行の先頭タブを無視する
+      const m = cmd.slice(i + 2).match(/^(-?)\s*(?:'([^']*)'|"([^"]*)"|\\?([^\s;|&<>()]+))/);
+      if (!m) { flags.unparsable = true; return { tokens, flags }; }
+      pending.push({ delim: m[2] ?? m[3] ?? m[4], stripTabs: m[1] === '-' });
+      currentHeredoc = true;
+      current += cmd.slice(i, i + 2 + m[0].length); i += 2 + m[0].length; continue;
     }
-    if (c === '(') { flags.hasSubshell = true; current += c; i++; continue; }
+    if (c === '(') { paren++; current += c; i++; continue; }
+    if (c === ')') { if (paren > 0) paren--; current += c; i++; continue; }
     if (c === '{') {
       // `{ ... ; }` grouping: 直前が行頭/空白/演算子 (`;|&(\n`) + 直後が空白。
       // `${var}` / `{a,b}` (brace 展開) はこの条件で除外される。
       const prev = i === 0 ? '' : cmd[i - 1];
       const next = i + 1 < cmd.length ? cmd[i + 1] : '';
-      if ((prev === '' || /[\s;|&(\n]/.test(prev)) && /\s/.test(next)) flags.hasGroup = true;
+      if ((prev === '' || /[\s;|&(\n]/.test(prev)) && /\s/.test(next)) brace++;
       current += c; i++; continue;
     }
+    if (c === '}' && brace > 0) {
+      const prev = cmd[i - 1];
+      const next = i + 1 < cmd.length ? cmd[i + 1] : '';
+      if (/[\s;|&\n]/.test(prev) && (next === '' || /[\s;|&)<>]/.test(next))) brace--;
+      current += c; i++; continue;
+    }
+    if (c === '\n') {
+      if (nested()) {
+        current += c; i++;
+        if (pending.length) { const n = readHeredocBodies(); current += cmd.slice(i, i + n); i += n; }
+        continue;
+      }
+      pushSeg(); pushDelim(c); i++;
+      if (pending.length) { const n = readHeredocBodies(); tokens.push({ kind: 'raw', text: cmd.slice(i, i + n) }); i += n; }
+      continue;
+    }
+    if (nested()) { current += c; i++; continue; }
     const two = cmd.slice(i, i + 2);
     if (two === '&&' || two === '||') { pushSeg(); pushDelim(two); i += 2; continue; }
     if (c === '&') {
-      // fd リダイレクト (`2>&1`, `&>file`) はデリミタにしない
+      // fd リダイレクト (`2>&1`, `&>file`) と bash の `|&` (stderr 込みパイプ) はデリミタにしない
       const prev = i === 0 ? '' : cmd[i - 1];
       const next = i + 1 < cmd.length ? cmd[i + 1] : '';
-      if (prev === '>' || prev === '<' || next === '>') { current += c; i++; continue; }
+      if (prev === '>' || prev === '<' || prev === '|' || next === '>') { current += c; i++; continue; }
     }
-    if (c === ';' || c === '|' || c === '&' || c === '\n') { pushSeg(); pushDelim(c); i++; continue; }
+    if (c === ';' || c === '&') { pushSeg(); pushDelim(c); i++; continue; }
     current += c; i++;
   }
   pushSeg();
+  if (pending.length) flags.unparsable = true;
   return { tokens, flags };
 }
 
@@ -69,10 +124,13 @@ export function splitPrefix(seg) {
   s = s.slice(lead.length);
   let prefix = lead;
   for (;;) {
-    const m1 = s.match(/^\w+=(?:'[^']*'|"(?:[^"\\]|\\.)*"|\S*)\s+/);
+    const m1 = s.match(/^\w+=(?:'[^']*'|"(?:[^"\\]|\\.)*"|\$\([^()]*\)|\S*)(?:\s+|$)/);
     if (m1) { prefix += m1[0]; s = s.slice(m1[0].length); continue; }
     const m2 = s.match(/^(?:sudo|command|env|nice|nohup|time)\s+/);
     if (m2) { prefix += m2[0]; s = s.slice(m2[0].length); continue; }
+    // timeout は DURATION が必須なので、オプション (`-k 3` / `--foreground` 等) ごと読み飛ばす
+    const m3 = s.match(/^timeout\s+(?:(?:-[ks]|--kill-after|--signal)\s*\S+\s+|--?[\w-]+(?:=\S+)?\s+)*\d+(?:\.\d+)?[smhd]?\s+/);
+    if (m3) { prefix += m3[0]; s = s.slice(m3[0].length); continue; }
     break;
   }
   return { prefix, body: s };
@@ -100,20 +158,20 @@ export function isUnsafeSeg(segText) {
   return false;
 }
 
-export function hasUnsafeShape(tokens, flags) {
-  if (flags.hasHeredoc || flags.hasSubshell || flags.hasGroup || flags.hasProcSub) return true;
-  for (const t of tokens) {
-    if (t.kind === 'seg' && isUnsafeSeg(t.text)) return true;
-  }
-  return false;
-}
-
 const EXCLUDE =
   /(--watch|--watchAll|--ui|--debug|--headed|--interactive|--tty|--follow)\b|\s-(it|ti)\b|\battach\b|pytest-watch|\bptw\b/;
 
 // git diff: 精読 / find: rtk フィルタが GNU find 構文を誤解釈 /
 // ps: rtk 0.42 系は rewrite を返すが subcommand 表に無く実行時に死ぬ
 const FORCE_PASSTHROUGH = [/^git\s+diff\b/, /^find\b/, /^ps\b/];
+
+// このセグメントを rtk に渡さず原文のまま残すか。判定はセグメント単位で、複合コマンドの
+// 他のセグメントには影響しない。
+function keepSeg(tok) {
+  if (tok.heredoc || isUnsafeSeg(tok.text)) return true;
+  const head = commandHead(tok.text);
+  return EXCLUDE.test(head) || FORCE_PASSTHROUGH.some((re) => re.test(head));
+}
 
 // テストランナー系は内側ツールが隠れて rtk rewrite が効かないため、`rtk test` で
 // 実行ごと包んで失敗行だけに畳む。
@@ -180,11 +238,10 @@ export function rewriteSegmentBody(rtk, body) {
   }
 }
 
-// sudo の secure_path 経由でも rtk を見つけられるよう、書き換え後の裸 `rtk` は絶対パス化
+// sudo の secure_path 経由でも rtk を見つけられるよう、書き換え後の裸 `rtk` は絶対パス化。
+// パイプライン途中のコマンド位置 (`cat f | rtk grep x`) も対象。引数位置の `rtk` は触らない。
 function absInBody(rtk, body) {
-  if (body === 'rtk') return rtk;
-  if (body.startsWith('rtk ')) return `${rtk} ${body.slice(4)}`;
-  return body;
+  return body.replace(/(^|[|;&]\s*)rtk(?=\s|$)/g, (_, lead) => lead + rtk);
 }
 
 // クライアントごとの hook 入出力スキーマ。判定ロジックはこの外に出さない。
@@ -234,35 +291,34 @@ function main() {
   const segs = tokens.filter((t) => t.kind === 'seg');
   const heads = segs.map((s) => commandHead(s.text));
 
-  // 0. `rtk init` はブロック（複合の一部でも）。`--help` は何も書き込まないので通す。
-  if (heads.some((h) => /^rtk\s+init\b/.test(h) && !/\s(-h|--help)\b/.test(h))) {
+  // 0. `rtk init` はブロック（複合の一部でも、パイプラインの後段でも）。
+  //    `--help` は何も書き込まないので通す。
+  if (heads.some((h) => /(?:^|\|&?\s*)rtk\s+init\b/.test(h) && !/\s(-h|--help)\b/.test(h))) {
     process.stdout.write(JSON.stringify(io.deny(
       'rtk init は禁止。この環境は rtk を CLI 専用で使う方針です（init すると RTK 純正の PreToolUse フックと指示ファイルが入り、このフックと二重に走る）。出力圧縮は route-command-output.mjs が自動で行うので init は不要です。',
     )));
     process.exit(0);
   }
 
-  // 1. 対話/ストリーミング・常時 passthrough 対象 → 素通し
-  if (heads.some((h) => EXCLUDE.test(h) || FORCE_PASSTHROUGH.some((re) => re.test(h)))) allow();
+  // 1. 終端の無い heredoc など分割結果を信用できない形 → 全体 passthrough
+  if (flags.unparsable) allow();
 
-  // 2. 分割で壊れる shell 構文 (heredoc / 制御構文 / サブシェル等) → 全体 passthrough
-  if (hasUnsafeShape(tokens, flags)) allow();
-
-  // 3. rtk 解決 (未導入なら passthrough)
+  // 2. rtk 解決 (未導入なら passthrough)
   const rtk = resolveRtk();
   if (rtk === '') allow();
 
-  // 4. セグメント数の上限 (fork コスト保護)
+  // 3. セグメント数の上限 (fork コスト保護)
   const MAX_SEGS = 16;
   if (segs.length > MAX_SEGS) allow();
 
-  // 5. セグメント単位で rewrite し、結果を組み立てる
+  // 4. セグメント単位で rewrite し、結果を組み立てる。素通し対象 (git diff / 対話系 /
+  //    制御構文 / heredoc) はそのセグメントだけ原文で残し、隣のセグメントは巻き込まない。
   let needsAsk = false;
   let denyHit = false;
   let anyReplace = false;
   const pieces = [];
   for (const tok of tokens) {
-    if (tok.kind === 'delim') { pieces.push(tok.text); continue; }
+    if (tok.kind !== 'seg' || keepSeg(tok)) { pieces.push(tok.text); continue; }
     const { prefix, body } = splitPrefix(tok.text);
     // rtk rewrite が trim した結果を返すため、末尾 whitespace を別途保持して再結合
     const tail = body.match(/\s*$/)[0];
@@ -275,19 +331,19 @@ function main() {
     pieces.push(prefix + absInBody(rtk, r.body) + tail);
   }
 
-  // 6. いずれかのセグメントが deny → クライアントの native deny rule に委ねる
+  // 5. いずれかのセグメントが deny → クライアントの native deny rule に委ねる
   if (denyHit) allow();
 
-  // 7. 書き換え対象なし → 素通し
+  // 6. 書き換え対象なし → 素通し
   if (!anyReplace) allow();
 
   const newCommand = pieces.join('');
 
-  // 8. ask: permissionDecision を omit して通常の権限フローに委ねる。
+  // 7. ask: permissionDecision を omit して通常の権限フローに委ねる。
   //    Codex はこの形を受け付けない (ask 未サポート・allow 以外の updatedInput はエラー) ので
   //    allow に落とす。Codex の allow は PreToolUse の結果を「書き換えた入力で継続」と
   //    解釈するだけで、後段の権限判定・サンドボックスは通常どおり動く。
-  // 9. 通常: 書き換えて allow
+  // 8. 通常: 書き換えて allow
   const allowed = !(needsAsk && client !== 'codex');
   process.stdout.write(JSON.stringify(io.rewrite(payload, newCommand, allowed)));
   process.exit(0);

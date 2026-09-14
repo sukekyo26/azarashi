@@ -719,6 +719,128 @@ else
   printf '  skip - toml_merge tests (python3 >= 3.9 not available)\n'
 fi
 
+# --- route-command-output.mjs (skipped when node unavailable) ---------------
+# The hook resolves rtk from $HOME/.local/bin first, so a throwaway HOME with a
+# fake rtk makes the rewrite deterministic: command-position ls/cat/grep/git
+# status get an `rtk ` prefix (exit 3 = ask); pipelines into wc/jq and anything
+# else are left alone (exit 1), mirroring the real rtk's pipeline judgement.
+
+# shellcheck disable=SC2016  # single-quoted $x / $(...) are literal shell text fed to the hook
+if command -v node >/dev/null 2>&1; then
+  HOOK="$SCRIPT_DIR/../common/.agents/hooks/route-command-output.mjs"
+  HOOK_HOME=$(mktemp -d)
+  RTK="$HOOK_HOME/.local/bin/rtk"
+  mkdir -p "$HOOK_HOME/.local/bin"
+  cat >"$RTK" <<'FAKE'
+#!/bin/sh
+[ "$1" = rewrite ] || exit 1
+case "$2" in *'| wc'* | *'| jq'*) exit 1 ;; esac
+out=$(printf '%s\n' "$2" | sed -E 's/(^|\| )(ls|cat|grep|git status)( |$)/\1rtk \2\3/g')
+[ "$out" != "$2" ] || exit 1
+printf '%s\n' "$out"
+exit 3
+FAKE
+  chmod +x "$RTK"
+
+  hook_json() { # <command> [hook args...] — raw hook stdout for a claude-code payload
+    _c=$1
+    shift
+    jq -nc --arg c "$_c" '{tool_input:{command:$c}}' | HOME="$HOOK_HOME" node "$HOOK" "$@"
+  }
+  hook_cmd() { # <command> — rewritten command, or PASSTHROUGH when the hook stays silent
+    _o=$(hook_json "$1")
+    if [ -n "$_o" ]; then
+      printf '%s' "$_o" | jq -r '.hookSpecificOutput.updatedInput.command // "PASSTHROUGH"'
+    else
+      printf 'PASSTHROUGH'
+    fi
+  }
+
+  # (a) plain rewrite, rtk absolutised
+  assert_eq "hook: rewrites a bare command with the absolute rtk path" \
+    "$(hook_cmd 'ls')" "$RTK ls"
+
+  # (b) passthrough targets keep only their own segment
+  assert_eq "hook: git diff keeps its segment and the neighbours still rewrite" \
+    "$(hook_cmd 'echo a; git diff --name-only; ls')" "echo a; git diff --name-only; $RTK ls"
+  assert_eq "hook: interactive flag keeps its segment only" \
+    "$(hook_cmd 'docker run -it img && ls')" "docker run -it img && $RTK ls"
+  assert_eq "hook: eval keeps its segment only" \
+    "$(hook_cmd 'eval "$x"; ls')" "eval \"\$x\"; $RTK ls"
+  assert_eq "hook: control-flow segments are kept, nothing else to rewrite" \
+    "$(hook_cmd 'for f in a b; do ls $f; done')" "PASSTHROUGH"
+
+  # (c) command substitution / subshell / grouping stay one segment
+  assert_eq "hook: \$(...) inside an argument does not split the command" \
+    "$(hook_cmd 'git diff $(git merge-base a b) --stat')" "PASSTHROUGH"
+  assert_eq "hook: \$(...) assignment prefix leaves the command rewritable" \
+    "$(hook_cmd 's=$(date +%s); ls; cat f')" "s=\$(date +%s); $RTK ls; $RTK cat f"
+  assert_eq "hook: \$(...) in a leading assignment is a prefix" \
+    "$(hook_cmd 'x=$(date) ls')" "x=\$(date) $RTK ls"
+  assert_eq "hook: subshell is passed whole and left alone" \
+    "$(hook_cmd '(cd x && ls)')" "PASSTHROUGH"
+  assert_eq "hook: process substitution is passed whole" \
+    "$(hook_cmd 'diff <(ls a) <(ls b)')" "PASSTHROUGH"
+  assert_eq "hook: brace group piped into jq is passed whole" \
+    "$(hook_cmd '{ cat f; cat g; } | jq .')" "PASSTHROUGH"
+  assert_eq "hook: backticks are opaque" \
+    "$(hook_cmd 'echo `ls; pwd`')" "PASSTHROUGH"
+
+  # (d) pipelines go to rtk as one unit
+  assert_eq "hook: pipeline into jq is left to rtk (kept)" \
+    "$(hook_cmd 'cat f | jq .a')" "PASSTHROUGH"
+  assert_eq "hook: pipeline into wc is left to rtk (kept)" \
+    "$(hook_cmd 'ls | wc -l')" "PASSTHROUGH"
+  assert_eq "hook: rtk inside a pipeline is absolutised at every command position" \
+    "$(hook_cmd 'sudo cat f | grep x')" "sudo $RTK cat f | $RTK grep x"
+  assert_eq "hook: bash |& is a pipe, not a background delimiter" \
+    "$(hook_cmd 'ls |& head')" "$RTK ls |& head"
+  assert_eq "hook: test runner piped into tail is wrapped as a whole" \
+    "$(hook_cmd 'npm test 2>&1 | tail -5')" "$RTK test npm test 2>&1 | tail -5"
+
+  # (e) timeout is a wrapper prefix
+  assert_eq "hook: timeout prefix is stripped before the playwright guard" \
+    "$(hook_cmd 'timeout 120 playwright screenshot x')" "PASSTHROUGH"
+  assert_eq "hook: timeout prefix survives around playwright test" \
+    "$(hook_cmd 'timeout 120 playwright test')" "timeout 120 $RTK playwright test"
+  assert_eq "hook: timeout options and unit suffix are part of the prefix" \
+    "$(hook_cmd 'timeout -k 3 5s ls')" "timeout -k 3 5s $RTK ls"
+  assert_eq "hook: timeout short option with attached value is part of the prefix" \
+    "$(hook_cmd 'timeout -k3 5s ls')" "timeout -k3 5s $RTK ls"
+
+  # (f) heredocs: body kept verbatim, following commands still rewrite
+  assert_eq "hook: heredoc body is verbatim and the next line rewrites" \
+    "$(hook_cmd "$(printf "cat <<'EOF' > f\nls\nEOF\nls")")" \
+    "$(printf "cat <<'EOF' > f\nls\nEOF\n%s ls" "$RTK")"
+  assert_eq "hook: heredoc on a ; chain keeps its own segment" \
+    "$(hook_cmd "$(printf 'cat <<EOF; ls\nhi\nEOF')")" \
+    "$(printf 'cat <<EOF; %s ls\nhi\nEOF' "$RTK")"
+  assert_eq "hook: <<- ignores leading tabs on the terminator" \
+    "$(hook_cmd "$(printf 'cat <<-EOF\n\thi\n\tEOF\nls')")" \
+    "$(printf 'cat <<-EOF\n\thi\n\tEOF\n%s ls' "$RTK")"
+  assert_eq "hook: unterminated heredoc passes the whole command through" \
+    "$(hook_cmd "$(printf 'cat <<EOF\nls')")" "PASSTHROUGH"
+
+  # (g) rtk init is denied even inside a compound
+  assert_eq "hook: rtk init in a compound is denied" \
+    "$(hook_json 'ls; rtk init' | jq -r '.hookSpecificOutput.permissionDecision')" "deny"
+  assert_eq "hook: rtk init in a later pipeline stage is denied" \
+    "$(hook_json 'ls | rtk init' | jq -r '.hookSpecificOutput.permissionDecision')" "deny"
+  assert_eq "hook: rtk init after bash |& is denied" \
+    "$(hook_json 'ls |& rtk init' | jq -r '.hookSpecificOutput.permissionDecision')" "deny"
+  assert_eq "hook: rtk init --help is not denied" \
+    "$(hook_cmd 'rtk init --help')" "PASSTHROUGH"
+
+  # (h) copilot payload shape
+  assert_eq "hook: copilot client rewrites via modifiedArgs" \
+    "$(jq -nc '{toolArgs:{command:"ls"}}' | HOME="$HOOK_HOME" node "$HOOK" --client=copilot |
+      jq -r '.modifiedArgs.command')" "$RTK ls"
+
+  rm -rf "$HOOK_HOME"
+else
+  printf '  skip - route-command-output.mjs tests (node not available)\n'
+fi
+
 # --- summary ---------------------------------------------------------------
 
 printf '\n%s test(s), %s failure(s)\n' "$TESTS" "$FAILS"
