@@ -1,11 +1,11 @@
 # statusline の表示内容
 
-`common/.claude/statusline.sh` が Claude Code のステータスラインに描く 2 行（miss があるときは 3 行）の説明。入力は Claude Code が stdin に渡す JSON と、`transcript_path` が指すセッションの transcript（JSONL）。
+`common/.claude/statusline.sh` が Claude Code のステータスラインに描く 2 行（レートリミットか miss があるときは 3 行）の説明。入力は Claude Code が stdin に渡す JSON と、`transcript_path` が指すセッションの transcript（JSONL）。
 
 ```
 ~/work/azarashi (develop) ⑂wt +12/-3
 Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳59:58 (16:42:07) v2.1.0
-💥miss $0.89 (model_changed)
+5h ██░░░░░░░░ 18% (20:00) 7d █░░░░░░░░░ 12% (09/21 15:00) 💥miss $0.89 (model_changed)
 ```
 
 ## 1 行目: プロジェクト
@@ -33,9 +33,21 @@ Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳5
 | `📦compact` | `/compact` 直後。次の送信で会話部分のキャッシュが再構築される |
 | `v2.1.0` | Claude Code のバージョン |
 
-## 3 行目: キャッシュ miss
+## 3 行目: レートリミットと キャッシュ miss
 
-miss があるときだけ出る。次のユーザー入力で消える。
+どちらかがあるときだけ出る。
+
+### レートリミット
+
+```
+5h ██░░░░░░░░ 18% (20:00) 7d █░░░░░░░░░ 12% (09/21 15:00)
+```
+
+Claude.ai Pro / Max の契約者（または支出上限付き gateway 経由）だけに stdin の `rate_limits` が来る。Bedrock や API キーでは項目自体が無いので何も出ない。ゲージはコンテキスト使用率と同じ色分け（緑 < 60% ≤ 黄 < 80% ≤ 赤）。括弧はその枠がリセットされる時刻で、5 時間枠は時刻、7 日枠は日付と時刻。支出上限（`spend`）があればその後ろに付く。リセット時刻を過ぎた枠は Claude Code 側が落とすので消える。
+
+### キャッシュ miss
+
+miss があるときだけ、レートリミットの後ろ（無ければ行頭）に出る。次のユーザー入力で消える。
 
 ```
 💥miss $0.89 (model_changed)
