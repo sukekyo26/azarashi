@@ -132,10 +132,14 @@ if [[ -n "$style" && "$style" != "default" ]]; then
   style_tag=" ${C_DIM}{$style}${C_RESET}"
 fi
 
-# bar <percentage> — a 10-cell gauge with the value, green < 60 <= yellow < 80 <= red.
-# Used for the context window and the subscription rate limits.
+# bar <percentage> [low] — a 10-cell gauge with the value, green < 60 <= yellow < 80 <= red.
+# Used for the context window and the subscription rate limits. `low` draws
+# the gauge with bottom-aligned half-height cells (▄ / ▁) so a gauge on the row
+# below a full-height one does not visually merge with it.
 bar() {
   local pct_int=${1%%.*} bar_width=10 filled empty color fill_str empty_str
+  local fill_ch=█ empty_ch=░
+  [[ "${2:-}" == "low" ]] && fill_ch=▄ empty_ch=▁
   [[ "$pct_int" =~ ^[0-9]+$ ]] || pct_int=0
   ((pct_int > 100)) && pct_int=100
   filled=$((pct_int * bar_width / 100))
@@ -150,7 +154,7 @@ bar() {
   fi
   fill_str=$(printf '%*s' "$filled" '' | tr ' ' '#')
   empty_str=$(printf '%*s' "$empty" '' | tr ' ' '-')
-  printf '%s%s%s%s%s %s%s%%%s' "$color" "${fill_str//#/█}" "$C_DIM" "${empty_str//-/░}" "$C_RESET" "$color" "$pct_int" "$C_RESET"
+  printf '%s%s%s%s%s %s%s%%%s' "$color" "${fill_str//#/$fill_ch}" "$C_DIM" "${empty_str//-/$empty_ch}" "$C_RESET" "$color" "$pct_int" "$C_RESET"
 }
 
 ctx_segment=""
@@ -170,7 +174,7 @@ for w in five_hour seven_day spend_limit; do
   esac
   reset_str=""
   ((resets > 0)) && reset_str=" ${C_DIM}($(date -d "@$resets" +"$fmt"))${C_RESET}"
-  rate_line="${rate_line:+$rate_line }${C_DIM}${label}${C_RESET} $(bar "$used")${reset_str}"
+  rate_line="${rate_line:+$rate_line }${C_DIM}${label}${C_RESET} $(bar "$used" low)${reset_str}"
 done
 
 meta_segment=""
@@ -272,8 +276,6 @@ printf '%s%s%s%s%s%s %s%s$%.3f%s%s%s%s\n' \
   "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
   "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
   "$cache_segment" "$cache_ttl_segment" "$version_tag"
-# The spacer row is a braille blank (U+2800): Claude Code drops rows that are
-# empty or whitespace-only, and the gauges on rows 2 and 3 touch without it.
 if [[ -n "$rate_line$miss_line" ]]; then
-  printf '\u2800\n%s\n' "${rate_line}${rate_line:+${miss_line:+ }}${miss_line}"
+  printf '%s\n' "${rate_line}${rate_line:+${miss_line:+ }}${miss_line}"
 fi
