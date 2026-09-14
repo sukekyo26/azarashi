@@ -175,7 +175,7 @@ meta_segment=""
 #                      system_prompt_changed ...); kept until the next user
 #                      prompt (prompt_id changes) so a tool loop right after the
 #                      miss does not wipe it
-#   ⏳m:ss (HH:MM)     time until the cached prefix goes cold, and the clock
+#   ⏳m:ss (HH:MM:SS)    time until the cached prefix goes cold, and the clock
 #   ❄️cold             time it does so / already cold
 #   📦compact          messages just rewritten (/compact or tool-result clearing);
 #                      the next request rebuilds the conversation cache
@@ -230,7 +230,7 @@ if [[ -n "$pc" ]]; then
     if ((remaining > 0)); then
       ((remaining <= 60)) && ttl_color=$C_WARN || ttl_color=$C_OK
       cache_ttl_segment=$(printf ' %s⏳%d:%02d%s %s(%s)%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" "$C_RESET" \
-        "$C_DIM" "$(date -d "@$pc_expires" +%H:%M)" "$C_RESET")
+        "$C_DIM" "$(date -d "@$pc_expires" +%H:%M:%S)" "$C_RESET")
     else
       cache_ttl_segment=" ${C_DANGER}❄️cold${C_RESET}"
     fi
