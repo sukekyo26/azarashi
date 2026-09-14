@@ -841,6 +841,39 @@ else
   printf '  skip - route-command-output.mjs tests (node not available)\n'
 fi
 
+# --- cache-audit.sh ----------------------------------------------------------
+# A synthetic project dir with one transcript of four assistant turns: first,
+# append, a front miss preceded by a permission-mode record, and a 5m-tier turn
+# after a 4000s idle gap (ttl). The dir name starts with "-" like the real ones.
+
+AUDIT="$SCRIPT_DIR/../common/.claude/cache-audit.sh"
+AUDIT_DIR=$(mktemp -d)
+mkdir -p "$AUDIT_DIR/-home-user-repo"
+cat >"$AUDIT_DIR/-home-user-repo/sess-1.jsonl" <<'EOF'
+{"type":"user","timestamp":"2026-09-14T10:00:00.000Z","message":{"content":"hi"}}
+{"type":"assistant","timestamp":"2026-09-14T10:00:01.000Z","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":1000}}}
+{"type":"assistant","timestamp":"2026-09-14T10:00:11.000Z","message":{"id":"m2","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":1010,"cache_creation_input_tokens":100}}}
+{"type":"permission-mode","timestamp":"2026-09-14T10:00:20.000Z"}
+{"type":"assistant","timestamp":"2026-09-14T10:00:41.000Z","message":{"id":"m3","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":1200}}}
+{"type":"assistant","timestamp":"2026-09-14T11:07:21.000Z","message":{"id":"m4","model":"claude-opus-5","usage":{"input_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":1300}}}
+EOF
+audit_json=$(bash "$AUDIT" --dir "$AUDIT_DIR" --json)
+audit_class() { # <class> — turn count for that class
+  printf '%s' "$audit_json" | jq -r --arg c "$1" '.by_class[] | select(.class == $c) | .turns'
+}
+assert_eq "audit: counts every assistant turn" "$(printf '%s' "$audit_json" | jq -r '.turns')" "4"
+assert_eq "audit: first turn is class first" "$(audit_class first)" "1"
+assert_eq "audit: warm tail write is append" "$(audit_class append)" "1"
+assert_eq "audit: read=0 after permission-mode is front" "$(audit_class front)" "1"
+assert_eq "audit: idle past the 5m ttl is ttl" "$(audit_class ttl)" "1"
+assert_eq "audit: front miss names mode-switch as the cause" \
+  "$(printf '%s' "$audit_json" | jq -r '.misses[0].cause')" "mode-switch"
+assert_eq "audit: text report lists the class table" \
+  "$(bash "$AUDIT" --dir "$AUDIT_DIR" | grep -c '^front ')" "1"
+expect_true "audit: fails clearly on a missing dir" \
+  sh -c "! bash '$AUDIT' --dir '$AUDIT_DIR/none' >/dev/null 2>&1"
+rm -rf "$AUDIT_DIR"
+
 # --- summary ---------------------------------------------------------------
 
 printf '\n%s test(s), %s failure(s)\n' "$TESTS" "$FAILS"
