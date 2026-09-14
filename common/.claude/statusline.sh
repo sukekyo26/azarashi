@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude Code statusLine — reads session JSON on stdin, prints two lines.
+# Claude Code statusLine — reads session JSON on stdin, prints two lines (three while a cache miss is shown).
 # キャッシュ関連（hit% / miss / TTL / compact）は Claude Code >= 2.1.251 が stdin
 # で渡す .prompt_cache から読む（docs/statusline.md）。
 # Bedrock 利用時はトランスクリプトの usage を集計して実価格で再計算する（コストに
