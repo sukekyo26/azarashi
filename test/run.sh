@@ -897,7 +897,7 @@ expect_true "statusline: rate limits render as gauges at the end of line 2 with 
 expect_true "statusline: the miss stays on its own third line below the rate limits" \
   sh -c "printf '%s' '$sl_rate_miss' | grep -q '^💥miss \$0.40 (tools_changed)\$'"
 expect_true "statusline: no prompt_cache on stdin shows no cache segment" \
-  sh -c "! printf '%s' '$sl_none' | grep -q 'cache\|miss\|⏳'"
+  sh -c "! printf '%s' '$sl_none' | grep -qE 'cache|miss|⏳'"
 
 # --- summary ---------------------------------------------------------------
 
