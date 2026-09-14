@@ -878,6 +878,8 @@ expect_true "statusline: an expired prefix shows cold" \
   sh -c "printf '%s' '$sl_cold' | grep -q '❄️cold'"
 expect_true "statusline: a rewritten conversation shows compact" \
   sh -c "printf '%s' '$sl_compact' | grep -q '📦compact'"
+expect_true "statusline: exits 0 without a miss (a non-zero exit hides the whole status line)" \
+  sh -c "jq -nc --arg d '$SL_DIR' '{workspace:{current_dir:\$d}}' | TMPDIR='$SL_DIR' bash '$STATUSLINE' >/dev/null"
 expect_true "statusline: no prompt_cache on stdin shows no cache segment" \
   sh -c "! printf '%s' '$sl_none' | grep -q 'cache\|miss\|⏳'"
 rm -rf "$SL_DIR"

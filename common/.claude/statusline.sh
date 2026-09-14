@@ -254,4 +254,6 @@ printf '%s%s%s%s%s%s %s%s$%.3f%s%s%s%s\n' \
   "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
   "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
   "$cache_segment" "$cache_ttl_segment" "$version_tag"
-[[ -n "$miss_line" ]] && printf '%s\n' "$miss_line"
+if [[ -n "$miss_line" ]]; then
+  printf '%s\n' "$miss_line"
+fi
