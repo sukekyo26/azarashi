@@ -799,6 +799,10 @@ FAKE
     "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="/usr/bin:/bin" "$(command -v node)" "$HOOK" |
       jq -r '.hookSpecificOutput.updatedInput.command')" "$RTK ls"
   mkdir -p "$HOOK_HOME/other" && printf '#!/bin/sh\nexit 1\n' >"$HOOK_HOME/other/rtk" && chmod +x "$HOOK_HOME/other/rtk"
+  mkdir -p "$HOOK_HOME/broken" && ln -s "$HOOK_HOME/nowhere" "$HOOK_HOME/broken/rtk"
+  assert_eq "hook: a dangling rtk symlink earlier on PATH is skipped like the shell does" \
+    "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/broken:$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
+      jq -r '.hookSpecificOutput.updatedInput.command')" "rtk ls"
   assert_eq "hook: a different rtk earlier on PATH forces the absolute path of the resolved one" \
     "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/other:$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
       jq -r '.hookSpecificOutput.updatedInput.command')" "$RTK ls"

@@ -248,14 +248,21 @@ export function rewriteSegmentBody(rtk, body) {
 // パイプライン途中のコマンド位置 (`cat f | rtk grep x`) も対象。引数位置の `rtk` は触らない。
 // 裸の `rtk` が PATH 順で最初に当たる実体と、rewrite を計算した rtk が同じ場合だけ true。
 // 別の rtk が先に居ると、書き換えを決めた版と実行される版が食い違う。
+// 1 回の hook 実行で PATH は変わらないので判定は 1 度だけ。壊れた symlink 等で realpath
+// できない候補はシェルの PATH 探索と同じく読み飛ばす。
+let onPathMemo;
 function rtkOnPath(rtk) {
+  if (onPathMemo !== undefined) return onPathMemo;
+  onPathMemo = false;
+  let target;
+  try { target = realpathSync(rtk); } catch { return onPathMemo; }
   for (const p of (process.env.PATH || '').split(':')) {
     if (!p) continue;
     const cand = join(p, 'rtk');
     if (!existsSync(cand)) continue;
-    try { return realpathSync(cand) === realpathSync(rtk); } catch { return false; }
+    try { onPathMemo = realpathSync(cand) === target; return onPathMemo; } catch { continue; }
   }
-  return false;
+  return onPathMemo;
 }
 
 function absInBody(rtk, prefix, body) {
