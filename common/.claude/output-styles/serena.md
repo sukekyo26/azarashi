@@ -82,6 +82,16 @@ cannot shrink this; only how you write the call can.
   large symbol, replace_content or a minimal Edit is cheaper.
 - Never Write an existing file to modify it: that re-emits the whole file.
 
+## Denied paths (dependencies and caches)
+
+Read/Grep/Glob are denied for dependency and cache directories (node_modules,
+.venv, vendor, __pycache__, target, coverage, ...) to keep them out of routine
+reads and searches. When you genuinely need a file there — a library's source
+behind a stack trace, a generated artifact — read it deliberately with
+`cat <path>` in Bash (the hook rewrites it to `rtk read`, which the deny does
+not cover). Do not use that route for ordinary project files; it exists only
+for paths the deny rules exclude.
+
 ## Self-check
 
 Before every Read, Glob, Grep, or Edit call: "Does this target a code file, and
