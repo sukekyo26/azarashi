@@ -16,6 +16,8 @@
       "Bash(rtk git branch -a)",
       "Bash(rtk git branch -vv)",
       "Bash(rtk git commit *)",
+      "Bash(rtk git push *)",
+      "Bash(git push *)",
       "Bash(rtk git worktree list)",
       "Bash(rtk gh issue list *)",
       "Bash(rtk gh issue view *)",
@@ -61,8 +63,6 @@
       "Bash(rtk tofu validate *)"
     ],
     "ask": [
-      "Bash(git push *)",
-      "Bash(rtk git push *)",
       "Bash(rtk gh pr merge *)",
       "Bash(rtk gh repo delete *)",
       "Bash(rtk git checkout -- *)",
