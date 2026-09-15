@@ -803,6 +803,10 @@ FAKE
   assert_eq "hook: a dangling rtk symlink earlier on PATH is skipped like the shell does" \
     "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/broken:$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
       jq -r '.hookSpecificOutput.updatedInput.command')" "rtk ls"
+  mkdir -p "$HOOK_HOME/noexec" && printf '#!/bin/sh\nexit 1\n' >"$HOOK_HOME/noexec/rtk" && chmod -x "$HOOK_HOME/noexec/rtk"
+  assert_eq "hook: a non-executable rtk earlier on PATH is skipped like the shell does" \
+    "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/noexec:$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
+      jq -r '.hookSpecificOutput.updatedInput.command')" "rtk ls"
   assert_eq "hook: a different rtk earlier on PATH forces the absolute path of the resolved one" \
     "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/other:$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
       jq -r '.hookSpecificOutput.updatedInput.command')" "$RTK ls"

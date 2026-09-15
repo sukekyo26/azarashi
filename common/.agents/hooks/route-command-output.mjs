@@ -6,7 +6,7 @@
 //  - それ以外は rtk rewrite に渡す (exit 0/1/2/3 を尊重)。パイプラインは割らず rtk に委ねる
 // Claude Code / Codex / Copilot CLI の 3 つから同じファイルを呼ぶ (~/.agents/hooks/)。
 // 判定ロジックは共通で、hook の入出力 JSON の形だけ `--client=` で切り替える。
-import { readFileSync, existsSync, realpathSync } from 'node:fs';
+import { readFileSync, existsSync, realpathSync, statSync, accessSync, constants } from 'node:fs';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -259,8 +259,13 @@ function rtkOnPath(rtk) {
   for (const p of (process.env.PATH || '').split(':')) {
     if (!p) continue;
     const cand = join(p, 'rtk');
-    if (!existsSync(cand)) continue;
-    try { onPathMemo = realpathSync(cand) === target; return onPathMemo; } catch { continue; }
+    // シェルと同じく、実行可能な通常ファイルだけを候補にする (ディレクトリ・chmod -x は読み飛ばす)
+    try {
+      if (!statSync(cand).isFile()) continue;
+      accessSync(cand, constants.X_OK);
+      onPathMemo = realpathSync(cand) === target;
+      return onPathMemo;
+    } catch { continue; }
   }
   return onPathMemo;
 }
