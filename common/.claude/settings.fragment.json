@@ -72,6 +72,8 @@
     "deny": [
       "Read(//**/.ssh/**)",
       "Read(//**/.aws/credentials)",
+      "Bash(*.ssh/*)",
+      "Bash(*.aws/credentials*)",
       "Read(./**/__pycache__/**)",
       "Read(./**/.ruff_cache/**)",
       "Read(./**/.mypy_cache/**)",
