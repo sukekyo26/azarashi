@@ -903,6 +903,19 @@ expect_true "statusline: the miss stays on its own third line below the rate lim
 expect_true "statusline: no prompt_cache on stdin shows no cache segment" \
   sh -c "! printf '%s' '$sl_none' | grep -qE 'cache|miss|⏳'"
 
+# --- warn-cold-cache-cost.sh -------------------------------------------------
+# A 1h-cached opus session idle for two hours: the rebuild estimate counts the
+# newest turn's input, cache read/write and output tokens (100,000 + 2 + 5,000).
+
+COLDWARN="$SCRIPT_DIR/../common/.claude/hooks/warn-cold-cache-cost.sh"
+CW_T="$SL_DIR/cold.jsonl"
+jq -nc --arg ts "$(date -u -d '2 hours ago' +%FT%TZ)" '{type:"assistant", timestamp:$ts, message:{model:"claude-opus-5",
+    usage:{input_tokens:2, output_tokens:5000, cache_read_input_tokens:100000, cache_creation_input_tokens:0,
+           cache_creation:{ephemeral_1h_input_tokens:1, ephemeral_5m_input_tokens:0}}}}' >"$CW_T"
+cw_out=$(jq -nc --arg t "$CW_T" '{session_id:"cw1", transcript_path:$t}' | TMPDIR="$SL_DIR" bash "$COLDWARN")
+expect_true "warn-cold-cache-cost: the rebuild estimate includes the newest turn's output tokens" \
+  sh -c "printf '%s' '$cw_out' | jq -e '.decision == \"block\" and (.reason | test(\"105k tokens.*\\\\\$1.05\"))' >/dev/null"
+
 # --- summary ---------------------------------------------------------------
 
 printf '\n%s test(s), %s failure(s)\n' "$TESTS" "$FAILS"
