@@ -84,13 +84,15 @@ cannot shrink this; only how you write the call can.
 
 ## Denied paths (dependencies and caches)
 
-Read/Grep/Glob are denied for dependency and cache directories (node_modules,
-.venv, vendor, __pycache__, target, coverage, ...) to keep them out of routine
-reads and searches. When you genuinely need a file there — a library's source
-behind a stack trace, a generated artifact — read it deliberately with
-`cat <path>` in Bash (the hook rewrites it to `rtk read`, which the deny does
-not cover). Do not use that route for ordinary project files; it exists only
-for paths the deny rules exclude.
+`Read(...)` deny rules cover dependency and cache directories (node_modules,
+.venv, vendor, __pycache__, target, coverage, ...); Claude Code applies them to
+the Read tool and, best-effort, keeps those paths out of Grep and Glob results.
+When you genuinely need a file there — a library's source behind a stack
+trace, a generated artifact — read it deliberately with `cat <path>` in Bash
+(the hook rewrites it to `rtk read`, which a Read deny does not cover). Do not
+use that route for ordinary project files; it exists only for these
+dependency/cache paths. Secret paths (`~/.ssh`, `~/.aws/credentials`,
+`.env.local`) carry a Bash deny as well and stay unreadable either way.
 
 ## Self-check
 
