@@ -221,7 +221,10 @@ if [[ -n "$pc" ]]; then
   if ((pc_miss_at > 0)); then
     prompt_id=$(jq -r '.prompt_id // ""' <<<"$input")
     miss_state="${TMPDIR:-/tmp}/claude-statusline-miss-$(md5sum <<<"${session_id:-$transcript}" | cut -d' ' -f1)"
-    read -r s_miss_at s_prompt s_tokens s_total 2>/dev/null <"$miss_state" || { s_miss_at=0 s_prompt="" s_tokens=0 s_total=0; }
+    # A truncated or hand-edited state file is treated as no state at all.
+    read -r s_miss_at s_prompt s_tokens s_total 2>/dev/null <"$miss_state" &&
+      [[ "$s_tokens" =~ ^[0-9]+$ && "$s_total" =~ ^[0-9]+$ ]] ||
+      { s_miss_at=0 s_prompt="" s_tokens=0 s_total=0; }
     if [[ "$s_miss_at" != "$pc_miss_at" ]]; then
       # A lower cumulative total than last stored (session stats reset, or a
       # stale/reused state file) means the baseline is unknown: treat the
