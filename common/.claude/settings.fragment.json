@@ -63,6 +63,8 @@
       "Bash(rtk tofu validate *)"
     ],
     "ask": [
+      "Bash(*git push*--force*)",
+      "Bash(*git push* -f*)",
       "Bash(rtk gh pr merge *)",
       "Bash(rtk gh repo delete *)",
       "Bash(rtk git checkout -- *)",
