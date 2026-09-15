@@ -12,6 +12,9 @@
 set -u
 
 input=$(cat)
+# STATUSLINE_DEBUG_LOG=<path> appends every stdin payload, to diagnose a segment
+# that disagrees with what Claude Code reported (e.g. warm/cold).
+[[ -n "${STATUSLINE_DEBUG_LOG:-}" ]] && printf '%s %s\n' "$(date +%FT%T)" "$(jq -c . <<<"$input")" >>"$STATUSLINE_DEBUG_LOG"
 
 model=$(jq -r '.model.display_name // "?"' <<<"$input")
 cwd=$(jq -r '.workspace.current_dir // ""' <<<"$input")
@@ -242,16 +245,19 @@ if [[ -n "$pc" ]]; then
     fi
   fi
 
-  if [[ "$pc_recache_if_cold" == "null" && "$pc_warm" == "true" ]]; then
-    cache_ttl_segment=" ${C_WARN}📦compact${C_RESET}"
-  elif [[ "$pc_warm" == "true" ]] && ((pc_expires > 0)); then
+  # Cold wins over compact: recache_tokens_if_cold stays null until the next
+  # request, so a session left idle after a compaction would otherwise show
+  # 📦compact past its expiry.
+  if [[ "$pc_warm" == "true" ]] && ((pc_expires > 0)); then
     remaining=$((pc_expires - $(date +%s)))
-    if ((remaining > 0)); then
+    if ((remaining <= 0)); then
+      cache_ttl_segment=" ${C_DANGER}❄️cold${C_RESET}"
+    elif [[ "$pc_recache_if_cold" == "null" ]]; then
+      cache_ttl_segment=" ${C_WARN}📦compact${C_RESET}"
+    else
       ((remaining <= 60)) && ttl_color=$C_WARN || ttl_color=$C_OK
       cache_ttl_segment=$(printf ' %s⏳%d:%02d (%s)%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" \
         "$(date -d "@$pc_expires" +%H:%M:%S)" "$C_RESET")
-    else
-      cache_ttl_segment=" ${C_DANGER}❄️cold${C_RESET}"
     fi
   elif [[ "$(jq -r '.caching_observed // false' <<<"$pc")" == "true" ]]; then
     cache_ttl_segment=" ${C_DANGER}❄️cold${C_RESET}"

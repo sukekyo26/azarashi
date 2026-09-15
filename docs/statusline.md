@@ -30,7 +30,7 @@ Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳5
 | `cache 98%` | 直近ターンのキャッシュ hit 率 = cache_read / (cache_read + cache_creation)。緑 ≥ 90% > 黄 ≥ 50% > 赤 |
 | `⏳59:58 (16:42:07)` | プロンプトキャッシュが warm でいられる残り時間と、cold になる時刻。残り 60 秒以下で黄 |
 | `❄️cold` | TTL 切れ。次の送信でプレフィックス全体を cache write する |
-| `📦compact` | `/compact` 直後。次の送信で会話部分のキャッシュが再構築される |
+| `📦compact` | `/compact` 直後。次の送信で会話部分のキャッシュが再構築される。TTL も切れていれば `❄️cold` が優先 |
 | `5h ██░░░░░░░░ 18% (20:00)` | サブスクリプションの 5 時間枠の使用率とリセット時刻（後述） |
 | `7d █░░░░░░░░░ 12% (09/21 15:00)` | 同じく 7 日枠。リセットは日付と時刻 |
 | `v2.1.0` | Claude Code のバージョン |
@@ -87,6 +87,10 @@ Claude Code は、キャッシュから読めたはずの分の 5% かつ 2,000 
 - 料金は `この miss で書き直したトークン × 入力単価 × write 係数（5m: 1.25 / 1h: 2）× 地域係数`。価格表は Bedrock コスト再計算と共通
 - `miss_recache_tokens` は累計なので、直前の miss 時点との差分をこの miss の量とする。差分と miss 発生時の `prompt_id` は `$TMPDIR/claude-statusline-miss-<session>` に保持する
 - `prompt_id` が変わる（次のユーザー入力）まで表示し続ける。ツールループが何分続いても、離席していても、次に入力するまで「このターンで miss した」と読める
+
+## 表示が実態と合わないとき
+
+`STATUSLINE_DEBUG_LOG=<path>` を設定すると（`settings.json` の `env` で Claude Code から渡す）、実行ごとに stdin の JSON を 1 行ずつ追記する。`prompt_cache.warm` / `expires_at` と表示を突き合わせれば、Claude Code の報告と描画のどちらがずれているか切り分けられる。
 
 ## 関連
 
