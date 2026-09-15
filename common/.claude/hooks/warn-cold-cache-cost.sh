@@ -76,7 +76,8 @@ last_req=$(date -d "$last_req" +%s 2>/dev/null) || exit 0
 ((ttl - ($(date +%s) - last_req) <= 0)) || exit 0
 
 # Estimate the rebuild cost: the newest assistant turn's input + cache_read +
-# cache_creation tokens approximate the current cached prefix; rebuilding it
+# cache_creation tokens are its request, plus its output_tokens, which the next
+# request carries as input; together they approximate the prefix. Rebuilding it
 # costs prefix * input_price * write_mult (1.25 for a 5m cache, 2 for 1h) with
 # the geo multiplier. Returns "<prefix_tokens>\t<usd>\t<warn|info>"; nothing when
 # the model price is unknown.
@@ -99,6 +100,7 @@ est=$(jq -rs --arg warn "$warn_usd" --arg write "$write_mult" '
       ($a.message.model) as $m
       | $a.message.usage as $u
       | (($u.input_tokens // 0)
+         + ($u.output_tokens // 0)
          + ($u.cache_read_input_tokens // 0)
          + (if $u.cache_creation?
             then ($u.cache_creation.ephemeral_5m_input_tokens // 0)
