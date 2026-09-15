@@ -745,7 +745,7 @@ FAKE
   hook_json() { # <command> [hook args...] — raw hook stdout for a claude-code payload
     _c=$1
     shift
-    jq -nc --arg c "$_c" '{tool_input:{command:$c}}' | HOME="$HOOK_HOME" node "$HOOK" "$@"
+    jq -nc --arg c "$_c" '{tool_input:{command:$c}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/.local/bin:$PATH" node "$HOOK" "$@"
   }
   hook_cmd() { # <command> — rewritten command, or PASSTHROUGH when the hook stays silent
     _o=$(hook_json "$1")
@@ -795,6 +795,9 @@ FAKE
     "$(hook_cmd 'sudo cat f | grep x')" "sudo $RTK cat f | $RTK grep x"
   assert_eq "hook: without sudo the pipeline keeps a bare rtk" \
     "$(hook_cmd 'cat f | grep x')" "rtk cat f | rtk grep x"
+  assert_eq "hook: rtk off the shell PATH is absolutised so the command still runs" \
+    "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="/usr/bin:/bin" "$(command -v node)" "$HOOK" |
+      jq -r '.hookSpecificOutput.updatedInput.command')" "$RTK ls"
   assert_eq "hook: bash |& is a pipe, not a background delimiter" \
     "$(hook_cmd 'ls |& head')" "rtk ls |& head"
   assert_eq "hook: test runner piped into tail is wrapped as a whole" \
@@ -835,7 +838,7 @@ FAKE
 
   # (h) copilot payload shape
   assert_eq "hook: copilot client rewrites via modifiedArgs" \
-    "$(jq -nc '{toolArgs:{command:"ls"}}' | HOME="$HOOK_HOME" node "$HOOK" --client=copilot |
+    "$(jq -nc '{toolArgs:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/.local/bin:$PATH" node "$HOOK" --client=copilot |
       jq -r '.modifiedArgs.command')" "rtk ls"
 
   rm -rf "$HOOK_HOME"

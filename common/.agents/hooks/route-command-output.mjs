@@ -9,6 +9,7 @@
 import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 
 function allow() {
   process.exit(0);
@@ -241,10 +242,17 @@ export function rewriteSegmentBody(rtk, body) {
 // 書き換え後の `rtk` は裸のコマンド名のまま残す。権限ルールは書き換え後のコマンドに
 // 対して照合されるので、絶対パス化するとホストごとに `Bash(/home/x/.local/bin/rtk git status *)`
 // が必要になる。裸なら `Bash(rtk git status *)` 1 本で済む。
-// 例外は sudo 前置時: secure_path で rtk が見つからないので絶対パス化する。
+// 絶対パス化するのは裸では見つからない場合だけ: sudo 前置 (secure_path) と、resolveRtk が
+// 候補パスで見つけたが実行シェルの PATH には無いホスト。後者は allow が効かず確認に落ちる
+// だけで、command not found にはしない。
 // パイプライン途中のコマンド位置 (`cat f | rtk grep x`) も対象。引数位置の `rtk` は触らない。
+function rtkOnPath(rtk) {
+  const dir = dirname(rtk);
+  return (process.env.PATH || '').split(':').some((p) => p === dir || (p && resolve(p) === dir));
+}
+
 function absInBody(rtk, prefix, body) {
-  if (!/(^|\s)sudo\s/.test(prefix)) return body;
+  if (!/(^|\s)sudo\s/.test(prefix) && rtkOnPath(rtk)) return body;
   return body.replace(/(^|[|;&]\s*)rtk(?=\s|$)/g, (_, lead) => lead + rtk);
 }
 
