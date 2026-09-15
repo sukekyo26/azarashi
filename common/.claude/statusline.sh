@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Claude Code statusLine — reads session JSON on stdin, prints a single line.
+# Claude Code statusLine — reads session JSON on stdin, prints two lines (three while a cache miss is shown).
+# キャッシュ関連（hit% / miss / TTL / compact）は Claude Code >= 2.1.251 が stdin
+# で渡す .prompt_cache から読む（docs/statusline.md）。
 # Bedrock 利用時はトランスクリプトの usage を集計して実価格で再計算する（コストに
 # "~" が付く）。Anthropic API 直の場合は Claude Code が報告する total_cost_usd を
 # そのまま使う。どちらかはトランスクリプトのモデル ID から実行時に判定するので、
@@ -23,6 +25,7 @@ effort=$(jq -r '.effort.level // empty' <<<"$input")
 thinking=$(jq -r '.thinking.enabled // false' <<<"$input")
 worktree=$(jq -r '.workspace.git_worktree // empty' <<<"$input")
 version=$(jq -r '.version // empty' <<<"$input")
+session_id=$(jq -r '.session_id // empty' <<<"$input")
 cache_read=$(jq -r '.context_window.current_usage.cache_read_input_tokens // 0' <<<"$input")
 cache_create=$(jq -r '.context_window.current_usage.cache_creation_input_tokens // 0' <<<"$input")
 
@@ -45,6 +48,20 @@ cache_create=$(jq -r '.context_window.current_usage.cache_creation_input_tokens 
 # +10% だけは AWS に明記が無く推定 — 過小評価を避けるため geo と同値にしている。
 # 現行世代に無い geo (Opus 5 は us/eu/au のみ) も、将来復活時に無言で ×1.0 と
 # なるのを防ぐため regex には残しておくこと。
+# shellcheck disable=SC2016  # jq program text, not shell expansion
+jq_price_defs='
+  def price(m):
+    if   (m | test("fable|mythos")) then {i: 10.0, o: 50.0}
+    elif (m | test("opus"))         then {i: 5.0,  o: 25.0}
+    elif (m | test("sonnet"))       then {i: 3.0,  o: 15.0}
+    elif (m | test("haiku"))        then {i: 1.0,  o: 5.0}
+    else null end;
+  def mult(m):
+    if   (m | test("^global\\."))                 then 1.0
+    elif (m | test("^(jp|us|eu|au|apac)\\."))     then 1.1
+    elif (m | startswith("anthropic."))           then 1.1
+    else 1.0 end;
+'
 cost_mark=""
 if [[ -n "$transcript" && -r "$transcript" ]]; then
   size=$(stat -c %s "$transcript" 2>/dev/null || echo 0)
@@ -57,18 +74,7 @@ if [[ -n "$transcript" && -r "$transcript" ]]; then
       cost_mark="~"
     fi
   else
-    result=$(jq -rn '
-      def price(m):
-        if   (m | test("fable|mythos")) then {i: 10.0, o: 50.0}
-        elif (m | test("opus"))         then {i: 5.0,  o: 25.0}
-        elif (m | test("sonnet"))       then {i: 3.0,  o: 15.0}
-        elif (m | test("haiku"))        then {i: 1.0,  o: 5.0}
-        else null end;
-      def mult(m):
-        if   (m | test("^global\\."))                 then 1.0
-        elif (m | test("^(jp|us|eu|au|apac)\\."))     then 1.1
-        elif (m | startswith("anthropic."))           then 1.1
-        else 1.0 end;
+    result=$(jq -rn "$jq_price_defs"'
       [ inputs | select(.message.usage? and .message.id?) ]
       | unique_by(.message.id)
       | map(.message
@@ -126,108 +132,129 @@ if [[ -n "$style" && "$style" != "default" ]]; then
   style_tag=" ${C_DIM}{$style}${C_RESET}"
 fi
 
-ctx_segment=""
-if [[ -n "$ctx_pct" ]]; then
-  pct_int=${ctx_pct%%.*}
+# bar <percentage> — a 10-cell gauge with the value, green < 60 <= yellow < 80 <= red.
+# Used for the context window and the subscription rate limits.
+bar() {
+  local pct_int=${1%%.*} bar_width=10 filled empty color fill_str empty_str
   [[ "$pct_int" =~ ^[0-9]+$ ]] || pct_int=0
   ((pct_int > 100)) && pct_int=100
-
-  bar_width=10
   filled=$((pct_int * bar_width / 100))
   ((filled == 0 && pct_int > 0)) && filled=1
-  ((filled > bar_width)) && filled=$bar_width
   empty=$((bar_width - filled))
-
   if ((pct_int >= 80)); then
-    bar_color=$C_DANGER
+    color=$C_DANGER
   elif ((pct_int >= 60)); then
-    bar_color=$C_WARN
+    color=$C_WARN
   else
-    bar_color=$C_OK
+    color=$C_OK
   fi
-
   fill_str=$(printf '%*s' "$filled" '' | tr ' ' '#')
   empty_str=$(printf '%*s' "$empty" '' | tr ' ' '-')
-  fill_str=${fill_str//#/█}
-  empty_str=${empty_str//-/░}
+  printf '%s%s%s%s%s %s%s%%%s' "$color" "${fill_str//#/█}" "$C_DIM" "${empty_str//-/░}" "$C_RESET" "$color" "$pct_int" "$C_RESET"
+}
 
-  ctx_segment=" ${bar_color}${fill_str}${C_DIM}${empty_str}${C_RESET} ${bar_color}${pct_int}%${C_RESET}"
-fi
+ctx_segment=""
+[[ -n "$ctx_pct" ]] && ctx_segment=" $(bar "$ctx_pct")"
+
+# Subscription rate limits (Claude.ai Pro / Max, or a gateway spend limit).
+# Absent on Bedrock and API keys, so nothing is shown there. Each window may
+# be missing on its own; the 5h reset is a clock, the 7d one a date.
+rate_segment=""
+for w in five_hour seven_day spend_limit; do
+  IFS=$'\t' read -r used resets <<<"$(jq -r --arg w "$w" '.rate_limits[$w] | select(. != null) | [(.used_percentage // 0), (.resets_at // 0)] | @tsv' <<<"$input")"
+  [[ -n "$used" ]] || continue
+  case $w in
+    five_hour) label=5h fmt=%H:%M ;;
+    seven_day) label=7d fmt='%m/%d %H:%M' ;;
+    *) label=spend fmt='%m/%d' ;;
+  esac
+  reset_str=""
+  ((resets > 0)) && reset_str=" ${C_DIM}($(date -d "@$resets" +"$fmt"))${C_RESET}"
+  rate_segment="${rate_segment} ${C_DIM}${label}${C_RESET} $(bar "$used")${reset_str}"
+done
 
 meta_segment=""
 [[ -n "$effort" && "$effort" != "null" ]] && meta_segment=" ${C_DIM}${effort}${C_RESET}"
 [[ "$thinking" == "true" ]] && meta_segment="${meta_segment} ${C_DIM}🧠${C_RESET}"
 
-# Prompt-cache health: read/(read+create) ratio for the last turn. A sharp
-# drop (red) means the prefix changed and the cache was rebuilt this turn.
+# --- Prompt cache ----------------------------------------------------------
+# Claude Code >= 2.1.251 passes .prompt_cache on stdin (warm / ttl / expires_at
+# / misses / last_miss_cause ...), computed from the API's cache token counts
+# with a view of the system prompt and tool list that a transcript never has.
+# Segments:
+#   cache NN%          read/(read+create) of the last turn
+#   💥miss $X (cause)  on its own third line: the newest miss, priced, with
+#                      Claude Code's own diagnosis (model_changed, tools_changed,
+#                      system_prompt_changed ...); kept until the next user
+#                      prompt (prompt_id changes) so a tool loop right after the
+#                      miss does not wipe it
+#   ⏳m:ss (HH:MM:SS)    time until the cached prefix goes cold, and the clock
+#   ❄️cold             time it does so / already cold
+#   📦compact          messages just rewritten (/compact or tool-result clearing);
+#                      the next request rebuilds the conversation cache
+# Nothing is shown before the first API response (.prompt_cache absent).
 cache_segment=""
-total_cache=$((cache_read + cache_create))
-if ((total_cache > 0)); then
-  hit=$((cache_read * 100 / total_cache))
-  if ((hit >= 90)); then
-    cache_color=$C_OK
-  elif ((hit >= 50)); then
-    cache_color=$C_WARN
-  else
-    cache_color=$C_DANGER
-  fi
-  cache_segment=" ${C_DIM}cache${C_RESET} ${cache_color}${hit}%${C_RESET}"
-fi
-
-# Cache TTL countdown — how long the prompt cache stays warm after the last API
-# request (which resets the timer). Anchor on the last assistant turn's timestamp,
-# NOT the file mtime: Claude Code appends mode/permission-mode bookkeeping lines on
-# session resume (claude --continue), bumping mtime to "now" without any request
-# having warmed the cache — that would falsely restart the countdown at 5:00.
-# TTL: STATUSLINE_CACHE_TTL overrides; FORCE_PROMPT_CACHING_5M / ENABLE_PROMPT_CACHING_1H
-# pin the tier; otherwise auto-detect from the newest turn's write slot. Claude Code
-# picks the cache TTL per request, so the transcript is the source of truth, not 5m.
 cache_ttl_segment=""
-if [[ -r "$transcript" ]]; then
-  # Read the tail once; reused by the tier check and the cache-state classifier.
-  tail=$(tail -n 200 "$transcript" 2>/dev/null)
-  if [[ -n "${STATUSLINE_CACHE_TTL:-}" ]]; then
-    ttl=$STATUSLINE_CACHE_TTL
-  elif [[ "${FORCE_PROMPT_CACHING_5M:-}" == "1" ]]; then
-    ttl=300
-  elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == "1" ]]; then
-    ttl=3600
-  elif [[ "$(jq -rs '[.[] | select(.type == "assistant" and .message.usage?)] | last
-      | (if .message.usage.cache_creation? then (.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) else 0 end) > 0' <<<"$tail" 2>/dev/null)" == "true" ]]; then
-    ttl=3600
-  else
-    ttl=300
+miss_line=""
+pc=$(jq -c '.prompt_cache // empty' <<<"$input")
+if [[ -n "$pc" ]]; then
+  IFS=$'\t' read -r pc_warm pc_ttl pc_expires pc_miss_at pc_causes pc_miss_tokens pc_recache_if_cold <<<"$(jq -r '
+    [ (.warm // false), (.ttl // "5m"), (.expires_at // 0), (.last_miss_at // 0),
+      ((.last_miss_cause.causes // []) | join("+") | if . == "" then "-" else . end),
+      (.miss_recache_tokens // 0), (.recache_tokens_if_cold // "null") ] | @tsv' <<<"$pc")"
+
+  if ((cache_read + cache_create > 0)); then
+    hit=$((cache_read * 100 / (cache_read + cache_create)))
+    if ((hit >= 90)); then
+      cache_color=$C_OK
+    elif ((hit >= 50)); then
+      cache_color=$C_WARN
+    else
+      cache_color=$C_DANGER
+    fi
+    cache_segment=" ${C_DIM}cache${C_RESET} ${cache_color}${hit}%${C_RESET}"
   fi
-  # Classify the cache state from the transcript tail (newest compact_boundary
-  # vs newest assistant turn):
-  #   warm <ts> — an assistant turn (the API request that warmed the cache) is
-  #               the most recent of the two; count TTL down from its timestamp.
-  #   compact   — a /compact boundary is newer, with no assistant turn after it.
-  #               /compact swaps the messages prefix for a summary, so the next
-  #               request rebuilds the conversation cache (tools/system survive,
-  #               messages do not). Flag it instead of counting down a cache that
-  #               no longer matches — and it guards against /new'ing it away.
-  #   none      — no assistant turn at all (e.g. right after /new): nothing has
-  #               warmed the cache, so show nothing rather than a bogus timer.
-  IFS=$'\t' read -r cache_state last_req <<<"$(jq -rs '
-    (([.[] | (.type == "system" and .subtype == "compact_boundary")] | rindex(true)) // -1) as $cb
-    | (([.[] | (.type == "assistant" and (.timestamp != null))] | rindex(true)) // -1) as $at
-    | if $cb > $at then "compact\t"
-      elif $at >= 0 then "warm\t" + .[$at].timestamp
-      else "none\t" end' <<<"$tail" 2>/dev/null)"
-  if [[ "$cache_state" == "compact" ]]; then
+
+  # The newest miss: miss_recache_tokens is cumulative, so the tokens this miss
+  # re-cached are its delta from the total at the previous miss, kept in a
+  # per-session state file together with the prompt_id the miss happened in.
+  if ((pc_miss_at > 0)); then
+    prompt_id=$(jq -r '.prompt_id // ""' <<<"$input")
+    miss_state="${TMPDIR:-/tmp}/claude-statusline-miss-$(md5sum <<<"${session_id:-$transcript}" | cut -d' ' -f1)"
+    # A truncated or hand-edited state file is treated as no state at all.
+    read -r s_miss_at s_prompt s_tokens s_total 2>/dev/null <"$miss_state" &&
+      [[ "$s_tokens" =~ ^[0-9]+$ && "$s_total" =~ ^[0-9]+$ ]] ||
+      { s_miss_at=0 s_prompt="" s_tokens=0 s_total=0; }
+    if [[ "$s_miss_at" != "$pc_miss_at" ]]; then
+      # A lower cumulative total than last stored (session stats reset, or a
+      # stale/reused state file) means the baseline is unknown: treat the
+      # whole reported total as this miss rather than show a negative price.
+      s_tokens=$((pc_miss_tokens > s_total ? pc_miss_tokens - s_total : pc_miss_tokens))
+      s_prompt=$prompt_id
+      printf '%s %s %s %s\n' "$pc_miss_at" "$prompt_id" "$s_tokens" "$pc_miss_tokens" >"$miss_state"
+    fi
+    if [[ "$s_prompt" == "$prompt_id" ]]; then
+      model_id=$(jq -r '.model.id // ""' <<<"$input")
+      miss_usd=$(jq -n --arg m "$model_id" --arg t "$pc_ttl" --argjson n "$s_tokens" "$jq_price_defs"'
+        (price($m) // {i: 0}).i * mult($m) * (if $t == "1h" then 2 else 1.25 end) * $n / 1e6')
+      miss_line=$(printf '%s💥miss $%.2f%s%s' "$C_DANGER" "$miss_usd" \
+        "$([[ "$pc_causes" != "-" ]] && printf ' (%s)' "$pc_causes")" "$C_RESET")
+    fi
+  fi
+
+  if [[ "$pc_recache_if_cold" == "null" && "$pc_warm" == "true" ]]; then
     cache_ttl_segment=" ${C_WARN}📦compact${C_RESET}"
-    cache_segment="" # compact: messages cache is rebuilt next turn, pre-compact hit% is stale
-  elif [[ -n "$last_req" ]]; then
-    last_req=$(date -d "$last_req" +%s 2>/dev/null || echo 0)
-    remaining=$((ttl - ($(date +%s) - last_req)))
+  elif [[ "$pc_warm" == "true" ]] && ((pc_expires > 0)); then
+    remaining=$((pc_expires - $(date +%s)))
     if ((remaining > 0)); then
       ((remaining <= 60)) && ttl_color=$C_WARN || ttl_color=$C_OK
-      cache_ttl_segment=$(printf ' %s⏳%d:%02d%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" "$C_RESET")
+      cache_ttl_segment=$(printf ' %s⏳%d:%02d (%s)%s' "$ttl_color" "$((remaining / 60))" "$((remaining % 60))" \
+        "$(date -d "@$pc_expires" +%H:%M:%S)" "$C_RESET")
     else
       cache_ttl_segment=" ${C_DANGER}❄️cold${C_RESET}"
-      cache_segment="" # cold: the per-turn hit% is a pre-idle snapshot, drop it
     fi
+  elif [[ "$(jq -r '.caching_observed // false' <<<"$pc")" == "true" ]]; then
+    cache_ttl_segment=" ${C_DANGER}❄️cold${C_RESET}"
   fi
 fi
 
@@ -236,14 +263,18 @@ worktree_tag=""
 version_tag=""
 [[ -n "$version" ]] && version_tag=" ${C_DIM}v${version}${C_RESET}"
 
-# Stack two lines so the bar stays readable in a narrow terminal:
-# 1) project (cwd + branch + lines changed), 2) model + context + cost + cache.
+# Stack the lines so the bar stays readable in a narrow terminal:
+# 1) project (cwd + branch + lines changed), 2) model + context + cost + cache
+# + subscription rate limits, 3) the cache miss notice, only while there is one.
 # The +/- edit counts sit with the branch as a git-style diff stat.
 printf '%s%s%s' "$C_DIR" "$cwd_short" "$C_RESET"
 [[ -n "$branch" ]] && printf ' %s(%s)%s%s' "$C_BRANCH" "$branch" "$C_RESET" "$worktree_tag"
 printf ' %s+%s%s/%s-%s%s\n' "$C_OK" "$added" "$C_RESET" "$C_DANGER" "$removed" "$C_RESET"
 
-printf '%s%s%s%s%s%s %s%s$%.3f%s%s%s%s\n' \
+printf '%s%s%s%s%s%s %s%s$%.3f%s%s%s%s%s\n' \
   "$C_MODEL" "$model" "$C_RESET" "$style_tag" "$meta_segment" "$ctx_segment" \
   "$C_COST" "$cost_mark" "$cost" "$C_RESET" \
-  "$cache_segment" "$cache_ttl_segment" "$version_tag"
+  "$cache_segment" "$cache_ttl_segment" "$rate_segment" "$version_tag"
+if [[ -n "$miss_line" ]]; then
+  printf '%s\n' "$miss_line"
+fi
