@@ -908,7 +908,8 @@ expect_true "statusline: no prompt_cache on stdin shows no cache segment" \
 
 # --- warn-cold-cache-cost.sh -------------------------------------------------
 # A 1h-cached opus session idle for two hours: the rebuild estimate counts the
-# newest turn's input, cache read/write and output tokens (100,000 + 2 + 5,000).
+# newest turn's input, cache read/write and output tokens (100,000 + 2 + 5,000,
+# plus the 1-token 1h cache write that marks the tier).
 
 COLDWARN="$SCRIPT_DIR/../common/.claude/hooks/warn-cold-cache-cost.sh"
 CW_T="$SL_DIR/cold.jsonl"
