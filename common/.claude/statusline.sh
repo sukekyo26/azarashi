@@ -14,7 +14,7 @@ set -u
 input=$(cat)
 # STATUSLINE_DEBUG_LOG=<path> appends every stdin payload, to diagnose a segment
 # that disagrees with what Claude Code reported (e.g. warm/cold).
-[[ -n "${STATUSLINE_DEBUG_LOG:-}" ]] && printf '%s %s\n' "$(date +%FT%T)" "$(jq -c . <<<"$input" 2>/dev/null || printf '%s' "$input")" >>"$STATUSLINE_DEBUG_LOG"
+[[ -n "${STATUSLINE_DEBUG_LOG:-}" ]] && printf '%s %s\n' "$(date +%FT%T)" "$(jq -c . <<<"$input" 2>/dev/null || jq -Rs . <<<"$input")" >>"$STATUSLINE_DEBUG_LOG"
 
 model=$(jq -r '.model.display_name // "?"' <<<"$input")
 cwd=$(jq -r '.workspace.current_dir // ""' <<<"$input")
