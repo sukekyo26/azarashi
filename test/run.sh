@@ -851,7 +851,7 @@ STATUSLINE="$SCRIPT_DIR/../common/.claude/statusline.sh"
 # Under WORK so the EXIT/INT/TERM trap cleans it up.
 SL_DIR="$WORK/statusline"
 mkdir -p "$SL_DIR"
-statusline_out() { # <prompt_id> <prompt_cache-json> — lines 2 and 3 joined by " | ", ANSI stripped
+statusline_out() { # <prompt_id> <prompt_cache-json> — lines 2 and 3 joined by "|", ANSI stripped
   jq -nc --arg p "$1" --argjson pc "$2" --arg d "$SL_DIR" \
     '{session_id:"s1", prompt_id:$p, prompt_cache:$pc, model:{id:"claude-opus-5",display_name:"Opus"},
       workspace:{current_dir:$d}, context_window:{current_usage:{cache_read_input_tokens:1005,cache_creation_input_tokens:100}}}' |
@@ -874,6 +874,10 @@ sl_rate_miss=$(jq -nc --arg d "$SL_DIR" --argjson far "$far" '{session_id:"s2", 
     rate_limits:{five_hour:{used_percentage:18,resets_at:$far}},
     prompt_cache:{warm:true,caching_observed:true,ttl:"1h",expires_at:$far,last_miss_at:1000,last_miss_cause:{causes:["tools_changed"]},miss_recache_tokens:40000,recache_tokens_if_cold:5}}' |
   TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n 3p | sed 's/\x1b\[[0-9;]*m//g')
+printf '1000 p8\n' >"$SL_DIR/claude-statusline-miss-$(printf 's1\n' | md5sum | cut -d' ' -f1)"
+sl_truncated=$(statusline_out p8 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$far,\"last_miss_at\":1000,\"last_miss_cause\":null,\"miss_recache_tokens\":40000,\"recache_tokens_if_cold\":5000}")
+expect_true "statusline: a truncated state file is ignored and the miss is priced on the whole total" \
+  sh -c "printf '%s' '$sl_truncated' | grep -q '|💥miss \$0.40\$'"
 expect_true "statusline: warm cache shows hit%, the ttl countdown and the expiry clock" \
   sh -c "printf '%s' '$sl_hit' | grep -q 'cache 90% ⏳[0-9]*:[0-9][0-9] ($(date -d "@$far" +%H:%M:%S))'"
 expect_true "statusline: a miss goes on a third line, priced from the recache delta, with the causes" \
