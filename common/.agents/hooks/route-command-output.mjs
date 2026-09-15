@@ -217,10 +217,10 @@ export function rewriteSegmentBody(rtk, body) {
   // `rtk test` で実行ごと包んで失敗行だけに畳む。exit code は透過される。
   const head = commandHead(body);
   if (TEST_RUNNER_PATTERNS.some((re) => re.test(head))) {
-    return { action: 'replace', body: `${rtk} test ${body}` };
+    return { action: 'replace', body: `rtk test ${body}` };
   }
   const pw = head.match(PLAYWRIGHT_TEST);
-  if (pw) return { action: 'replace', body: `${rtk} playwright test${head.slice(pw[0].length)}` };
+  if (pw) return { action: 'replace', body: `rtk playwright test${head.slice(pw[0].length)}` };
   if (PLAYWRIGHT_ANY.test(head)) return { action: 'keep' };
   const res = spawnSync(rtk, ['rewrite', body], { encoding: 'utf8' });
   const out = (res.stdout || '').trim();
@@ -238,9 +238,13 @@ export function rewriteSegmentBody(rtk, body) {
   }
 }
 
-// sudo の secure_path 経由でも rtk を見つけられるよう、書き換え後の裸 `rtk` は絶対パス化。
+// 書き換え後の `rtk` は裸のコマンド名のまま残す。権限ルールは書き換え後のコマンドに
+// 対して照合されるので、絶対パス化するとホストごとに `Bash(/home/x/.local/bin/rtk git status *)`
+// が必要になる。裸なら `Bash(rtk git status *)` 1 本で済む。
+// 例外は sudo 前置時: secure_path で rtk が見つからないので絶対パス化する。
 // パイプライン途中のコマンド位置 (`cat f | rtk grep x`) も対象。引数位置の `rtk` は触らない。
-function absInBody(rtk, body) {
+function absInBody(rtk, prefix, body) {
+  if (!/(^|\s)sudo\s/.test(prefix)) return body;
   return body.replace(/(^|[|;&]\s*)rtk(?=\s|$)/g, (_, lead) => lead + rtk);
 }
 
@@ -328,7 +332,7 @@ function main() {
     if (r.action === 'keep') { pieces.push(tok.text); continue; }
     anyReplace = true;
     if (r.action === 'replace-ask') needsAsk = true;
-    pieces.push(prefix + absInBody(rtk, r.body) + tail);
+    pieces.push(prefix + absInBody(rtk, prefix, r.body) + tail);
   }
 
   // 5. いずれかのセグメントが deny → クライアントの native deny rule に委ねる
