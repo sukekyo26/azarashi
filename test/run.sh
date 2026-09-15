@@ -866,6 +866,7 @@ sl_second=$(statusline_out p4 "{\"warm\":true,\"caching_observed\":true,\"ttl\":
 sl_reset=$(statusline_out p7 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$far,\"last_miss_at\":3000,\"last_miss_cause\":null,\"miss_recache_tokens\":10000,\"recache_tokens_if_cold\":5000}")
 sl_cold=$(statusline_out p5 "{\"warm\":false,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":null,\"last_miss_at\":2000,\"miss_recache_tokens\":60000,\"recache_tokens_if_cold\":5000}")
 sl_compact=$(statusline_out p6 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":$far,\"last_miss_at\":2000,\"miss_recache_tokens\":60000,\"recache_tokens_if_cold\":null}")
+sl_compact_cold=$(statusline_out p9 "{\"warm\":true,\"caching_observed\":true,\"ttl\":\"1h\",\"expires_at\":1000,\"last_miss_at\":null,\"miss_recache_tokens\":0,\"recache_tokens_if_cold\":null}")
 sl_none=$(jq -nc --arg d "$SL_DIR" '{workspace:{current_dir:$d}, model:{display_name:"Opus"}}' | TMPDIR="$SL_DIR" bash "$STATUSLINE" | sed -n 2p | sed 's/\x1b\[[0-9;]*m//g')
 sl_rate=$(jq -nc --arg d "$SL_DIR" --argjson far "$far" '{workspace:{current_dir:$d}, model:{display_name:"Opus"},
     rate_limits:{five_hour:{used_percentage:18,resets_at:$far}, seven_day:{used_percentage:85,resets_at:$far}}}' |
@@ -894,6 +895,8 @@ expect_true "statusline: an expired prefix shows cold" \
   sh -c "printf '%s' '$sl_cold' | grep -q '❄️cold'"
 expect_true "statusline: a rewritten conversation shows compact" \
   sh -c "printf '%s' '$sl_compact' | grep -q '📦compact'"
+expect_true "statusline: a compacted session past its expiry shows cold, not compact" \
+  sh -c "printf '%s' '$sl_compact_cold' | grep -q '❄️cold' && ! printf '%s' '$sl_compact_cold' | grep -q compact"
 expect_true "statusline: exits 0 without a miss (a non-zero exit hides the whole status line)" \
   sh -c "jq -nc --arg d '$SL_DIR' '{workspace:{current_dir:\$d}}' | TMPDIR='$SL_DIR' bash '$STATUSLINE' >/dev/null"
 expect_true "statusline: rate limits render as gauges at the end of line 2 with their reset times" \
