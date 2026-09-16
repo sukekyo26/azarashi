@@ -94,4 +94,4 @@ Claude Code は、キャッシュから読めたはずの分の 5% かつ 2,000 
 
 ## 関連
 
-- `common/.claude/hooks/warn-cold-cache-cost.sh`: 送信前に cold を検知し、再構築コストを警告（閾値以上なら一度ブロック）する hook。判定と価格表は statusline と同じ
+- `common/.claude/hooks/warn-cold-cache-cost.sh`: 送信前に cold を検知し、再構築コストを警告（閾値以上なら一度ブロック）する hook。hook には `prompt_cache` が渡されないので、statusline が `$TMPDIR/claude-statusline-cache-<session>` に書き出した `warm ttl expires_at` を読んで判定する（Claude Code の時計はリクエスト送信時刻を基準にし、transcript に assistant 行を残さない fork クエリ — away_summary・prompt_suggestion 等 — による TTL の更新も含む）。ファイルが無いときだけ transcript の最終 assistant 行の時刻 + TTL で代替する。価格表は statusline と同じ

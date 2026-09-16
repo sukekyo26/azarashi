@@ -9,7 +9,14 @@
 # hook just surfaces the estimate as a `systemMessage`; at or above it blocks the
 # submit once so the user can reconsider, and a re-submit goes through.
 #
-# Mirrors the cold detection and Bedrock price table of statusline.sh.
+# Cold is decided from the .prompt_cache clock (warm / ttl / expires_at) that
+# Claude Code hands statusline.sh and that it persists per session — hooks don't
+# receive it. That clock counts what the transcript can't: it anchors on the
+# request send time, and fork queries (away_summary, prompt_suggestion,
+# extract_memories, fork agents ...) refresh it without leaving an assistant
+# line. Without that file (statusline not yet run, older Claude Code) the newest
+# assistant turn's timestamp plus the auto-detected TTL stands in.
+# Shares the Bedrock price table with statusline.sh.
 # Only the idle warm->cold case is flagged; /compact (deliberate, and whose
 # post-summary size is unknown here) is left alone.
 #
@@ -19,13 +26,14 @@
 # once (`decision: block`) and a re-submit at the same cold point proceeds — a
 # sentinel keyed on session + cold anchor enforces the one-shot block.
 #
-# The cache tier (5m/1h) is auto-detected from the newest turn's write slot and
-# sets both the cold TTL and the write multiplier; env vars override it.
+# The cache tier (5m/1h) sets the write multiplier and, in the fallback, the
+# cold TTL. It comes from the persisted clock, else from the newest turn's write
+# slot; env vars override the fallback only.
 #
 # Tunables (env):
 #   WARN_COLD_CACHE_WARN_USD  escalate FYI -> warning at this rebuild cost (default 1)
-#   FORCE_PROMPT_CACHING_5M=1 / ENABLE_PROMPT_CACHING_1H=1  pin the tier
-#   STATUSLINE_CACHE_TTL      override the cold TTL in seconds
+#   FORCE_PROMPT_CACHING_5M=1 / ENABLE_PROMPT_CACHING_1H=1  pin the tier (fallback only)
+#   STATUSLINE_CACHE_TTL      override the cold TTL in seconds (fallback only)
 set -u
 
 input=$(cat)
@@ -36,44 +44,48 @@ session_id=$(jq -r '.session_id // empty' <<<"$input")
 # Read the tail once; feed it to the tier check, the cold check, and the estimate.
 tail=$(tail -n 200 "$transcript" 2>/dev/null)
 
-# Cache tier (5m vs 1h) drives BOTH the cold TTL and the rebuild-cost write
-# multiplier (5m write = input*1.25, 1h write = input*2). Claude Code picks the
-# TTL per request, so resolve from an env override, else from whether the newest
-# assistant turn actually wrote to the 1h cache slot.
-tier=5m
-if [[ "${FORCE_PROMPT_CACHING_5M:-}" == "1" ]]; then
-  tier=5m
-elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == "1" ]]; then
-  tier=1h
-else
-  newest_1h=$(jq -rs '[.[] | select(.type == "assistant" and .message.usage?)] | last
-    | (if .message.usage.cache_creation? then (.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) else 0 end) > 0' <<<"$tail" 2>/dev/null)
-  [[ "$newest_1h" == "true" ]] && tier=1h
-fi
-if [[ "$tier" == "1h" ]]; then
-  ttl=3600
-  write_mult=2
-else
-  ttl=300
-  write_mult=1.25
-fi
-ttl=${STATUSLINE_CACHE_TTL:-$ttl}
-
-# cold check: anchor on the newest assistant turn's timestamp (the request that
-# warmed the cache), not file mtime — resume bookkeeping bumps mtime without a
-# request. A newer compact_boundary means /compact, which we deliberately skip.
+# Anchor on the newest assistant turn (the request that warmed the cache), not
+# file mtime — resume bookkeeping bumps mtime without a request. A newer
+# compact_boundary means /compact, which we deliberately skip.
 IFS=$'\t' read -r cache_state last_req <<<"$(jq -rs '
   (([.[] | (.type == "system" and .subtype == "compact_boundary")] | rindex(true)) // -1) as $cb
   | (([.[] | (.type == "assistant" and (.timestamp != null))] | rindex(true)) // -1) as $at
   | if $cb > $at then "compact\t"
     elif $at >= 0 then "warm\t" + .[$at].timestamp
     else "none\t" end' <<<"$tail" 2>/dev/null)"
-
 [[ "$cache_state" == "warm" && -n "$last_req" ]] || exit 0
-# If the timestamp can't be parsed (unexpected format, BSD date), skip silently
-# rather than treating it as epoch 0 — that would look permanently cold.
-last_req=$(date -d "$last_req" +%s 2>/dev/null) || exit 0
-((ttl - ($(date +%s) - last_req) <= 0)) || exit 0
+
+# Cold check. Preferred: the clock statusline.sh persisted from .prompt_cache
+# (see header). `warm` is false once expires_at has passed, so only expires_at
+# decides; 0 means the last response reported no cache tokens — nothing warm to
+# lose. A truncated or hand-edited file is treated as no file at all.
+state="${TMPDIR:-/tmp}/claude-statusline-cache-$(md5sum <<<"${session_id:-$transcript}" | cut -d' ' -f1)"
+if read -r _ s_ttl s_expires 2>/dev/null <"$state" && [[ "$s_expires" =~ ^[0-9]+$ && "$s_ttl" =~ ^(5m|1h)$ ]]; then
+  ((s_expires > 0 && $(date +%s) >= s_expires)) || exit 0
+  tier=$s_ttl
+  last_req=$s_expires # cold anchor for the one-shot block sentinel
+else
+  # Fallback: tier from an env override, else from whether the newest assistant
+  # turn wrote to the 1h cache slot; cold when the TTL has elapsed since it.
+  tier=5m
+  if [[ "${FORCE_PROMPT_CACHING_5M:-}" == "1" ]]; then
+    tier=5m
+  elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == "1" ]]; then
+    tier=1h
+  else
+    newest_1h=$(jq -rs '[.[] | select(.type == "assistant" and .message.usage?)] | last
+      | (if .message.usage.cache_creation? then (.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) else 0 end) > 0' <<<"$tail" 2>/dev/null)
+    [[ "$newest_1h" == "true" ]] && tier=1h
+  fi
+  [[ "$tier" == "1h" ]] && ttl=3600 || ttl=300
+  ttl=${STATUSLINE_CACHE_TTL:-$ttl}
+  # If the timestamp can't be parsed (unexpected format, BSD date), skip silently
+  # rather than treating it as epoch 0 — that would look permanently cold.
+  last_req=$(date -d "$last_req" +%s 2>/dev/null) || exit 0
+  ((ttl - ($(date +%s) - last_req) <= 0)) || exit 0
+fi
+# 5m write = input*1.25, 1h write = input*2.
+[[ "$tier" == "1h" ]] && write_mult=2 || write_mult=1.25
 
 # Estimate the rebuild cost: the newest assistant turn's input + cache_read +
 # cache_creation tokens are its request, plus its output_tokens, which the next

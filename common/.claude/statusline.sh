@@ -206,6 +206,13 @@ if [[ -n "$pc" ]]; then
       ((.last_miss_cause.causes // []) | join("+") | if . == "" then "-" else . end),
       (.miss_recache_tokens // 0), (.recache_tokens_if_cold // "null") ] | @tsv' <<<"$pc")"
 
+  # Hand the cold clock to warn-cold-cache-cost.sh: hooks don't receive
+  # .prompt_cache, and the transcript can't reproduce it (request send time, and
+  # fork queries like away_summary that refresh the TTL without an assistant line).
+  # Written via rename so a hook running concurrently never reads a torn line.
+  clock_file="${TMPDIR:-/tmp}/claude-statusline-cache-$(md5sum <<<"${session_id:-$transcript}" | cut -d' ' -f1)"
+  printf '%s %s %s\n' "$pc_warm" "$pc_ttl" "$pc_expires" >"$clock_file.$$" && mv -f "$clock_file.$$" "$clock_file"
+
   if ((cache_read + cache_create > 0)); then
     hit=$((cache_read * 100 / (cache_read + cache_create)))
     if ((hit >= 90)); then
