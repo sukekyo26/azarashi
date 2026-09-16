@@ -249,7 +249,8 @@ export function rewriteSegmentBody(rtk, body) {
 // 裸の `rtk` が PATH 順で最初に当たる実体と、rewrite を計算した rtk が同じ場合だけ true。
 // 別の rtk が先に居ると、書き換えを決めた版と実行される版が食い違う。
 // 1 回の hook 実行で PATH は変わらないので判定は 1 度だけ。壊れた symlink 等で realpath
-// できない候補はシェルの PATH 探索と同じく読み飛ばす。
+// できない候補はシェルの PATH 探索と同じく読み飛ばす。空エントリ (`::` や先頭・末尾の `:`) は
+// POSIX ではカレントディレクトリを指す。
 let onPathMemo;
 function rtkOnPath(rtk) {
   if (onPathMemo !== undefined) return onPathMemo;
@@ -257,8 +258,7 @@ function rtkOnPath(rtk) {
   let target;
   try { target = realpathSync(rtk); } catch { return onPathMemo; }
   for (const p of (process.env.PATH || '').split(':')) {
-    if (!p) continue;
-    const cand = join(p, 'rtk');
+    const cand = join(p || '.', 'rtk');
     // シェルと同じく、実行可能な通常ファイルだけを候補にする (ディレクトリ・chmod -x は読み飛ばす)
     try {
       if (!statSync(cand).isFile()) continue;

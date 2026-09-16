@@ -810,6 +810,9 @@ FAKE
   assert_eq "hook: a different rtk earlier on PATH forces the absolute path of the resolved one" \
     "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/other:$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
       jq -r '.hookSpecificOutput.updatedInput.command')" "$RTK ls"
+  assert_eq "hook: an empty PATH entry means the current directory, like the shell" \
+    "$(cd "$HOOK_HOME/other" && jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH=":$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
+      jq -r '.hookSpecificOutput.updatedInput.command')" "$RTK ls"
   assert_eq "hook: bash |& is a pipe, not a background delimiter" \
     "$(hook_cmd 'ls |& head')" "rtk ls |& head"
   assert_eq "hook: test runner piped into tail is wrapped as a whole" \
