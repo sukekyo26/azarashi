@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sh test/run.sh)",
+      "Bash(./dotfiles diff)",
+      "Bash(./dotfiles diff *)",
+      "Bash(./dotfiles status)",
+      "Bash(./dotfiles status *)",
+      "Bash(./dotfiles doctor)",
+      "Bash(./dotfiles install --dry-run)",
+      "Bash(./dotfiles install --dry-run *)"
+    ],
+    "ask": [
+      "Bash(./dotfiles doctor *--fix*)"
+    ]
+  }
+}

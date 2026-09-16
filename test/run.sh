@@ -745,7 +745,7 @@ FAKE
   hook_json() { # <command> [hook args...] — raw hook stdout for a claude-code payload
     _c=$1
     shift
-    jq -nc --arg c "$_c" '{tool_input:{command:$c}}' | HOME="$HOOK_HOME" node "$HOOK" "$@"
+    jq -nc --arg c "$_c" '{tool_input:{command:$c}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/.local/bin:$PATH" node "$HOOK" "$@"
   }
   hook_cmd() { # <command> — rewritten command, or PASSTHROUGH when the hook stays silent
     _o=$(hook_json "$1")
@@ -756,17 +756,17 @@ FAKE
     fi
   }
 
-  # (a) plain rewrite, rtk absolutised
-  assert_eq "hook: rewrites a bare command with the absolute rtk path" \
-    "$(hook_cmd 'ls')" "$RTK ls"
+  # (a) plain rewrite, rtk stays a bare command name so Bash(rtk ls *) rules match
+  assert_eq "hook: rewrites a bare command with a bare rtk" \
+    "$(hook_cmd 'ls')" "rtk ls"
 
   # (b) passthrough targets keep only their own segment
   assert_eq "hook: git diff keeps its segment and the neighbours still rewrite" \
-    "$(hook_cmd 'echo a; git diff --name-only; ls')" "echo a; git diff --name-only; $RTK ls"
+    "$(hook_cmd 'echo a; git diff --name-only; ls')" "echo a; git diff --name-only; rtk ls"
   assert_eq "hook: interactive flag keeps its segment only" \
-    "$(hook_cmd 'docker run -it img && ls')" "docker run -it img && $RTK ls"
+    "$(hook_cmd 'docker run -it img && ls')" "docker run -it img && rtk ls"
   assert_eq "hook: eval keeps its segment only" \
-    "$(hook_cmd 'eval "$x"; ls')" "eval \"\$x\"; $RTK ls"
+    "$(hook_cmd 'eval "$x"; ls')" "eval \"\$x\"; rtk ls"
   assert_eq "hook: control-flow segments are kept, nothing else to rewrite" \
     "$(hook_cmd 'for f in a b; do ls $f; done')" "PASSTHROUGH"
 
@@ -774,9 +774,9 @@ FAKE
   assert_eq "hook: \$(...) inside an argument does not split the command" \
     "$(hook_cmd 'git diff $(git merge-base a b) --stat')" "PASSTHROUGH"
   assert_eq "hook: \$(...) assignment prefix leaves the command rewritable" \
-    "$(hook_cmd 's=$(date +%s); ls; cat f')" "s=\$(date +%s); $RTK ls; $RTK cat f"
+    "$(hook_cmd 's=$(date +%s); ls; cat f')" "s=\$(date +%s); rtk ls; rtk cat f"
   assert_eq "hook: \$(...) in a leading assignment is a prefix" \
-    "$(hook_cmd 'x=$(date) ls')" "x=\$(date) $RTK ls"
+    "$(hook_cmd 'x=$(date) ls')" "x=\$(date) rtk ls"
   assert_eq "hook: subshell is passed whole and left alone" \
     "$(hook_cmd '(cd x && ls)')" "PASSTHROUGH"
   assert_eq "hook: process substitution is passed whole" \
@@ -791,33 +791,53 @@ FAKE
     "$(hook_cmd 'cat f | jq .a')" "PASSTHROUGH"
   assert_eq "hook: pipeline into wc is left to rtk (kept)" \
     "$(hook_cmd 'ls | wc -l')" "PASSTHROUGH"
-  assert_eq "hook: rtk inside a pipeline is absolutised at every command position" \
+  assert_eq "hook: sudo prefix absolutises rtk at every command position" \
     "$(hook_cmd 'sudo cat f | grep x')" "sudo $RTK cat f | $RTK grep x"
+  assert_eq "hook: without sudo the pipeline keeps a bare rtk" \
+    "$(hook_cmd 'cat f | grep x')" "rtk cat f | rtk grep x"
+  assert_eq "hook: rtk off the shell PATH is absolutised so the command still runs" \
+    "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="/usr/bin:/bin" "$(command -v node)" "$HOOK" |
+      jq -r '.hookSpecificOutput.updatedInput.command')" "$RTK ls"
+  mkdir -p "$HOOK_HOME/other" && printf '#!/bin/sh\nexit 1\n' >"$HOOK_HOME/other/rtk" && chmod +x "$HOOK_HOME/other/rtk"
+  mkdir -p "$HOOK_HOME/broken" && ln -s "$HOOK_HOME/nowhere" "$HOOK_HOME/broken/rtk"
+  assert_eq "hook: a dangling rtk symlink earlier on PATH is skipped like the shell does" \
+    "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/broken:$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
+      jq -r '.hookSpecificOutput.updatedInput.command')" "rtk ls"
+  mkdir -p "$HOOK_HOME/noexec" && printf '#!/bin/sh\nexit 1\n' >"$HOOK_HOME/noexec/rtk" && chmod -x "$HOOK_HOME/noexec/rtk"
+  assert_eq "hook: a non-executable rtk earlier on PATH is skipped like the shell does" \
+    "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/noexec:$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
+      jq -r '.hookSpecificOutput.updatedInput.command')" "rtk ls"
+  assert_eq "hook: a different rtk earlier on PATH forces the absolute path of the resolved one" \
+    "$(jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/other:$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
+      jq -r '.hookSpecificOutput.updatedInput.command')" "$RTK ls"
+  assert_eq "hook: an empty PATH entry means the current directory, like the shell" \
+    "$(cd "$HOOK_HOME/other" && jq -nc '{tool_input:{command:"ls"}}' | HOME="$HOOK_HOME" PATH=":$HOOK_HOME/.local/bin:/usr/bin:/bin" "$(command -v node)" "$HOOK" |
+      jq -r '.hookSpecificOutput.updatedInput.command')" "$RTK ls"
   assert_eq "hook: bash |& is a pipe, not a background delimiter" \
-    "$(hook_cmd 'ls |& head')" "$RTK ls |& head"
+    "$(hook_cmd 'ls |& head')" "rtk ls |& head"
   assert_eq "hook: test runner piped into tail is wrapped as a whole" \
-    "$(hook_cmd 'npm test 2>&1 | tail -5')" "$RTK test npm test 2>&1 | tail -5"
+    "$(hook_cmd 'npm test 2>&1 | tail -5')" "rtk test npm test 2>&1 | tail -5"
 
   # (e) timeout is a wrapper prefix
   assert_eq "hook: timeout prefix is stripped before the playwright guard" \
     "$(hook_cmd 'timeout 120 playwright screenshot x')" "PASSTHROUGH"
   assert_eq "hook: timeout prefix survives around playwright test" \
-    "$(hook_cmd 'timeout 120 playwright test')" "timeout 120 $RTK playwright test"
+    "$(hook_cmd 'timeout 120 playwright test')" "timeout 120 rtk playwright test"
   assert_eq "hook: timeout options and unit suffix are part of the prefix" \
-    "$(hook_cmd 'timeout -k 3 5s ls')" "timeout -k 3 5s $RTK ls"
+    "$(hook_cmd 'timeout -k 3 5s ls')" "timeout -k 3 5s rtk ls"
   assert_eq "hook: timeout short option with attached value is part of the prefix" \
-    "$(hook_cmd 'timeout -k3 5s ls')" "timeout -k3 5s $RTK ls"
+    "$(hook_cmd 'timeout -k3 5s ls')" "timeout -k3 5s rtk ls"
 
   # (f) heredocs: body kept verbatim, following commands still rewrite
   assert_eq "hook: heredoc body is verbatim and the next line rewrites" \
     "$(hook_cmd "$(printf "cat <<'EOF' > f\nls\nEOF\nls")")" \
-    "$(printf "cat <<'EOF' > f\nls\nEOF\n%s ls" "$RTK")"
+    "$(printf "cat <<'EOF' > f\nls\nEOF\n%s ls" "rtk")"
   assert_eq "hook: heredoc on a ; chain keeps its own segment" \
     "$(hook_cmd "$(printf 'cat <<EOF; ls\nhi\nEOF')")" \
-    "$(printf 'cat <<EOF; %s ls\nhi\nEOF' "$RTK")"
+    "$(printf 'cat <<EOF; %s ls\nhi\nEOF' "rtk")"
   assert_eq "hook: <<- ignores leading tabs on the terminator" \
     "$(hook_cmd "$(printf 'cat <<-EOF\n\thi\n\tEOF\nls')")" \
-    "$(printf 'cat <<-EOF\n\thi\n\tEOF\n%s ls' "$RTK")"
+    "$(printf 'cat <<-EOF\n\thi\n\tEOF\n%s ls' "rtk")"
   assert_eq "hook: unterminated heredoc passes the whole command through" \
     "$(hook_cmd "$(printf 'cat <<EOF\nls')")" "PASSTHROUGH"
 
@@ -833,8 +853,8 @@ FAKE
 
   # (h) copilot payload shape
   assert_eq "hook: copilot client rewrites via modifiedArgs" \
-    "$(jq -nc '{toolArgs:{command:"ls"}}' | HOME="$HOOK_HOME" node "$HOOK" --client=copilot |
-      jq -r '.modifiedArgs.command')" "$RTK ls"
+    "$(jq -nc '{toolArgs:{command:"ls"}}' | HOME="$HOOK_HOME" PATH="$HOOK_HOME/.local/bin:$PATH" node "$HOOK" --client=copilot |
+      jq -r '.modifiedArgs.command')" "rtk ls"
 
   rm -rf "$HOOK_HOME"
 else

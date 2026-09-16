@@ -6,9 +6,10 @@
 //  - それ以外は rtk rewrite に渡す (exit 0/1/2/3 を尊重)。パイプラインは割らず rtk に委ねる
 // Claude Code / Codex / Copilot CLI の 3 つから同じファイルを呼ぶ (~/.agents/hooks/)。
 // 判定ロジックは共通で、hook の入出力 JSON の形だけ `--client=` で切り替える。
-import { readFileSync, existsSync, realpathSync } from 'node:fs';
+import { readFileSync, existsSync, realpathSync, statSync, accessSync, constants } from 'node:fs';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 function allow() {
   process.exit(0);
@@ -217,10 +218,10 @@ export function rewriteSegmentBody(rtk, body) {
   // `rtk test` で実行ごと包んで失敗行だけに畳む。exit code は透過される。
   const head = commandHead(body);
   if (TEST_RUNNER_PATTERNS.some((re) => re.test(head))) {
-    return { action: 'replace', body: `${rtk} test ${body}` };
+    return { action: 'replace', body: `rtk test ${body}` };
   }
   const pw = head.match(PLAYWRIGHT_TEST);
-  if (pw) return { action: 'replace', body: `${rtk} playwright test${head.slice(pw[0].length)}` };
+  if (pw) return { action: 'replace', body: `rtk playwright test${head.slice(pw[0].length)}` };
   if (PLAYWRIGHT_ANY.test(head)) return { action: 'keep' };
   const res = spawnSync(rtk, ['rewrite', body], { encoding: 'utf8' });
   const out = (res.stdout || '').trim();
@@ -238,9 +239,39 @@ export function rewriteSegmentBody(rtk, body) {
   }
 }
 
-// sudo の secure_path 経由でも rtk を見つけられるよう、書き換え後の裸 `rtk` は絶対パス化。
+// 書き換え後の `rtk` は裸のコマンド名のまま残す。権限ルールは書き換え後のコマンドに
+// 対して照合されるので、絶対パス化するとホストごとに `Bash(/home/x/.local/bin/rtk git status *)`
+// が必要になる。裸なら `Bash(rtk git status *)` 1 本で済む。
+// 絶対パス化するのは裸では見つからない場合だけ: sudo 前置 (secure_path) と、resolveRtk が
+// 候補パスで見つけたが実行シェルの PATH には無いホスト。後者は allow が効かず確認に落ちる
+// だけで、command not found にはしない。
 // パイプライン途中のコマンド位置 (`cat f | rtk grep x`) も対象。引数位置の `rtk` は触らない。
-function absInBody(rtk, body) {
+// 裸の `rtk` が PATH 順で最初に当たる実体と、rewrite を計算した rtk が同じ場合だけ true。
+// 別の rtk が先に居ると、書き換えを決めた版と実行される版が食い違う。
+// 1 回の hook 実行で PATH は変わらないので判定は 1 度だけ。壊れた symlink 等で realpath
+// できない候補はシェルの PATH 探索と同じく読み飛ばす。空エントリ (`::` や先頭・末尾の `:`) は
+// POSIX ではカレントディレクトリを指す。
+let onPathMemo;
+function rtkOnPath(rtk) {
+  if (onPathMemo !== undefined) return onPathMemo;
+  onPathMemo = false;
+  let target;
+  try { target = realpathSync(rtk); } catch { return onPathMemo; }
+  for (const p of (process.env.PATH || '').split(':')) {
+    const cand = join(p || '.', 'rtk');
+    // シェルと同じく、実行可能な通常ファイルだけを候補にする (ディレクトリ・chmod -x は読み飛ばす)
+    try {
+      if (!statSync(cand).isFile()) continue;
+      accessSync(cand, constants.X_OK);
+      onPathMemo = realpathSync(cand) === target;
+      return onPathMemo;
+    } catch { continue; }
+  }
+  return onPathMemo;
+}
+
+function absInBody(rtk, prefix, body) {
+  if (!/(^|\s)sudo\s/.test(prefix) && rtkOnPath(rtk)) return body;
   return body.replace(/(^|[|;&]\s*)rtk(?=\s|$)/g, (_, lead) => lead + rtk);
 }
 
@@ -328,7 +359,7 @@ function main() {
     if (r.action === 'keep') { pieces.push(tok.text); continue; }
     anyReplace = true;
     if (r.action === 'replace-ask') needsAsk = true;
-    pieces.push(prefix + absInBody(rtk, r.body) + tail);
+    pieces.push(prefix + absInBody(rtk, prefix, r.body) + tail);
   }
 
   // 5. いずれかのセグメントが deny → クライアントの native deny rule に委ねる
