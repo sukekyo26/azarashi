@@ -940,6 +940,26 @@ cw_out=$(jq -nc --arg t "$CW_T" '{session_id:"cw1", transcript_path:$t}' | TMPDI
 expect_true "warn-cold-cache-cost: the rebuild estimate includes the newest turn's output tokens" \
   sh -c "printf '%s' '$cw_out' | jq -e '.decision == \"block\" and (.reason | test(\"105k tokens.*\\\\\$1.05\"))' >/dev/null"
 
+# The clock statusline.sh persisted from .prompt_cache wins over the transcript
+# heuristic: a warm clock keeps the 2h-old transcript quiet, and an expired one
+# flags a transcript only a minute old — priced at the clock's 5m tier, not the
+# transcript's 1h slot.
+cw_state() { printf '%s %s %s\n' "$2" "$3" "$4" >"$SL_DIR/claude-statusline-cache-$(printf '%s\n' "$1" | md5sum | cut -d' ' -f1)"; }
+expect_true "statusline: persists the prompt_cache clock (warm ttl expires_at) for the cold hook" \
+  sh -c "grep -qx 'true 1h $far' '$SL_DIR/claude-statusline-cache-$(printf 's1\n' | md5sum | cut -d' ' -f1)'"
+cw_state cw2 true 1h "$far"
+cw_out=$(jq -nc --arg t "$CW_T" '{session_id:"cw2", transcript_path:$t}' | TMPDIR="$SL_DIR" bash "$COLDWARN")
+expect_true "warn-cold-cache-cost: a warm persisted clock overrides a stale transcript timestamp" \
+  test -z "$cw_out"
+CW_T2="$SL_DIR/cold-fresh.jsonl"
+jq -nc --arg ts "$(date -u -d '1 minute ago' +%FT%TZ)" '{type:"assistant", timestamp:$ts, message:{model:"claude-opus-5",
+    usage:{input_tokens:2, output_tokens:5000, cache_read_input_tokens:100000, cache_creation_input_tokens:0,
+           cache_creation:{ephemeral_1h_input_tokens:1, ephemeral_5m_input_tokens:0}}}}' >"$CW_T2"
+cw_state cw3 false 5m "$(($(date +%s) - 10))"
+cw_out=$(jq -nc --arg t "$CW_T2" '{session_id:"cw3", transcript_path:$t}' | TMPDIR="$SL_DIR" bash "$COLDWARN")
+expect_true "warn-cold-cache-cost: an expired persisted clock flags a fresh transcript at the clock's tier" \
+  sh -c "printf '%s' '$cw_out' | jq -e '.systemMessage | test(\"\\\\\$0.66\")' >/dev/null"
+
 # --- summary ---------------------------------------------------------------
 
 printf '\n%s test(s), %s failure(s)\n' "$TESTS" "$FAILS"
