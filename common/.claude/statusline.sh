@@ -209,8 +209,9 @@ if [[ -n "$pc" ]]; then
   # Hand the cold clock to warn-cold-cache-cost.sh: hooks don't receive
   # .prompt_cache, and the transcript can't reproduce it (request send time, and
   # fork queries like away_summary that refresh the TTL without an assistant line).
-  printf '%s %s %s\n' "$pc_warm" "$pc_ttl" "$pc_expires" \
-    >"${TMPDIR:-/tmp}/claude-statusline-cache-$(md5sum <<<"${session_id:-$transcript}" | cut -d' ' -f1)"
+  # Written via rename so a hook running concurrently never reads a torn line.
+  clock_file="${TMPDIR:-/tmp}/claude-statusline-cache-$(md5sum <<<"${session_id:-$transcript}" | cut -d' ' -f1)"
+  printf '%s %s %s\n' "$pc_warm" "$pc_ttl" "$pc_expires" >"$clock_file.$$" && mv -f "$clock_file.$$" "$clock_file"
 
   if ((cache_read + cache_create > 0)); then
     hit=$((cache_read * 100 / (cache_read + cache_create)))
