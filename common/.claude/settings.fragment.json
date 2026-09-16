@@ -69,6 +69,7 @@
       "Bash(npm view *)",
       "mcp__context7__query-docs",
       "mcp__context7__resolve-library-id",
+      "mcp__serena",
       "Bash(rtk go build *)",
       "Bash(rtk go test *)",
       "Bash(rtk go vet *)",
