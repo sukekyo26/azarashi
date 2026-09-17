@@ -46,6 +46,7 @@ serena MCP が登録されているエージェント向け（Claude Code・Code
 - **構造・参照関係が未知のコードは serena を優先する** — 探索に `get_symbols_overview` → `find_symbol`、参照追跡に `find_referencing_symbols`、改修に `replace_symbol_body` / `rename_symbol` を使う。ファイル全読みを避けられる分だけトークン効率が良い。
 - **例外は通常のファイル操作でよい** — 非コードファイル（Markdown・JSON・TOML・設定ファイル・シェルスクリプト）、数行読めば足りる箇所、LSP が無い言語、新規ファイルの作成。serena の注入プロンプトが「FORBIDDEN」と言うのはコードファイルに対してで（Read は discovery 用途のみ禁止、Edit は無条件）、非コードや数行読みはもともと対象外。コードファイルでも serena が失敗した・パースできない場合は組み込みの編集でよい。
 - **節約対象は「正しく完了するまでの呼び出し回数」** — 既に場所が分かっている数行の修正で、構造の再導出から始めない。serena の使用率を上げること自体は目的ではない。
+- **Vue SFC は 1 段深い** — `.vue` は `template` / `script setup` という Module シンボルの配下に実体がぶら下がるので、`get_symbols_overview` は `depth=1` で呼ぶ（既定の 0 では Module 名しか出ず空に見える）。個別シンボルの `name_path` は `script setup/<name>`。
 
 ## ast-grep の利用
 
