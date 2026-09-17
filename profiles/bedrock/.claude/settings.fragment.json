@@ -6,7 +6,8 @@
     "claude-opus-4-7[1m]",
     "claude-opus-4-6",
     "claude-opus-4-6[1m]",
-    "claude-sonnet-5"
+    "claude-sonnet-5",
+    "claude-haiku-4-5"
   ],
   "enforceAvailableModels": true,
   "modelOverrides": {
@@ -17,10 +18,12 @@
     "claude-opus-4-6": "global.anthropic.claude-opus-4-6-v1",
     "claude-opus-4-6[1m]": "global.anthropic.claude-opus-4-6-v1[1m]",
     "claude-sonnet-5": "global.anthropic.claude-sonnet-5",
+    "claude-haiku-4-5": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
     "claude-sonnet-4-5-20250929": "pin:disabled",
     "claude-sonnet-4-5-20250929[1m]": "pin:disabled"
   },
   "env": {
-    "CLAUDE_CODE_USE_BEDROCK": "1"
+    "CLAUDE_CODE_USE_BEDROCK": "1",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "global.anthropic.claude-haiku-4-5-20251001-v1:0"
   }
 }
