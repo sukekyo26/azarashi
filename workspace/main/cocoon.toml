@@ -135,6 +135,8 @@ enable = [
     "shellcheck",
     "shfmt",
     "starship",
+    # Serena の terraform-ls は `terraform` が PATH に無いと RuntimeError で止まる (tofu は不可)。
+    "terraform",
     "uv",
     "zig",
 ]

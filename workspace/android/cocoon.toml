@@ -39,6 +39,8 @@ enable = [
     "shellcheck",
     "shfmt",
     "starship",
+    # Serena の terraform-ls は `terraform` が PATH に無いと RuntimeError で止まる。
+    "terraform",
 ]
 
 [plugins.methods]

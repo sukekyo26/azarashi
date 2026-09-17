@@ -2,7 +2,7 @@
 # Records resolved plugin versions + per-arch checksums for reproducible builds.
 
 lock_version = 1
-inputs_hash = '2036ad1fcae6d6660a0f839c0341553a2b2c1dad4ddae3fa4e7b6ac1966497f0'
+inputs_hash = 'a041e84f40449ef8756e4f34385d15d95f942d3829e6ed1b0b5cbbf2f6885cdf'
 
 [[plugins]]
 id = 'cocoon'
@@ -69,3 +69,8 @@ requested = 'latest'
 version = '1.26.0'
 checksum_amd64 = 'b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3'
 checksum_arm64 = 'dc30189378d2f2e287384e8a692d3f95ad1df64cf0e8c36aa9201516028aed6b'
+
+[[plugins]]
+id = 'terraform'
+requested = 'latest'
+version = '1.16.3'
