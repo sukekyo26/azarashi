@@ -11,3 +11,6 @@ __pycache__/
 *.pyc
 
 *.code-workspace
+
+# skills Claude Code syncs from claude.ai into ~/.claude/skills/synced/ (symlinked into this repo)
+common/.agents/skills/synced/
