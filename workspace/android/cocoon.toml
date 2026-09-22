@@ -39,6 +39,7 @@ enable = [
     "shellcheck",
     "shfmt",
     "starship",
+    "uv"
 ]
 
 [plugins.methods]
