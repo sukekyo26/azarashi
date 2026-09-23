@@ -70,7 +70,7 @@ jq_price_defs='
   def mult(m):
     if   (m | test("^global\\."))             then 1.0
     elif (m | test("^(jp|us|eu|au|apac)\\.")) then 1.1
-    elif (m | startswith("anthropic."))           then 1.1
+    elif (m | startswith("anthropic."))       then 1.1
     else 1.0 end;
 '
 cost_mark=""
