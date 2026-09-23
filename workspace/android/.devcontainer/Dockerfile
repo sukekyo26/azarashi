@@ -60,6 +60,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     patch \
     fzf \
     bat \
+    libasound2t64 \
+    fonts-noto-cjk \
     && rm -rf /tmp/* /var/tmp/*
 
 # Plugin apt dependencies. The last apt layer because plugin selection is the
@@ -1241,6 +1243,7 @@ alias gs='git status'
 alias la='ls -A'
 alias ll='ls -lah'
 alias lt='ls -ltrh'
+alias studio='DISPLAY=:50 nohup ~/.local/opt/android-studio/bin/studio.sh >/dev/null 2>&1 &'
 
 # Source persistent user shellrc from the cocoon named volume
 [ -f "$HOME/.cocoon/.shellrc" ] && . "$HOME/.cocoon/.shellrc"

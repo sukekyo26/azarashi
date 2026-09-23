@@ -19,7 +19,7 @@ mode = "password"
 
 [container.shell]
 default = "zsh"
-aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down", dcup = "docker compose up -d", ga = "git add", gc = "git commit", gco = "git checkout", gd = "git diff", gl = "git log --oneline --graph --decorate", gp = "git push", gs = "git status", la = "ls -A", ll = "ls -lah", lt = "ls -ltrh" }
+aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down", dcup = "docker compose up -d", ga = "git add", gc = "git commit", gco = "git checkout", gd = "git diff", gl = "git log --oneline --graph --decorate", gp = "git push", gs = "git status", la = "ls -A", ll = "ls -lah", lt = "ls -ltrh", studio = "DISPLAY=:50 nohup ~/.local/opt/android-studio/bin/studio.sh >/dev/null 2>&1 &" }
 
 # Android 特化の最小セット。go/rust/zig/aws/opentofu 等の汎用ツールは除外。
 [plugins]
@@ -83,6 +83,9 @@ packages = [
     "patch",
     "fzf",
     "bat",
+    # Android Studio (JBR) が要求するがイメージに無いもの。CJK フォントが無いと日本語が豆腐になる。
+    "libasound2t64",
+    "fonts-noto-cjk",
 ]
 
 [ports]
@@ -92,6 +95,11 @@ forward = [
 
 [volumes]
 codex = "/home/${USERNAME}/.codex"
+
+# Android Studio の GUI を WSLg に出す。X ソケットの張り替えは post-start.sh。
+[[mounts]]
+source = "/mnt/wslg"
+target = "/mnt/wslg"
 
 [home_files]
 files = [".claude.json"]

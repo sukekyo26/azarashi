@@ -29,6 +29,7 @@ services:
       - "npm:/home/${USERNAME}/.npm"
       - "npm-global:/home/${USERNAME}/.npm-global"
       - "codex:/home/${USERNAME}/.codex"
+      - "/mnt/wslg:/mnt/wslg"
       - "${HOME:?HOME must be set on the host}/.claude.json:/home/${USERNAME}/.claude.json"
     ports:
       - "3000"

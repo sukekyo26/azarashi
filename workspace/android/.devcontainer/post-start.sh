@@ -28,6 +28,31 @@ rustup component add rust-analyzer >/dev/null 2>&1 || true
 # 非推奨 (警告が出る) かつ Debian の /usr/bin/sg と同名なので、指示側は ast-grep で統一。非 fatal。
 npm install -g @ast-grep/cli@0.45.3 || true
 
+# WSLg の X0 を :50 として見せる (エイリアス studio が使う)。/tmp/.X11-unix ごと mount すると
+# WSLg 側が read-only なので VS Code が自分の X 転送ソケットを作れなくなる。
+if [ -S /mnt/wslg/.X11-unix/X0 ]; then
+  mkdir -p /tmp/.X11-unix
+  ln -sfn /mnt/wslg/.X11-unix/X0 /tmp/.X11-unix/X50
+fi
+
+# Android Studio は永続ボリュームの ~/.local に版ごとのディレクトリで入れ、未導入の版だけ取得する。
+# ピンを書き換えれば新版を並べて入れ、リンクを張り替える。&& 連鎖なのは `|| true` 配下では
+# set -e が効かず、検証失敗でも展開まで進んでしまうため。非 fatal。
+as_ver=2026.1.4.8
+as_url=https://edgedl.me.gvt1.com/android/studio/ide-zips/$as_ver/android-studio-quail4-patch1-linux.tar.gz
+as_sha=25c97ca6c6b505f2a20bff962dfd28718327f61e25b09a9bc915f1dae7b1e534
+as_dir=~/.local/opt/android-studio-$as_ver
+if [ ! -d "$as_dir" ]; then
+  mkdir -p ~/.local/opt
+  as_tmp=$(mktemp -d ~/.local/opt/.android-studio.XXXXXX)
+  curl -fsSL -o "$as_tmp/a.tar.gz" "$as_url" &&
+    echo "$as_sha  $as_tmp/a.tar.gz" | sha256sum -c --quiet &&
+    tar -xzf "$as_tmp/a.tar.gz" -C "$as_tmp" &&
+    mv "$as_tmp/android-studio" "$as_dir" || true
+  rm -rf "$as_tmp"
+fi
+if [ -d "$as_dir" ]; then ln -sfn "$as_dir" ~/.local/opt/android-studio; fi
+
 cd ~/work/azarashi
 
 # Run ./dotfiles, echo its output live, and condense the actions into one line so
