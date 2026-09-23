@@ -35,16 +35,14 @@ as_ver=2026.1.4.8
 as_url=https://edgedl.me.gvt1.com/android/studio/ide-zips/$as_ver/android-studio-quail4-patch1-linux.tar.gz
 as_sha=25c97ca6c6b505f2a20bff962dfd28718327f61e25b09a9bc915f1dae7b1e534
 as_dir=~/.local/opt/android-studio-$as_ver
-if [ ! -d "$as_dir" ]; then
-  mkdir -p ~/.local/opt
-  as_tmp=$(mktemp -d ~/.local/opt/.android-studio.XXXXXX)
+if [ ! -d "$as_dir" ] && mkdir -p ~/.local/opt && as_tmp=$(mktemp -d ~/.local/opt/.android-studio.XXXXXX); then
   curl -fsSL -o "$as_tmp/a.tar.gz" "$as_url" &&
     echo "$as_sha  $as_tmp/a.tar.gz" | sha256sum -c --quiet &&
     tar -xzf "$as_tmp/a.tar.gz" -C "$as_tmp" &&
     mv "$as_tmp/android-studio" "$as_dir" || true
-  rm -rf "$as_tmp"
+  rm -rf "$as_tmp" || true
 fi
-if [ -d "$as_dir" ]; then ln -sfn "$as_dir" ~/.local/opt/android-studio; fi
+if [ -d "$as_dir" ]; then ln -sfn "$as_dir" ~/.local/opt/android-studio || true; fi
 
 cd ~/work/azarashi
 
