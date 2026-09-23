@@ -36,10 +36,13 @@ cache_create=$(jq -r '.context_window.current_usage.cache_creation_input_tokens 
 # 価格テーブル: Bedrock の Global クロスリージョン推論プロファイル基準
 # (USD per 1M tokens)。i = input, o = output, cr = cache read。
 # cache write 5m = input*1.25, 1h = input*2。cache read は従来 input*0.1 だが
-# Opus 5.5 は input*0.05 と比率が崩れたので金額で持つ。
-# モデル追加時は下の jq の price() に行を足す。
+# Opus 5.5 は input*0.05、Fable/Mythos 5.1 は input*0.025 と比率が崩れたので金額で持つ。
+# 同じファミリーでも世代で単価が違う (Sonnet 5 は $2/$10、4.x は $3/$15) ので、
+# モデル追加時は公式料金表で単価を引き、下の jq の price() に行を足す。
 #
-# 料金の確認先 (2026-09-11 に下記で照合済み):
+# 料金の確認先 (2026-09-11 に下記で照合済み。モデル別単価は 2026-09-23 に再照合):
+#   Anthropic 料金表 https://platform.claude.com/docs/en/about-claude/pricing
+#                    (モデル別単価と cache 係数。Bedrock の Global と同額の前提)
 #   Bedrock 料金表   https://aws.amazon.com/bedrock/pricing/
 #   モデル別の実額   https://aws.amazon.com/marketplace/pp/prodview-mv6skd5ti2kow
 #                    (Opus 4.8 Bedrock Edition。全ディメンションが Global 表記で
@@ -56,16 +59,18 @@ cache_create=$(jq -r '.context_window.current_usage.cache_creation_input_tokens 
 # shellcheck disable=SC2016  # jq program text, not shell expansion
 jq_price_defs='
   def price(m):
-    if   (m | test("fable|mythos")) then {i: 10.0, o: 50.0, cr: 1.0}
-    elif (m | test("opus-5[-.]5"))  then {i: 4.0,  o: 20.0, cr: 0.2}
-    elif (m | test("opus"))         then {i: 5.0,  o: 25.0, cr: 0.5}
-    elif (m | test("sonnet"))       then {i: 3.0,  o: 15.0, cr: 0.3}
-    elif (m | test("haiku"))        then {i: 1.0,  o: 5.0,  cr: 0.1}
+    if   (m | test("(fable|mythos)-5[-.]1"))  then {i: 10.0, o: 50.0, cr: 0.25}
+    elif (m | test("fable|mythos"))           then {i: 10.0, o: 50.0, cr: 1.0}
+    elif (m | test("opus-5[-.]5"))            then {i: 4.0,  o: 20.0, cr: 0.2}
+    elif (m | test("opus"))                   then {i: 5.0,  o: 25.0, cr: 0.5}
+    elif (m | test("sonnet-5"))               then {i: 2.0,  o: 10.0, cr: 0.2}
+    elif (m | test("sonnet"))                 then {i: 3.0,  o: 15.0, cr: 0.3}
+    elif (m | test("haiku"))                  then {i: 1.0,  o: 5.0,  cr: 0.1}
     else null end;
   def mult(m):
-    if   (m | test("^global\\."))                 then 1.0
-    elif (m | test("^(jp|us|eu|au|apac)\\."))     then 1.1
-    elif (m | startswith("anthropic."))           then 1.1
+    if   (m | test("^global\\."))             then 1.0
+    elif (m | test("^(jp|us|eu|au|apac)\\.")) then 1.1
+    elif (m | startswith("anthropic."))       then 1.1
     else 1.0 end;
 '
 cost_mark=""
