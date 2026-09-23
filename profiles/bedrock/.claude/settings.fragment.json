@@ -1,5 +1,7 @@
 {
   "availableModels": [
+    "claude-opus-5-5",
+    "claude-opus-5-5[1m]",
     "claude-opus-5",
     "claude-opus-5[1m]",
     "claude-opus-4-7",
@@ -11,6 +13,8 @@
   ],
   "enforceAvailableModels": true,
   "modelOverrides": {
+    "claude-opus-5-5": "global.anthropic.claude-opus-5-5",
+    "claude-opus-5-5[1m]": "global.anthropic.claude-opus-5-5[1m]",
     "claude-opus-5": "global.anthropic.claude-opus-5",
     "claude-opus-5[1m]": "global.anthropic.claude-opus-5[1m]",
     "claude-opus-4-7": "global.anthropic.claude-opus-4-7",
