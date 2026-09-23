@@ -19,7 +19,7 @@ mode = "password"
 
 [container.shell]
 default = "zsh"
-aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down", dcup = "docker compose up -d", ga = "git add", gc = "git commit", gco = "git checkout", gd = "git diff", gl = "git log --oneline --graph --decorate", gp = "git push", gs = "git status", la = "ls -A", ll = "ls -lah", lt = "ls -ltrh", studio = "DISPLAY=:50 nohup ~/.local/opt/android-studio/bin/studio.sh >/dev/null 2>&1 &" }
+aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down", dcup = "docker compose up -d", ga = "git add", gc = "git commit", gco = "git checkout", gd = "git diff", gl = "git log --oneline --graph --decorate", gp = "git push", gs = "git status", la = "ls -A", ll = "ls -lah", lt = "ls -ltrh", studio = "WAYLAND_DISPLAY=/mnt/wslg/runtime-dir/wayland-0 nohup ~/.local/opt/android-studio/bin/studio.sh >/dev/null 2>&1 &" }
 
 # Android 特化の最小セット。go/rust/zig/aws/opentofu 等の汎用ツールは除外。
 [plugins]
@@ -96,7 +96,8 @@ forward = [
 [volumes]
 codex = "/home/${USERNAME}/.codex"
 
-# Android Studio の GUI を WSLg に出す。X ソケットの張り替えは post-start.sh。
+# Android Studio (JBR は Wayland 優先) を WSLg の compositor に直接つなぐ。エイリアス studio が
+# WAYLAND_DISPLAY を上書きするのは、VS Code が端末に自分の Wayland 転送ソケットを入れるため。
 [[mounts]]
 source = "/mnt/wslg"
 target = "/mnt/wslg"

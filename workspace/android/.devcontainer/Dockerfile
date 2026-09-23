@@ -1243,7 +1243,7 @@ alias gs='git status'
 alias la='ls -A'
 alias ll='ls -lah'
 alias lt='ls -ltrh'
-alias studio='DISPLAY=:50 nohup ~/.local/opt/android-studio/bin/studio.sh >/dev/null 2>&1 &'
+alias studio='WAYLAND_DISPLAY=/mnt/wslg/runtime-dir/wayland-0 nohup ~/.local/opt/android-studio/bin/studio.sh >/dev/null 2>&1 &'
 
 # Source persistent user shellrc from the cocoon named volume
 [ -f "$HOME/.cocoon/.shellrc" ] && . "$HOME/.cocoon/.shellrc"
