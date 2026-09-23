@@ -34,8 +34,9 @@ cache_create=$(jq -r '.context_window.current_usage.cache_creation_input_tokens 
 
 # --- Bedrock cost calculation ---------------------------------------------
 # 価格テーブル: Bedrock の Global クロスリージョン推論プロファイル基準
-# (USD per 1M tokens)。cache write 5m = input*1.25, 1h = input*2,
-# cache read = input*0.1 (r で上書き可。Opus 5.5 は $0.20 = input*0.05)。
+# (USD per 1M tokens)。i = input, o = output, cr = cache read。
+# cache write 5m = input*1.25, 1h = input*2。cache read は従来 input*0.1 だが
+# Opus 5.5 は input*0.05 と比率が崩れたので金額で持つ。
 # モデル追加時は下の jq の price() に行を足す。
 #
 # 料金の確認先 (2026-09-11 に下記で照合済み):
@@ -55,11 +56,11 @@ cache_create=$(jq -r '.context_window.current_usage.cache_creation_input_tokens 
 # shellcheck disable=SC2016  # jq program text, not shell expansion
 jq_price_defs='
   def price(m):
-    if   (m | test("fable|mythos")) then {i: 10.0, o: 50.0}
-    elif (m | test("opus-5[-.]5"))  then {i: 4.0,  o: 20.0, r: 0.05}
-    elif (m | test("opus"))         then {i: 5.0,  o: 25.0}
-    elif (m | test("sonnet"))       then {i: 3.0,  o: 15.0}
-    elif (m | test("haiku"))        then {i: 1.0,  o: 5.0}
+    if   (m | test("fable|mythos")) then {i: 10.0, o: 50.0, cr: 1.0}
+    elif (m | test("opus-5[-.]5"))  then {i: 4.0,  o: 20.0, cr: 0.2}
+    elif (m | test("opus"))         then {i: 5.0,  o: 25.0, cr: 0.5}
+    elif (m | test("sonnet"))       then {i: 3.0,  o: 15.0, cr: 0.3}
+    elif (m | test("haiku"))        then {i: 1.0,  o: 5.0,  cr: 0.1}
     else null end;
   def mult(m):
     if   (m | test("^global\\."))                 then 1.0
@@ -99,7 +100,7 @@ if [[ -n "$transcript" && -r "$transcript" ]]; then
             else {
               cost: (($in * $p.i + $out * $p.o
                       + $c5 * $p.i * 1.25 + $c1 * $p.i * 2
-                      + $cr * $p.i * ($p.r // 0.1)) * mult($m) / 1e6),
+                      + $cr * $p.cr) * mult($m) / 1e6),
               bedrock: ($m | contains("anthropic.claude"))
             } end)
       | [(map(.cost) | add // 0), (any(.bedrock))]
