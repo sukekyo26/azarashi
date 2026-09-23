@@ -101,6 +101,7 @@ codex = "/home/${USERNAME}/.codex"
 [[mounts]]
 source = "/mnt/wslg"
 target = "/mnt/wslg"
+readonly = true
 
 [home_files]
 files = [".claude.json"]
