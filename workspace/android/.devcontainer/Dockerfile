@@ -1157,6 +1157,36 @@ chmod 0755 "$HOME/.local/bin/rtk"
 rm "/tmp/${TARBALL}"
 COCOON_PLUGIN_EOF
 ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
+# Install uv
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="" bash <<'COCOON_PLUGIN_EOF'
+#!/usr/bin/env bash
+# Install uv (fast Python package and project manager) (https://github.com/astral-sh/uv)
+#
+# Inputs (env):
+#   PIN       : uv version to install; empty = latest
+#   RC_FILE   : absolute path to the user's login-shell rc file
+#   RC_SYNTAX : "posix" (bash/zsh) or "fish"
+set -euo pipefail
+
+if [ -n "$PIN" ]; then
+  curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+    "https://astral.sh/uv/${PIN}/install.sh" | bash
+else
+  curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+    https://astral.sh/uv/install.sh | bash
+fi
+
+if [ "${RC_SYNTAX:-posix}" = "fish" ]; then
+  # shellcheck disable=SC2016
+  echo 'set -gx PATH $HOME/.local/bin $PATH' >>"$RC_FILE"
+else
+  # shellcheck disable=SC2016
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >>"$RC_FILE"
+fi
+COCOON_PLUGIN_EOF
+ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Configure Starship (user)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
