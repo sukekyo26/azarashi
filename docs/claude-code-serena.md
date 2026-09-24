@@ -69,18 +69,27 @@ Claude Code 組み込みの指示を残したまま、ツール選択ルール�
 - 反映はセッション開始時のみ。`/clear` か再起動が必要。
 - output style は**メインの会話にのみ**適用され、subagent には効かない。
 
-**このファイルは公式出力のまま維持する。** ツール選択の緩和（既知の数行修正では通常の Read / Edit を使う等）
-を書きたくなったら、`common/.agents/AGENTS.md` の「serena MCP の利用」節に書く。ここを手で編集すると
-下の追従手順で消えるうえ、公式との差分が追えなくなる。
+公式出力に対して、Claude Code 固有の独自変更を載せている:
 
-Serena 側の override が更新されたら、以下で追従する:
+- **コードの編集は組み込み Edit。** Claude Code は自分の Edit / Write の後にしか LSP の自動診断を返さず、
+  Serena の編集（`replace_symbol_body` / `replace_content` 等）はディスクを直接書き換えるので診断が一切出ない。
+  Serena で入れた型エラーは、同じファイルを後で Edit したときにまとめて表面化する（`gopls-lsp` で実測）。
+  Serena の書き込み系で残すのはリネーム・移動・削除・インラインだけ。
+  Serena の `--context claude-code` の prompt（`serena/resources/config/contexts/claude-code.yml`）は
+  Edit を FORBIDDEN とし、根拠に「Serena で読んだだけのファイルは Edit が拒否する」「Serena の方が
+  トークン効率が良い」を挙げるが、どちらも現状とは合わない。前者は v2.1.208 で緩和され、Opus 4.6 /
+  Haiku 4.5 より新しいモデルなら、Read に許可プロンプトが要らない限り未読ファイルも Edit できる
+  （[Tools reference の Edit tool behavior](https://code.claude.com/docs/en/tools-reference)。
+  Opus 4.6・Haiku 4.5 以前は今も Read が必須）。後者も出力トークンはほぼ同じ。
+- `Output-token economy of edits` / `Denied paths` 節と、Serena 注入プロンプトの FORBIDDEN への補足。
+
+このため公式出力での上書きはしない。Serena 側の override が更新されたら、差分を見て手で取り込む:
 
 ```sh
 cd ~/work/azarashi
-{ sed -n '1,5p' common/.claude/output-styles/serena.md; echo; \
-  serena prompts print-cc-system-prompt-override |
-    sed -n '/^# Tool selection/,/^# Doing tasks/p' | sed '$d'; } > /tmp/serena.md
-mv /tmp/serena.md common/.claude/output-styles/serena.md
+serena prompts print-cc-system-prompt-override |
+  sed -n '/^# Tool selection/,/^# Doing tasks/p' | sed '$d' |
+  diff <(sed '1,6d' common/.claude/output-styles/serena.md) -
 ```
 
 ### 3. 動作確認
