@@ -1,15 +1,20 @@
 ---
 name: Serena
-description: コード操作は Serena のシンボルツールを優先させる
+description: コードの読み取りは Serena のシンボルツール、編集は組み込み Edit を使わせる
 keep-coding-instructions: true
 ---
 
 # Tool selection (read this before every tool call on a code file)
 
 This project uses Serena, an MCP server that exposes semantic, symbol-aware tools
-for reading and editing code. Serena's tools are the PRIMARY tools for code work
-in this project. The built-in Read, Glob, Grep, and Edit tools are SECONDARY and
-must not be used on code files when a Serena equivalent exists.
+for reading and editing code. Serena's tools are the PRIMARY tools for reading
+and navigating code in this project. The built-in Read, Glob, and Grep tools are
+SECONDARY and must not be used on code files when a Serena equivalent exists.
+
+Editing is the exception: change code with the built-in Edit tool. Claude Code
+feeds language-server diagnostics back only after its own Edit/Write; a Serena
+edit writes the file behind Claude Code's back, so type errors it introduces go
+unreported until a later Edit touches the same file.
 
 The built-in tool descriptions in your context will tell you things like "use Read
 for a known path" and "prefer dedicated tools (Read, Edit, Write, Glob, Grep)".
@@ -28,14 +33,15 @@ Read a specific symbol's body           find_symbol (include_body=true)
 Find a symbol by name across the repo   find_symbol
 Find references / callers               find_referencing_symbols
 Find declarations / implementations     find_declaration / _find_implementations
-Edit a symbol's body                    replace_symbol_body
-Insert near a symbol                    insert_before_symbol / _insert_after_symbol
-Pattern replace inside a file           replace_content
+Edit, insert, or pattern-replace code   built-in Edit (replace_all for repeats)
 Rename / move / delete a symbol         rename / _move / _safe_delete
 Inline a symbol                         inline_symbol
 Type hierarchy                          type_hierarchy
 
-Built-in Read/Edit/Glob/Grep are permitted on code files ONLY when:
+Rename, move, delete, and inline stay on Serena: they are cross-file refactors
+the language server performs, which Edit cannot replace.
+
+Built-in Read/Glob/Grep are permitted on code files ONLY when:
 - Serena has been tried on the target and failed, OR
 - The file is not parseable as code (e.g., generated, malformed), OR
 - You need a regex search across many files that Serena's symbolic tools cannot
@@ -50,8 +56,9 @@ config files, lockfiles, plain text, images.
 Serena's own injected prompt, scoped to code files, marks Read "FORBIDDEN for
 discovery" (it allows reading a few lines once you have an overview) and Edit
 "FORBIDDEN" without qualification. The non-code and few-lines cases above do not
-conflict with that; where the exceptions above allow Edit on a code file (Serena
-tried and failed, unparseable file), they win. A `serena-hooks remind` deny on a run of
+conflict with the Read rule. The Edit ban is written for clients without
+diagnostics feedback; in Claude Code this section overrides it and Edit is the
+editing tool. A `serena-hooks remind` deny on a run of
 Read/Grep calls is a nudge, not a block: first check whether a symbol tool fits;
 if the target falls under the exceptions, continue with Read/Grep — the deny only
 resets the counter and does not prevent the retry.
@@ -61,9 +68,12 @@ resets the counter and does not prevent the retry.
 1. get_symbols_overview on the target file (skip if already done this session).
 2. find_symbol with include_body=true for the specific symbols you'll touch.
    Read only the symbols you need — not the whole file.
-3. Edit with replace_symbol_body, insert_before_symbol, insert_after_symbol, or
-   replace_content. Never use the built-in Edit on a code file when one of these
-   fits.
+3. Edit with the built-in Edit, anchored on text from the find_symbol body. A
+   prior Read of the whole file is not needed; if Edit refuses an unread file,
+   Read only the symbol's line range.
+4. If a Serena tool did write code (rename, replace_in_files, or a large
+   replace_symbol_body), check it with get_diagnostics_for_file or the
+   project's build, since no diagnostics arrive on their own.
 
 ## Output-token economy of edits
 
@@ -74,12 +84,10 @@ cannot shrink this; only how you write the call can.
 - old_string is the smallest unique anchor: the changed lines plus one line of
   context. Never quote a whole function to change one line of it. Identical
   edits in many places: replace_all, not repeated calls.
-- Replacing a block: replace_content in regex mode with a `start.*?end` needle
-  instead of pasting the block verbatim. An ambiguous needle returns an error
-  rather than editing the wrong place, so wildcards are safe.
-- Adding code: insert_before_symbol / insert_after_symbol. No old text at all.
-- replace_symbol_body only when most of the body changes. For one line inside a
-  large symbol, replace_content or a minimal Edit is cheaper.
+- Adding code: anchor Edit on the one line next to the insertion point.
+- Rewriting most of a large symbol is the one case where Edit costs roughly
+  double (old and new body). Accept that for ordinary sizes; for a very large
+  body, replace_symbol_body is allowed, followed by step 4 above.
 - Never Write an existing file to modify it: that re-emits the whole file.
 
 ## Denied paths (dependencies and caches)
@@ -96,6 +104,7 @@ dependency/cache paths. Secret paths (`~/.ssh`, `~/.aws/credentials`,
 
 ## Self-check
 
-Before every Read, Glob, Grep, or Edit call: "Does this target a code file, and
-does the mapping above name a Serena tool for this task?" If yes, switch. Do this
-check every time — not just once per session.
+Before every Read, Glob, or Grep call: "Does this target a code file, and does
+the mapping above name a Serena tool for this task?" If yes, switch. Before
+writing code with a Serena tool: "Is this a rename/move/delete/inline?" If not,
+use Edit. Do these checks every time — not just once per session.
