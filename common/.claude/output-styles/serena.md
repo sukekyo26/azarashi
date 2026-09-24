@@ -57,7 +57,9 @@ Serena's own injected prompt, scoped to code files, marks Read "FORBIDDEN for
 discovery" (it allows reading a few lines once you have an overview) and Edit
 "FORBIDDEN" without qualification. The non-code and few-lines cases above do not
 conflict with the Read rule. The Edit ban rests on two claims that do not hold
-in current Claude Code: Edit accepts a file read only through Serena, and its
+in current Claude Code: Edit accepts a file read only through Serena (v2.1.208+
+with models newer than Opus 4.6 / Haiku 4.5, when reading it needs no permission
+prompt), and its
 output cost matches Serena's edit tools. This section overrides the ban; Edit
 is the editing tool. A `serena-hooks remind` deny on a run of
 Read/Grep calls is a nudge, not a block: first check whether a symbol tool fits;

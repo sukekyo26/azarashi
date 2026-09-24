@@ -77,8 +77,10 @@ Claude Code 組み込みの指示を残したまま、ツール選択ルール�
   Serena の書き込み系で残すのはリネーム・移動・削除・インラインだけ。
   Serena の `--context claude-code` の prompt（`serena/resources/config/contexts/claude-code.yml`）は
   Edit を FORBIDDEN とし、根拠に「Serena で読んだだけのファイルは Edit が拒否する」「Serena の方が
-  トークン効率が良い」を挙げるが、前者は現行の Claude Code では起きず（未読ファイルへの Edit が成功する）、
-  後者も出力トークンはほぼ同じ。
+  トークン効率が良い」を挙げるが、どちらも現状とは合わない。前者は v2.1.208 で緩和され、Opus 4.6 /
+  Haiku 4.5 より新しいモデルなら、Read に許可プロンプトが要らない限り未読ファイルも Edit できる
+  （[Tools reference の Edit tool behavior](https://code.claude.com/docs/en/tools-reference)。
+  Opus 4.6・Haiku 4.5 以前は今も Read が必須）。後者も出力トークンはほぼ同じ。
 - `Output-token economy of edits` / `Denied paths` 節と、Serena 注入プロンプトの FORBIDDEN への補足。
 
 このため公式出力での上書きはしない。Serena 側の override が更新されたら、差分を見て手で取り込む:
