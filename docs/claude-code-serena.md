@@ -75,6 +75,10 @@ Claude Code 組み込みの指示を残したまま、ツール選択ルール�
   Serena の編集（`replace_symbol_body` / `replace_content` 等）はディスクを直接書き換えるので診断が一切出ない。
   Serena で入れた型エラーは、同じファイルを後で Edit したときにまとめて表面化する（`gopls-lsp` で実測）。
   Serena の書き込み系で残すのはリネーム・移動・削除・インラインだけ。
+  Serena の `--context claude-code` の prompt（`serena/resources/config/contexts/claude-code.yml`）は
+  Edit を FORBIDDEN とし、根拠に「Serena で読んだだけのファイルは Edit が拒否する」「Serena の方が
+  トークン効率が良い」を挙げるが、前者は現行の Claude Code では起きず（未読ファイルへの Edit が成功する）、
+  後者も出力トークンはほぼ同じ。
 - `Output-token economy of edits` / `Denied paths` 節と、Serena 注入プロンプトの FORBIDDEN への補足。
 
 このため公式出力での上書きはしない。Serena 側の override が更新されたら、差分を見て手で取り込む:

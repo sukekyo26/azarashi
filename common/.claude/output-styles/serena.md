@@ -56,9 +56,10 @@ config files, lockfiles, plain text, images.
 Serena's own injected prompt, scoped to code files, marks Read "FORBIDDEN for
 discovery" (it allows reading a few lines once you have an overview) and Edit
 "FORBIDDEN" without qualification. The non-code and few-lines cases above do not
-conflict with the Read rule. The Edit ban is written for clients without
-diagnostics feedback; in Claude Code this section overrides it and Edit is the
-editing tool. A `serena-hooks remind` deny on a run of
+conflict with the Read rule. The Edit ban rests on two claims that do not hold
+in current Claude Code: Edit accepts a file read only through Serena, and its
+output cost matches Serena's edit tools. This section overrides the ban; Edit
+is the editing tool. A `serena-hooks remind` deny on a run of
 Read/Grep calls is a nudge, not a block: first check whether a symbol tool fits;
 if the target falls under the exceptions, continue with Read/Grep — the deny only
 resets the counter and does not prevent the retry.
