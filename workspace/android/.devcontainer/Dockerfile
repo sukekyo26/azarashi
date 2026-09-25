@@ -159,7 +159,7 @@ RUN mkdir -p /home/${USERNAME}/.android /home/${USERNAME}/.claude /home/${USERNA
 # Install Android SDK
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="" CHECKSUM_AMD64="" CHECKSUM_ARM64="" ANDROID_SDK_API_LEVEL="36" ANDROID_SDK_BUILD_TOOLS="36.0.0" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="" CHECKSUM_AMD64="" CHECKSUM_ARM64="" ANDROID_SDK_API_LEVEL="37.2" ANDROID_SDK_BUILD_TOOLS="37.0.0" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Android SDK command-line tools (https://developer.android.com/tools)
 #
