@@ -722,8 +722,10 @@ fi
 # --- route-command-output.mjs (skipped when node unavailable) ---------------
 # The hook resolves rtk from $HOME/.local/bin first, so a throwaway HOME with a
 # fake rtk makes the rewrite deterministic: command-position ls/cat/grep/git
-# status get an `rtk ` prefix (exit 3 = ask); pipelines into wc/jq and anything
-# else are left alone (exit 1), mirroring the real rtk's pipeline judgement.
+# status/show/log, jq and tofu plan get an `rtk ` prefix (exit 3 = ask), like
+# the real rtk does, so the hook's own passthrough list is what keeps them;
+# pipelines into wc/jq and anything else are left alone (exit 1), mirroring the
+# real rtk's pipeline judgement.
 
 # shellcheck disable=SC2016  # single-quoted $x / $(...) are literal shell text fed to the hook
 if command -v node >/dev/null 2>&1; then
@@ -735,7 +737,7 @@ if command -v node >/dev/null 2>&1; then
 #!/bin/sh
 [ "$1" = rewrite ] || exit 1
 case "$2" in *'| wc'* | *'| jq'*) exit 1 ;; esac
-out=$(printf '%s\n' "$2" | sed -E 's/(^|\| )(ls|cat|grep|git status)( |$)/\1rtk \2\3/g')
+out=$(printf '%s\n' "$2" | sed -E 's/(^|\| )(ls|cat|grep|git status|git show|git log|jq|tofu plan)( |$)/\1rtk \2\3/g')
 [ "$out" != "$2" ] || exit 1
 printf '%s\n' "$out"
 exit 3
@@ -815,8 +817,30 @@ FAKE
       jq -r '.hookSpecificOutput.updatedInput.command')" "$RTK ls"
   assert_eq "hook: bash |& is a pipe, not a background delimiter" \
     "$(hook_cmd 'ls |& head')" "rtk ls |& head"
-  assert_eq "hook: test runner piped into tail is wrapped as a whole" \
-    "$(hook_cmd 'npm test 2>&1 | tail -5')" "rtk test npm test 2>&1 | tail -5"
+  assert_eq "hook: test runner with only 2>&1 is still wrapped" \
+    "$(hook_cmd 'npm test 2>&1')" "rtk test npm test 2>&1"
+  assert_eq "hook: test runner piped into tail is left to rtk (kept)" \
+    "$(hook_cmd 'npm test 2>&1 | tail -5')" "PASSTHROUGH"
+  assert_eq "hook: playwright test redirected to a file is kept" \
+    "$(hook_cmd 'npx playwright test > /tmp/r.json; ls')" "npx playwright test > /tmp/r.json; rtk ls"
+  assert_eq "hook: playwright test with an explicit --reporter is kept" \
+    "$(hook_cmd 'npx playwright test --reporter=line')" "PASSTHROUGH"
+  assert_eq "hook: a quoted | does not stop the test runner wrap" \
+    "$(hook_cmd "npm test -- -g 'a|b'")" "rtk test npm test -- -g 'a|b'"
+
+  # (d2) output used verbatim or already narrowed by the caller is passed through
+  assert_eq "hook: git show keeps its segment and the neighbours still rewrite" \
+    "$(hook_cmd 'git show HEAD:f; ls')" "git show HEAD:f; rtk ls"
+  assert_eq "hook: git log -p is kept" \
+    "$(hook_cmd 'git log -p -3')" "PASSTHROUGH"
+  assert_eq "hook: git log --format is kept" \
+    "$(hook_cmd 'git log --format=%H')" "PASSTHROUGH"
+  assert_eq "hook: plain git log still rewrites" \
+    "$(hook_cmd 'git log --oneline')" "rtk git log --oneline"
+  assert_eq "hook: jq is kept" \
+    "$(hook_cmd 'jq .a f.json')" "PASSTHROUGH"
+  assert_eq "hook: tofu plan is kept" \
+    "$(hook_cmd 'tofu plan')" "PASSTHROUGH"
 
   # (e) timeout is a wrapper prefix
   assert_eq "hook: timeout prefix is stripped before the playwright guard" \
