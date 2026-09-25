@@ -2,7 +2,12 @@
 # Records resolved plugin versions + per-arch checksums for reproducible builds.
 
 lock_version = 1
-inputs_hash = '2036ad1fcae6d6660a0f839c0341553a2b2c1dad4ddae3fa4e7b6ac1966497f0'
+inputs_hash = '70edc461e6b863e96709fdbbb8f0f10cc383334457ca215432d2147474be70b2'
+
+[[plugins]]
+id = 'android-studio'
+requested = '=2026.1.4.8-quail4-patch1'
+version = '2026.1.4.8-quail4-patch1'
 
 [[plugins]]
 id = 'cocoon'
@@ -69,3 +74,8 @@ requested = 'latest'
 version = '1.26.0'
 checksum_amd64 = 'b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3'
 checksum_arm64 = 'dc30189378d2f2e287384e8a692d3f95ad1df64cf0e8c36aa9201516028aed6b'
+
+[[plugins]]
+id = 'uv'
+requested = 'latest'
+version = '0.12.19'

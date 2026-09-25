@@ -21,11 +21,11 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock"
       - "android:/home/${USERNAME}/.android"
       - "gradle:/home/${USERNAME}/.gradle"
+      - "config:/home/${USERNAME}/.config"
       - "pub-cache:/home/${USERNAME}/.pub-cache"
       - "flutter:/home/${USERNAME}/.flutter"
       - "claude:/home/${USERNAME}/.claude"
       - "copilot:/home/${USERNAME}/.copilot"
-      - "config:/home/${USERNAME}/.config"
       - "npm:/home/${USERNAME}/.npm"
       - "npm-global:/home/${USERNAME}/.npm-global"
       - "codex:/home/${USERNAME}/.codex"
@@ -52,6 +52,8 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_android"
   gradle:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_gradle"
+  config:
+    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_config"
   pub-cache:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_pub-cache"
   flutter:
@@ -60,8 +62,6 @@ volumes:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_claude"
   copilot:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_copilot"
-  config:
-    name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_config"
   npm:
     name: "${COMPOSE_PROJECT_NAME}_${CONTAINER_SERVICE_NAME}_npm"
   npm-global:

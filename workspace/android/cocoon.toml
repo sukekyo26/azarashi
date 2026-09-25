@@ -19,12 +19,14 @@ mode = "password"
 
 [container.shell]
 default = "zsh"
-aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down", dcup = "docker compose up -d", ga = "git add", gc = "git commit", gco = "git checkout", gd = "git diff", gl = "git log --oneline --graph --decorate", gp = "git push", gs = "git status", la = "ls -A", ll = "ls -lah", lt = "ls -ltrh", studio = "WAYLAND_DISPLAY=/mnt/wslg/runtime-dir/wayland-0 nohup ~/.local/opt/android-studio/bin/studio.sh >/dev/null 2>&1 &" }
+aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down", dcup = "docker compose up -d", ga = "git add", gc = "git commit", gco = "git checkout", gd = "git diff", gl = "git log --oneline --graph --decorate", gp = "git push", gs = "git status", la = "ls -A", ll = "ls -lah", lt = "ls -ltrh", studio = "WAYLAND_DISPLAY=/mnt/wslg/runtime-dir/wayland-0 nohup android-studio >/dev/null 2>&1 &" }
 
 # Android 特化の最小セット。go/rust/zig/aws/opentofu 等の汎用ツールは除外。
 [plugins]
 enable = [
     "android-sdk",
+    # latest は lock できないので版とコードネームで pin する (cocoon.lock に記録される)。
+    "android-studio=2026.1.4.8-quail4-patch1",
     "flutter",
     "claude-code",
     "copilot-cli",
@@ -48,6 +50,8 @@ rtk = "binary"
 
 [plugins.options]
 android-sdk = { api_level = "36", build_tools = "36.0.0" }
+# /studio の表に載るのは現行版の SHA-256 だけなので、pin が古くなっても検証されるよう明示する。
+android-studio = { checksum_amd64 = "25c97ca6c6b505f2a20bff962dfd28718327f61e25b09a9bc915f1dae7b1e534" }
 
 [apt]
 packages = [
@@ -83,8 +87,7 @@ packages = [
     "patch",
     "fzf",
     "bat",
-    # Android Studio (JBR) が要求するがイメージに無いもの。CJK フォントが無いと日本語が豆腐になる。
-    "libasound2t64",
+    # android-studio プラグインは CJK フォントを入れないので、無いと日本語が豆腐になる。
     "fonts-noto-cjk",
 ]
 
