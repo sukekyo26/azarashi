@@ -1,5 +1,6 @@
 {
   "language": "japanese",
+  "autoUpdatesChannel": "latest",
   "env": {
     "CLAUDE_CODE_THRIFTY_SONIC": "0"
   },
