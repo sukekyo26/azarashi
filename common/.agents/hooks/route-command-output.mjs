@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // PreToolUse(Bash) hook: 重い/冗長な出力を圧縮またはオフロードしてトークンを節約。
 //  - コマンドを `;` `&&` `||` `&` 改行でセグメントに分け、セグメント単位で判定・書き換える
-//  - 対話/ストリーミング系と git diff/find/ps、制御構文、heredoc はそのセグメントだけ素通し
+//  - 対話/ストリーミング系と FORCE_PASSTHROUGH、制御構文、heredoc はそのセグメントだけ素通し
 //  - npm/make/just 等の間接実行 (テストランナー) は `rtk test` で包んで失敗行だけに畳む
+//    (パイプ・リダイレクト・--reporter で呼ぶ側が出力を決めているものは除く)
 //  - それ以外は rtk rewrite に渡す (exit 0/1/2/3 を尊重)。パイプラインは割らず rtk に委ねる
 // Claude Code / Codex / Copilot CLI の 3 つから同じファイルを呼ぶ (~/.agents/hooks/)。
 // 判定ロジックは共通で、hook の入出力 JSON の形だけ `--client=` で切り替える。
@@ -162,9 +163,24 @@ export function isUnsafeSeg(segText) {
 const EXCLUDE =
   /(--watch|--watchAll|--ui|--debug|--headed|--interactive|--tty|--follow)\b|\s-(it|ti)\b|\battach\b|pytest-watch|\bptw\b/;
 
-// git diff: 精読 / find: rtk フィルタが GNU find 構文を誤解釈 /
-// ps: rtk 0.42 系は rewrite を返すが subcommand 表に無く実行時に死ぬ
-const FORCE_PASSTHROUGH = [/^git\s+diff\b/, /^find\b/, /^ps\b/];
+// find: rtk フィルタが GNU find 構文を誤解釈 /
+// ps: rtk 0.42 系は rewrite を返すが subcommand 表に無く実行時に死ぬ /
+// それ以外は出力を原文のまま使うもの。欠けると取り直すしかなく、節約分より高くつく:
+//  diff・ファイル本体 (git diff/show, log -p, stash show, gh pr diff) / 削除を見落とせない
+//  plan / 呼ぶ側が絞り込み済みの値 (jq, gh api, log --format は rtk が 50 件で切る) /
+//  既に失敗箇所だけのログ (gh run view --log-failed)
+const FORCE_PASSTHROUGH = [
+  /^git\s+(diff|show)\b/,
+  /^git\s+log\b.*\s(-p|-u|--patch|--format|--pretty)\b/,
+  /^git\s+stash\s+show\b/,
+  /^gh\s+pr\s+diff\b/,
+  /^gh\s+api\b/,
+  /^gh\s+run\s+view\b.*\s--log-failed\b/,
+  /^(tofu|terraform)\s+plan\b/,
+  /^jq\b/,
+  /^find\b/,
+  /^ps\b/,
+];
 
 // このセグメントを rtk に渡さず原文のまま残すか。判定はセグメント単位で、複合コマンドの
 // 他のセグメントには影響しない。
@@ -211,17 +227,40 @@ function resolveRtk() {
   }
 }
 
+// 引用符の外に `|` か、出力先を変える `>` があるか。`2>&1` 等の fd 複製は除く。
+export function hasPipeOrRedirect(seg) {
+  let quote = null;
+  for (let i = 0; i < seg.length; i++) {
+    const c = seg[i];
+    if (quote) {
+      if (c === '\\' && quote === '"') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') quote = c;
+    else if (c === '\\') i++;
+    else if (c === '|' || (c === '>' && seg[i + 1] !== '&')) return true;
+  }
+  return false;
+}
+
 // rtk rewrite の exit code 規約: 0=ok / 1=N/A / 2=deny / 3=ask
 export function rewriteSegmentBody(rtk, body) {
   if (!body.trim()) return { action: 'keep' };
   // テストランナーは内側ツールが隠れて rtk rewrite が効かない (exit 3 を返す) ので、
   // `rtk test` で実行ごと包んで失敗行だけに畳む。exit code は透過される。
+  // 呼ぶ側が出力の形を決めているもの (パイプ・リダイレクト・--reporter) は包まない。
+  // 畳んだ出力が下流の grep やファイルに入って壊れる。rtk 本体もパイプ・リダイレクト付きは
+  // exit 1 で据え置く。
   const head = commandHead(body);
+  const shaped = hasPipeOrRedirect(body) || /\s--reporter\b/.test(head);
   if (TEST_RUNNER_PATTERNS.some((re) => re.test(head))) {
-    return { action: 'replace', body: `rtk test ${body}` };
+    return shaped ? { action: 'keep' } : { action: 'replace', body: `rtk test ${body}` };
   }
   const pw = head.match(PLAYWRIGHT_TEST);
-  if (pw) return { action: 'replace', body: `rtk playwright test${head.slice(pw[0].length)}` };
+  if (pw) {
+    return shaped ? { action: 'keep' } : { action: 'replace', body: `rtk playwright test${head.slice(pw[0].length)}` };
+  }
   if (PLAYWRIGHT_ANY.test(head)) return { action: 'keep' };
   const res = spawnSync(rtk, ['rewrite', body], { encoding: 'utf8' });
   const out = (res.stdout || '').trim();
@@ -342,7 +381,7 @@ function main() {
   const MAX_SEGS = 16;
   if (segs.length > MAX_SEGS) allow();
 
-  // 4. セグメント単位で rewrite し、結果を組み立てる。素通し対象 (git diff / 対話系 /
+  // 4. セグメント単位で rewrite し、結果を組み立てる。素通し対象 (FORCE_PASSTHROUGH / 対話系 /
   //    制御構文 / heredoc) はそのセグメントだけ原文で残し、隣のセグメントは巻き込まない。
   let needsAsk = false;
   let denyHit = false;

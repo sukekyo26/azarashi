@@ -35,7 +35,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 - `common/` — 全環境共通の配布ペイロード
   - `.agents/AGENTS.md`, `.agents/skills/` — エージェント共通指示とスキル（mirror.conf で `.claude/` `.codex/` `.copilot/` へ展開）
   - `.agents/hooks/route-command-output.mjs` — 3 エージェント共通の PreToolUse(Bash) hook（rtk 経由の出力圧縮）。各エージェントの設定が `~/.agents/hooks/` を `--client=` 付きで直接呼ぶので mirror 不要。権限ルールは書き換え後のコマンドに対して照合されるので、`rtk` は裸のまま残し（sudo 前置時のみ絶対パス化）、allow/ask は `Bash(rtk git status *)` の形で書く
-  - `.claude/settings.fragment.json`（`permissions`: rtk 書き換え後の読取系・commit・push を allow、`gh pr merge` / `git checkout --` 等の破壊的操作を ask、依存ディレクトリ・ビルドキャッシュを Read deny、`~/.ssh` / `~/.aws/credentials` / `.env.local` は Read と Bash の両方で deny。依存・キャッシュ側だけは Bash の `cat`（hook が `rtk read` に書き換え、Read deny の対象外）で意図的に読める）, `.claude.fragment.json`（MCP: serena）, `.claude/hooks/`（Claude Code 専用の hook）, `.claude/statusline.sh`（表示の説明は `docs/statusline.md`）, `.claude/output-styles/`
+  - `.claude/settings.fragment.json`（`permissions`: rtk 書き換え後の読取系・commit・push を allow、`gh pr merge` / `git checkout --` 等の破壊的操作を ask、依存ディレクトリ・ビルドキャッシュを Read deny、`~/.ssh` / `~/.aws/credentials` / `.env.local` は Read と Bash の両方で deny。依存・キャッシュ側だけは Bash の `cat`（hook が `rtk read` に書き換え、Read deny の対象外）で意図的に読める。`enabledPlugins`: 公式 LSP プラグイン（TypeScript / Python / Rust / Go。言語サーバ本体は各環境で別途入れる）), `.claude.fragment.json`（MCP: serena）, `.claude/hooks/`（Claude Code 専用の hook）, `.claude/statusline.sh`（表示の説明は `docs/statusline.md`）, `.claude/output-styles/`
   - `.codex/config.fragment.toml`, `.codex/hooks.json`
   - `.copilot/settings.fragment.json`, `.copilot/statusline.sh`
   - `.config/git/ignore`, `.config/starship.toml`
