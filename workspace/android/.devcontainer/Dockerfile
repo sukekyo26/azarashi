@@ -485,7 +485,7 @@ ENV PATH="/usr/local/flutter/bin:/usr/local/flutter/bin/cache/dart-sdk/bin:$PUB_
 # Install cocoon
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.17.2" CHECKSUM_AMD64="9225cb28a53ef646890d1e594ebe78aca703f109036236a9f1a9155155d35388" CHECKSUM_ARM64="53a9b793134d4b87110b0cf5f865ae3a2ebe530a0644f25bf3f07d557b8077e3" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.18.0" CHECKSUM_AMD64="914eadf200636d2c33a77252320ceb06bf6aa06bb668de00b1106086f54da31d" CHECKSUM_ARM64="0bc0b7dcedf71c52cb5b09a6b9004977527eb156adcd2f0c949c119749e8c402" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install the cocoon binary from its GitHub Pages mirror rather than the
 # GitHub Releases CDN. Pages-only by design — no fallback to the

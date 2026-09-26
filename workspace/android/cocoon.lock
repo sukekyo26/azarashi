@@ -12,9 +12,9 @@ version = '2026.1.4.8-quail4-patch1'
 [[plugins]]
 id = 'cocoon'
 requested = 'latest'
-version = '0.17.2'
-checksum_amd64 = '9225cb28a53ef646890d1e594ebe78aca703f109036236a9f1a9155155d35388'
-checksum_arm64 = '53a9b793134d4b87110b0cf5f865ae3a2ebe530a0644f25bf3f07d557b8077e3'
+version = '0.18.0'
+checksum_amd64 = '914eadf200636d2c33a77252320ceb06bf6aa06bb668de00b1106086f54da31d'
+checksum_arm64 = '0bc0b7dcedf71c52cb5b09a6b9004977527eb156adcd2f0c949c119749e8c402'
 
 [[plugins]]
 id = 'copilot-cli'
