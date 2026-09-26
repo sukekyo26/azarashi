@@ -13,6 +13,10 @@ username = "tama"
 image = "debian"
 image_version = "13" # trixie → default-jdk-headless が JDK 21 LTS を解決 (AGP 9.x 推奨)
 docker_socket = true
+# Android Emulator のハードウェア支援用。993 は WSL 側で /dev/kvm を所有する kvm グループの GID で、
+# ディストリを入れ直すと変わりうる (`getent group kvm` で確認)。自動解決は sukekyo26/cocoon#234。
+devices = ["/dev/kvm:/dev/kvm"]
+group_add = ["993"]
 
 [container.sudo]
 mode = "password"

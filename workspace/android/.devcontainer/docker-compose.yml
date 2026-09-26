@@ -33,6 +33,10 @@ services:
       - "${HOME:?HOME must be set on the host}/.claude.json:/home/${USERNAME}/.claude.json"
     ports:
       - "3000"
+    group_add:
+      - "993"
+    devices:
+      - "/dev/kvm:/dev/kvm"
     tty: true
     init: true
     command: "sleep infinity"
