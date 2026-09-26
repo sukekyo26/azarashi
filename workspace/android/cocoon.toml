@@ -13,18 +13,24 @@ username = "tama"
 image = "debian"
 image_version = "13" # trixie → default-jdk-headless が JDK 21 LTS を解決 (AGP 9.x 推奨)
 docker_socket = true
+# Android Emulator のハードウェア支援用。993 は WSL 側で /dev/kvm を所有する kvm グループの GID で、
+# ディストリを入れ直すと変わりうる (`getent group kvm` で確認)。自動解決は sukekyo26/cocoon#234。
+devices = ["/dev/kvm:/dev/kvm"]
+group_add = ["993"]
 
 [container.sudo]
 mode = "password"
 
 [container.shell]
 default = "zsh"
-aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down", dcup = "docker compose up -d", ga = "git add", gc = "git commit", gco = "git checkout", gd = "git diff", gl = "git log --oneline --graph --decorate", gp = "git push", gs = "git status", la = "ls -A", ll = "ls -lah", lt = "ls -ltrh" }
+aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down", dcup = "docker compose up -d", ga = "git add", gc = "git commit", gco = "git checkout", gd = "git diff", gl = "git log --oneline --graph --decorate", gp = "git push", gs = "git status", la = "ls -A", ll = "ls -lah", lt = "ls -ltrh", studio = "WAYLAND_DISPLAY=/mnt/wslg/runtime-dir/wayland-0 nohup android-studio >/dev/null 2>&1 &" }
 
 # Android 特化の最小セット。go/rust/zig/aws/opentofu 等の汎用ツールは除外。
 [plugins]
 enable = [
     "android-sdk",
+    # latest は lock できないので版とコードネームで pin する (cocoon.lock に記録される)。
+    "android-studio=2026.1.4.8-quail4-patch1",
     "flutter",
     "claude-code",
     "copilot-cli",
@@ -47,7 +53,9 @@ copilot-cli = "binary"
 rtk = "binary"
 
 [plugins.options]
-android-sdk = { api_level = "36", build_tools = "36.0.0" }
+android-sdk = { api_level = "37.2", build_tools = "37.0.0" }
+# /studio の表に載るのは現行版の SHA-256 だけなので、pin が古くなっても検証されるよう明示する。
+android-studio = { checksum_amd64 = "25c97ca6c6b505f2a20bff962dfd28718327f61e25b09a9bc915f1dae7b1e534" }
 
 [apt]
 packages = [
@@ -83,6 +91,8 @@ packages = [
     "patch",
     "fzf",
     "bat",
+    # android-studio プラグインは CJK フォントを入れないので、無いと日本語が豆腐になる。
+    "fonts-noto-cjk",
 ]
 
 [ports]
@@ -92,6 +102,13 @@ forward = [
 
 [volumes]
 codex = "/home/${USERNAME}/.codex"
+
+# Android Studio (JBR は Wayland 優先) を WSLg の compositor に直接つなぐ。エイリアス studio が
+# WAYLAND_DISPLAY を上書きするのは、VS Code が端末に自分の Wayland 転送ソケットを入れるため。
+[[mounts]]
+source = "/mnt/wslg"
+target = "/mnt/wslg"
+readonly = true
 
 [home_files]
 files = [".claude.json"]

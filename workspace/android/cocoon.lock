@@ -2,14 +2,19 @@
 # Records resolved plugin versions + per-arch checksums for reproducible builds.
 
 lock_version = 1
-inputs_hash = '2036ad1fcae6d6660a0f839c0341553a2b2c1dad4ddae3fa4e7b6ac1966497f0'
+inputs_hash = '70edc461e6b863e96709fdbbb8f0f10cc383334457ca215432d2147474be70b2'
+
+[[plugins]]
+id = 'android-studio'
+requested = '=2026.1.4.8-quail4-patch1'
+version = '2026.1.4.8-quail4-patch1'
 
 [[plugins]]
 id = 'cocoon'
 requested = 'latest'
-version = '0.17.2'
-checksum_amd64 = '9225cb28a53ef646890d1e594ebe78aca703f109036236a9f1a9155155d35388'
-checksum_arm64 = '53a9b793134d4b87110b0cf5f865ae3a2ebe530a0644f25bf3f07d557b8077e3'
+version = '0.18.0'
+checksum_amd64 = '914eadf200636d2c33a77252320ceb06bf6aa06bb668de00b1106086f54da31d'
+checksum_arm64 = '0bc0b7dcedf71c52cb5b09a6b9004977527eb156adcd2f0c949c119749e8c402'
 
 [[plugins]]
 id = 'copilot-cli'
@@ -69,3 +74,8 @@ requested = 'latest'
 version = '1.26.0'
 checksum_amd64 = 'b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3'
 checksum_arm64 = 'dc30189378d2f2e287384e8a692d3f95ad1df64cf0e8c36aa9201516028aed6b'
+
+[[plugins]]
+id = 'uv'
+requested = 'latest'
+version = '0.12.19'

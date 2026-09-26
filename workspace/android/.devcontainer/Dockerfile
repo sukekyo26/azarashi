@@ -60,6 +60,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     patch \
     fzf \
     bat \
+    fonts-noto-cjk \
     && rm -rf /tmp/* /var/tmp/*
 
 # Plugin apt dependencies. The last apt layer because plugin selection is the
@@ -68,8 +69,26 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
+    cocoon_apt_pick() { for p in "$@"; do if apt-get install -s -qq "$p" >/dev/null 2>&1; then echo "cocoon: apt alternative -> $p" >&2; echo "$p"; return 0; fi; done; echo "cocoon: none of the apt alternatives [$*] is installable on this image; fix the '|' candidates in [apt].packages" >&2; return 1; } && \
+    cocoon_alt_1=$(cocoon_apt_pick libasound2t64 libasound2) && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     default-jdk-headless \
+    "$cocoon_alt_1" \
+    libx11-6 \
+    libxext6 \
+    libxrender1 \
+    libxrandr2 \
+    libxinerama1 \
+    libxcomposite1 \
+    libxkbcommon0 \
+    libwayland-client0 \
+    libwayland-cursor0 \
+    libgl1 \
+    libfreetype6 \
+    libfontconfig1 \
+    fontconfig \
+    libgomp1 \
+    libvulkan1 \
     libglu1-mesa \
     clang \
     cmake \
@@ -140,7 +159,7 @@ RUN mkdir -p /home/${USERNAME}/.android /home/${USERNAME}/.claude /home/${USERNA
 # Install Android SDK
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="" CHECKSUM_AMD64="" CHECKSUM_ARM64="" ANDROID_SDK_API_LEVEL="36" ANDROID_SDK_BUILD_TOOLS="36.0.0" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="" CHECKSUM_AMD64="" CHECKSUM_ARM64="" ANDROID_SDK_API_LEVEL="37.2" ANDROID_SDK_BUILD_TOOLS="37.0.0" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Android SDK command-line tools (https://developer.android.com/tools)
 #
@@ -258,6 +277,114 @@ COCOON_PLUGIN_EOF
 ENV ANDROID_HOME="/usr/local/android-sdk"
 ENV ANDROID_SDK_ROOT="/usr/local/android-sdk"
 ENV PATH="/usr/local/android-sdk/cmdline-tools/latest/bin:/usr/local/android-sdk/platform-tools:$PATH"
+# Install Android Studio
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="2026.1.4.8-quail4-patch1" CHECKSUM_AMD64="25c97ca6c6b505f2a20bff962dfd28718327f61e25b09a9bc915f1dae7b1e534" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
+#!/usr/bin/env bash
+# Install Android Studio (https://developer.android.com/studio)
+#
+# Inputs (env):
+#   PIN            : "<version>-<codename>" (e.g. "2026.1.4.8-quail4-patch1");
+#                    empty = latest (scraped from https://developer.android.com/studio)
+#   CHECKSUM_AMD64 : sha256 of the Linux tarball; empty = use the SHA-256 the
+#                    /studio page lists when it offers the same file, else warn
+#   CHECKSUM_ARM64 : unused (Android Studio for Linux is x86_64 only)
+set -euo pipefail
+
+# Yellow WARNING when stderr is a TTY (and NO_COLOR is unset) or
+# FORCE_COLOR is set. NO_COLOR wins per no-color.org.
+if [ -n "${NO_COLOR:-}" ]; then
+  C_YEL=''
+  C_RST=''
+elif [ -n "${FORCE_COLOR:-}" ] || [ -t 2 ]; then
+  C_YEL=$'\033[33m'
+  C_RST=$'\033[0m'
+else
+  C_YEL=''
+  C_RST=''
+fi
+
+ARCH="$(dpkg --print-architecture)"
+if [ "$ARCH" != "amd64" ]; then
+  echo "ERROR: Android Studio for Linux is x86_64 only (this image is ${ARCH})." >&2
+  echo "       Remove android-studio from [plugins].enable on this architecture." >&2
+  exit 1
+fi
+
+# The /studio page is the only upstream index: it links the current Linux
+# tarball and lists its SHA-256 in the download table. It is fetched even for
+# a pinned version, to reuse the listed checksum when the pin is current.
+STUDIO_HTML=$(curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+  https://developer.android.com/studio | tr -d '\n') || STUDIO_HTML=""
+
+# The tarball name carries the release codename, not the version, so both are
+# needed to build the URL (the version-only name 404s). The version has no
+# "-", so the first "-" of the pin separates the two.
+if [ -n "$PIN" ]; then
+  if ! printf '%s' "$PIN" | grep -qE '^[0-9.]+-[a-z0-9-]+$'; then
+    echo "ERROR: android-studio pin \"${PIN}\" is not <version>-<codename>." >&2
+    echo "       Pin as \"android-studio=2026.1.4.8-quail4-patch1\": the version and codename" >&2
+    echo "       are the two parts of .../ide-zips/<version>/android-studio-<codename>-linux.tar.gz" >&2
+    echo "       at https://developer.android.com/studio/archive." >&2
+    exit 1
+  fi
+  VERSION="${PIN%%-*}"
+  CODENAME="${PIN#*-}"
+else
+  LATEST=$(printf '%s' "$STUDIO_HTML" |
+    grep -oE 'ide-zips/[0-9.]+/android-studio-[a-z0-9-]+-linux\.tar\.gz' | head -n 1 |
+    sed -n 's#ide-zips/\([0-9.]*\)/android-studio-\([a-z0-9-]*\)-linux\.tar\.gz#\1-\2#p') || true
+  if [ -z "$LATEST" ]; then
+    echo "ERROR: failed to resolve the latest Android Studio Linux tarball from https://developer.android.com/studio." >&2
+    echo "       Pin explicitly in the enable array: \"android-studio=<version>-<codename>\"" >&2
+    echo "       (e.g. \"android-studio=2026.1.4.8-quail4-patch1\"; see https://developer.android.com/studio/archive)." >&2
+    exit 1
+  fi
+  VERSION="${LATEST%%-*}"
+  CODENAME="${LATEST#*-}"
+fi
+TARBALL="android-studio-${CODENAME}-linux.tar.gz"
+
+# Checksum precedence: the user's checksum_amd64, else the SHA-256 the /studio
+# download table lists for this exact file name (only the current release).
+CHECKSUM="${CHECKSUM_AMD64:-}"
+if [ -z "$CHECKSUM" ]; then
+  CHECKSUM=$(printf '%s' "$STUDIO_HTML" |
+    grep -oE ">${TARBALL//./\\.}</button>[[:space:]]*</td>[[:space:]]*<td>[^<]*</td>[[:space:]]*<td>[0-9a-f]{64}</td>" |
+    head -n 1 | grep -oE '[0-9a-f]{64}') || true
+fi
+
+curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+  "https://dl.google.com/android/studio/ide-zips/${VERSION}/${TARBALL}" \
+  -o /tmp/android-studio.tar.gz
+
+if [ -n "$CHECKSUM" ]; then
+  echo "${CHECKSUM}  /tmp/android-studio.tar.gz" | sha256sum -c -
+else
+  if [ -z "$STUDIO_HTML" ]; then
+    REASON="could not fetch https://developer.android.com/studio"
+  else
+    REASON="https://developer.android.com/studio lists no SHA-256 for ${TARBALL}: not the current release, or the page layout changed"
+  fi
+  printf '%sWARNING: SHA256 verification skipped for Android Studio %s (%s; set checksum_amd64 in [plugins.options].android-studio)%s\n' \
+    "$C_YEL" "$VERSION" "$REASON" "$C_RST" >&2
+fi
+
+rm -rf /opt/android-studio
+tar -xzf /tmp/android-studio.tar.gz -C /opt
+rm -f /tmp/android-studio.tar.gz
+test -x /opt/android-studio/bin/studio.sh
+
+# Launcher. Display forwarding (DISPLAY / WAYLAND_DISPLAY and the socket
+# mounts) is host-specific and left to the user's cocoon.toml.
+# shellcheck disable=SC2016 # the launcher expands $@ at run time
+printf '%s\n' \
+  '#!/bin/sh' \
+  'exec /opt/android-studio/bin/studio.sh "$@"' \
+  >/usr/local/bin/android-studio
+chmod 0755 /usr/local/bin/android-studio
+COCOON_PLUGIN_EOF
 # Install Flutter
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -358,7 +485,7 @@ ENV PATH="/usr/local/flutter/bin:/usr/local/flutter/bin/cache/dart-sdk/bin:$PUB_
 # Install cocoon
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.17.2" CHECKSUM_AMD64="9225cb28a53ef646890d1e594ebe78aca703f109036236a9f1a9155155d35388" CHECKSUM_ARM64="53a9b793134d4b87110b0cf5f865ae3a2ebe530a0644f25bf3f07d557b8077e3" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.18.0" CHECKSUM_AMD64="914eadf200636d2c33a77252320ceb06bf6aa06bb668de00b1106086f54da31d" CHECKSUM_ARM64="0bc0b7dcedf71c52cb5b09a6b9004977527eb156adcd2f0c949c119749e8c402" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install the cocoon binary from its GitHub Pages mirror rather than the
 # GitHub Releases CDN. Pages-only by design — no fallback to the
@@ -1160,7 +1287,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Install uv
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="0.12.19" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install uv (fast Python package and project manager) (https://github.com/astral-sh/uv)
 #
@@ -1241,6 +1368,7 @@ alias gs='git status'
 alias la='ls -A'
 alias ll='ls -lah'
 alias lt='ls -ltrh'
+alias studio='WAYLAND_DISPLAY=/mnt/wslg/runtime-dir/wayland-0 nohup android-studio >/dev/null 2>&1 &'
 
 # Source persistent user shellrc from the cocoon named volume
 [ -f "$HOME/.cocoon/.shellrc" ] && . "$HOME/.cocoon/.shellrc"
