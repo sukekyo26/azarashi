@@ -53,7 +53,10 @@ copilot-cli = "binary"
 rtk = "binary"
 
 [plugins.options]
-android-sdk = { api_level = "37.2", build_tools = "37.0.0" }
+# emulator は cmdline-tools にも Android Studio 本体にも入らない独立パッケージ。
+# /usr/local/android-sdk はボリュームではないので、ここで宣言しないと rebuild のたびに消える。
+# システムイメージは容量が大きいので入れず、Device Manager から都度入れる。
+android-sdk = { api_level = "37.2", build_tools = "37.0.0", extra_packages = ["emulator"] }
 # /studio の表に載るのは現行版の SHA-256 だけなので、pin が古くなっても検証されるよう明示する。
 android-studio = { checksum_amd64 = "25c97ca6c6b505f2a20bff962dfd28718327f61e25b09a9bc915f1dae7b1e534" }
 
@@ -93,9 +96,6 @@ packages = [
     "bat",
     # android-studio プラグインは CJK フォントを入れないので、無いと日本語が豆腐になる。
     "fonts-noto-cjk",
-    # Android Emulator の qemu-system-x86_64 が動的リンクする (無いと AVD 起動時に失敗する)。
-    "libpulse0",
-    "libxkbfile1",
 ]
 
 [ports]

@@ -61,8 +61,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     fzf \
     bat \
     fonts-noto-cjk \
-    libpulse0 \
-    libxkbfile1 \
     && rm -rf /tmp/* /var/tmp/*
 
 # Plugin apt dependencies. The last apt layer because plugin selection is the
@@ -161,7 +159,7 @@ RUN mkdir -p /home/${USERNAME}/.android /home/${USERNAME}/.claude /home/${USERNA
 # Install Android SDK
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="" CHECKSUM_AMD64="" CHECKSUM_ARM64="" ANDROID_SDK_API_LEVEL="37.2" ANDROID_SDK_BUILD_TOOLS="37.0.0" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="" CHECKSUM_AMD64="" CHECKSUM_ARM64="" ANDROID_SDK_API_LEVEL="37.2" ANDROID_SDK_BUILD_TOOLS="37.0.0" ANDROID_SDK_EXTRA_PACKAGES="emulator" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Android SDK command-line tools (https://developer.android.com/tools)
 #
@@ -176,6 +174,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 #                               when CHECKSUM_AMD64 is empty
 #   ANDROID_SDK_API_LEVEL     : platform API level (e.g. "35"); supplied via [install.extra_versions]
 #   ANDROID_SDK_BUILD_TOOLS   : build-tools version (e.g. "35.0.0"); supplied via [install.extra_versions]
+#   ANDROID_SDK_EXTRA_PACKAGES: space-separated extra sdkmanager package ids (e.g.
+#                               "emulator system-images;android-36;google_apis;x86_64");
+#                               supplied via [install.extra_versions] as a list knob.
+#                               Empty = install only the three baseline packages
 set -euo pipefail
 
 # The two extra_versions inputs are always emitted by the generator (with
@@ -186,6 +188,11 @@ set -euo pipefail
 # an empty workspace override.
 : "${ANDROID_SDK_API_LEVEL:?empty/unset — set api_level on android-sdk in [plugins.options], or restore the plugin.toml default}"
 : "${ANDROID_SDK_BUILD_TOOLS:?empty/unset — set build_tools on android-sdk in [plugins.options], or restore the plugin.toml default}"
+
+# extra_packages is opt-in, so an empty value is valid: read splits it into a
+# zero-length array and the sdkmanager call below degrades to the baseline
+# three. The ids contain ';', so whitespace is the only usable separator.
+read -r -a EXTRA_PACKAGES <<<"${ANDROID_SDK_EXTRA_PACKAGES:-}"
 
 # Yellow WARNING when stderr is a TTY (and NO_COLOR is unset) or
 # FORCE_COLOR is set. NO_COLOR wins per no-color.org.
@@ -266,10 +273,34 @@ SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
 # `sdkmanager` call's exit status.
 yes 2>/dev/null | "${SDKMANAGER}" --sdk_root="${ANDROID_SDK_ROOT}" --licenses >/dev/null || true
 
-"${SDKMANAGER}" --sdk_root="${ANDROID_SDK_ROOT}" \
+if ! "${SDKMANAGER}" --sdk_root="${ANDROID_SDK_ROOT}" \
   "platform-tools" \
   "platforms;android-${ANDROID_SDK_API_LEVEL}" \
-  "build-tools;${ANDROID_SDK_BUILD_TOOLS}"
+  "build-tools;${ANDROID_SDK_BUILD_TOOLS}" \
+  "${EXTRA_PACKAGES[@]}"; then
+  echo "ERROR: sdkmanager failed to install the requested packages." >&2
+  echo "       api_level=\"${ANDROID_SDK_API_LEVEL}\", build_tools=\"${ANDROID_SDK_BUILD_TOOLS}\"," >&2
+  echo "       extra_packages=\"${ANDROID_SDK_EXTRA_PACKAGES:-}\"" >&2
+  echo "       Check those values in [plugins.options].android-sdk against the ids" >&2
+  echo "       listed by \`sdkmanager --list\` (a typo in a package id fails here)." >&2
+  exit 1
+fi
+
+# The emulator is a native binary whose runtime deps the SDK does not carry:
+# PulseAudio for audio and libxkbfile for the Qt UI. Installed here, not in
+# [apt].packages, so the default build-only image stays free of them.
+#
+# No apt-get clean / rm -rf /var/lib/apt/lists here: the generator runs every
+# plugin install RUN with /var/cache/apt and /var/lib/apt cache-mounted (see
+# installRunTmpl), so the lists never reach the image layer and wiping them
+# would only throw away the index this and the next build reuse.
+for pkg in "${EXTRA_PACKAGES[@]}"; do
+  if [ "$pkg" = "emulator" ]; then
+    apt-get update
+    apt-get install -y --no-install-recommends libpulse0 libxkbfile1
+    break
+  fi
+done
 
 # The non-root container user owns ~/.android (license cache) and ~/.gradle
 # via volumes, but the SDK tree itself lives under /usr/local. Chown inside
@@ -376,14 +407,18 @@ fi
 rm -rf /opt/android-studio
 tar -xzf /tmp/android-studio.tar.gz -C /opt
 rm -f /tmp/android-studio.tar.gz
-test -x /opt/android-studio/bin/studio.sh
+if [ ! -x /opt/android-studio/bin/studio ]; then
+  echo "ERROR: Android Studio ${VERSION} ships no native launcher (bin/studio)." >&2
+  echo "       Pin a newer release in the enable array (see https://developer.android.com/studio/archive)." >&2
+  exit 1
+fi
 
 # Launcher. Display forwarding (DISPLAY / WAYLAND_DISPLAY and the socket
 # mounts) is host-specific and left to the user's cocoon.toml.
 # shellcheck disable=SC2016 # the launcher expands $@ at run time
 printf '%s\n' \
   '#!/bin/sh' \
-  'exec /opt/android-studio/bin/studio.sh "$@"' \
+  'exec /opt/android-studio/bin/studio "$@"' \
   >/usr/local/bin/android-studio
 chmod 0755 /usr/local/bin/android-studio
 COCOON_PLUGIN_EOF
