@@ -93,6 +93,9 @@ packages = [
     "bat",
     # android-studio プラグインは CJK フォントを入れないので、無いと日本語が豆腐になる。
     "fonts-noto-cjk",
+    # Android Emulator の qemu-system-x86_64 が動的リンクする (無いと AVD 起動時に失敗する)。
+    "libpulse0",
+    "libxkbfile1",
 ]
 
 [ports]

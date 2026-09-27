@@ -61,6 +61,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     fzf \
     bat \
     fonts-noto-cjk \
+    libpulse0 \
+    libxkbfile1 \
     && rm -rf /tmp/* /var/tmp/*
 
 # Plugin apt dependencies. The last apt layer because plugin selection is the
