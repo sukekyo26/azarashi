@@ -1145,7 +1145,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Install GitHub Copilot CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.0.83" CHECKSUM_AMD64="ffbe1c429664b8a05efed67ecdb467123e40fcaa3c6c14ef9a98ba74da4687b7" CHECKSUM_ARM64="213b3a267042dbac3cd8ae22c82f5ea04ff3cabc008108c0f895055d46be4473" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="1.0.89" CHECKSUM_AMD64="c5c234ccba6fae2b7a9eae462caf628e86c21b5e6240ec2e885727fc148a1dcc" CHECKSUM_ARM64="8406c9e0bbfd0cb868b2a3e9488d500b76401685afdb5d71149233df1d36921b" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install GitHub Copilot CLI from the GitHub Releases binary tarball
 # (https://github.com/github/copilot-cli/releases). Picked when gh.io is
@@ -1233,7 +1233,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Install RTK
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.49.0" CHECKSUM_AMD64="7278231dfd7e6a730a4ab7f847b195bcf02289c2d57622b0dab75a6411100c8f" CHECKSUM_ARM64="c8ea4b6560841e73157c134fd4a3293914c6ede42e786ee985cf491fde691ba7" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="binary" PIN="0.50.0" CHECKSUM_AMD64="bc2b8902b0d9c796c82ef45f16ae2307e17757afeca5ee156235a3dc7bda5f89" CHECKSUM_ARM64="d1cc49dfa2cd443fc32625444b59fe616b6c80478cca210985118347174dd758" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install rtk from the GitHub Releases binary tarball
 # (https://github.com/rtk-ai/rtk/releases). Picked when
@@ -1324,7 +1324,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:$PATH"
 # Install uv
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="0.12.19" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="installer" PIN="0.12.21" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install uv (fast Python package and project manager) (https://github.com/astral-sh/uv)
 #
