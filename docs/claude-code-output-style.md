@@ -10,9 +10,10 @@ Claude Code 固有の作法を system prompt 層に載せる設定。AGENTS.md /
 
 ## output style（`lean.md`）
 
-- `Output-token economy of edits` — Edit の `old_string` を最小のアンカーに絞り、出力トークンを抑える作法。
-- `Denied paths` — `Read(...)` deny の対象（依存・キャッシュディレクトリ）を、必要なときだけ Bash の `cat`
-  （hook が `rtk read` に書き換え、Read deny の対象外）で意図的に読む例外。
+`Denied paths` 節だけを持つ。`Read(...)` deny の対象（依存・キャッシュディレクトリ）を、必要なときだけ Bash の `cat`
+（hook が `rtk read` に書き換え、Read deny の対象外）で意図的に読んでよいこと、秘密情報のパスは Bash でも読めないことを伝える。
+この説明が無いと、deny を「読んではいけない」方針と受け取ってライブラリ内のスタックトレースを追えずに止まり得る。
+Edit の作法（`replace_all`・既存ファイルを Write で上書きしない）は組み込みのツール説明にあるので書かない。
 
 frontmatter の `keep-coding-instructions: true` により、Claude Code 組み込みの指示を残したまま上乗せする。
 
@@ -35,7 +36,7 @@ jq '{env, outputStyle}' ~/.claude/settings.json
 ls -l ~/.claude/output-styles/lean.md   # => common/ への symlink
 ```
 
-新しいセッションで、system prompt に `Output-token economy of edits` 節があり、
+新しいセッションで、system prompt に `Denied paths` 節があり、
 「Do your work through the Bash tool …」が無いことを確認する。
 
 ## 出典

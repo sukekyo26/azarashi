@@ -1,22 +1,8 @@
 ---
 name: Lean
-description: Edit の出力トークンを抑える作法と、依存・キャッシュディレクトリの読み方
+description: Read deny 対象の依存・キャッシュディレクトリを必要なときだけ読む方法
 keep-coding-instructions: true
 ---
-
-## Output-token economy of edits
-
-An edit's cost is the text YOU generate (old/new strings), billed as output
-tokens at several times the input rate. The tool result is tiny. Hooks cannot
-shrink this; only how you write the call can.
-
-- old_string is the smallest unique anchor: the changed lines plus one line of
-  context. Never quote a whole function to change one line of it. Identical
-  edits in many places: replace_all, not repeated calls.
-- Adding code: anchor Edit on the one line next to the insertion point.
-- Rewriting most of a large function is the one case where Edit costs roughly
-  double (old and new body). Accept that.
-- Never Write an existing file to modify it: that re-emits the whole file.
 
 ## Denied paths (dependencies and caches)
 
