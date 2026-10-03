@@ -74,7 +74,10 @@ Claude Code 組み込みの指示を残したまま、ツール選択ルール�
 - **コードの編集は組み込み Edit。** Claude Code は自分の Edit / Write の後にしか LSP の自動診断を返さず、
   Serena の編集（`replace_symbol_body` / `replace_content` 等）はディスクを直接書き換えるので診断が一切出ない。
   Serena で入れた型エラーは、同じファイルを後で Edit したときにまとめて表面化する（`gopls-lsp` で実測）。
-  Serena の書き込み系で残すのはリネーム・移動・削除・インラインだけ。
+  Serena の書き込み系で残すのはリネーム・移動・削除・インラインだけ。Edit で代替できる
+  `replace_symbol_body` / `insert_before_symbol` / `insert_after_symbol` / `replace_content` /
+  `replace_in_files` は、自作 mode `common/.serena/modes/claude-code-tools.yml` で Claude Code への
+  公開自体を止めている（後述「ツールの絞り込み」）。
   Serena の `--context claude-code` の prompt（`serena/resources/config/contexts/claude-code.yml`）は
   Edit を FORBIDDEN とし、根拠に「Serena で読んだだけのファイルは Edit が拒否する」「Serena の方が
   トークン効率が良い」を挙げるが、どちらも現状とは合わない。前者は v2.1.208 で緩和され、Opus 4.6 /
@@ -99,6 +102,25 @@ serena prompts print-cc-system-prompt-override |
 - Serena のツールが deferred でなく標準ツールとして載っているか
 - システムプロンプトに `# Tool selection` の節（Serena 優先ルール）が入っているか
 - 「Do your work through the Bash tool …」の指示が消えているか
+
+## ツールの絞り込み
+
+使わないツールはツール一覧そのものから外す（Claude Code の `permissions.deny` は一覧に残したまま呼び出しを拒否するだけ）。
+
+| 設定 | 対象 | 外すもの |
+| --- | --- | --- |
+| `.claude.fragment.json` の `--add-mode no-memories`（Serena 標準 mode） | Claude Code | メモリ系 6 つと `onboarding`。Serena のメモリは使っておらず、各エージェントの自前の指示・メモリと役割が重なる |
+| `.claude.fragment.json` の `--add-mode claude-code-tools`（自作 mode） | Claude Code | 上記の編集系 5 つと `open_dashboard`（`--open-web-dashboard false` で使わない） |
+| `.codex/config.fragment.toml` の `disabled_tools` | Codex | メモリ系 6 つと `onboarding` |
+
+- mode 名は `~/.serena/modes/<name>.yml` → Serena 同梱の順で引かれる。自作 mode は
+  `common/.serena/modes/` に置き、`dotfiles` で `~/.serena/modes/` に symlink される。
+- `--add-mode` で足した mode の除外は、通常は「後で解除できる弱い除外」で一覧に残る。`single_project: true` の
+  context（`claude-code`）で `--project-from-cwd` によりプロジェクトが決まった場合だけ、起動時に一覧から外れる
+  （`serena/agent.py` の base toolset 決定処理）。cwd がプロジェクトとして認識されないと外れない。
+  `codex` context は `single_project` でないので効かず、Codex 側の `disabled_tools` で落とす。
+- 反映確認: Claude Code は新しいセッションで `mcp__serena__replace_symbol_body` や `mcp__serena__write_memory` が
+  ツール一覧に無いこと。Codex は `codex mcp get serena` に `disabled_tools` が出ること。
 
 ## 注意点
 

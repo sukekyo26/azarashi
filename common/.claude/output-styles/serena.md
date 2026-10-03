@@ -74,9 +74,9 @@ resets the counter and does not prevent the retry.
 3. Edit with the built-in Edit, anchored on text from the find_symbol body. A
    prior Read of the whole file is not needed; if Edit refuses an unread file,
    Read only the symbol's line range.
-4. If a Serena tool did write code (rename, replace_in_files, or a large
-   replace_symbol_body), check it with get_diagnostics_for_file or the
-   project's build, since no diagnostics arrive on their own.
+4. If a Serena refactor did write code (rename, delete), check it with
+   get_diagnostics_for_file or the project's build, since no diagnostics
+   arrive on their own.
 
 ## Output-token economy of edits
 
@@ -89,8 +89,8 @@ cannot shrink this; only how you write the call can.
   edits in many places: replace_all, not repeated calls.
 - Adding code: anchor Edit on the one line next to the insertion point.
 - Rewriting most of a large symbol is the one case where Edit costs roughly
-  double (old and new body). Accept that for ordinary sizes; for a very large
-  body, replace_symbol_body is allowed, followed by step 4 above.
+  double (old and new body). Accept that: Serena's editing tools are not
+  exposed in this setup.
 - Never Write an existing file to modify it: that re-emits the whole file.
 
 ## Denied paths (dependencies and caches)
