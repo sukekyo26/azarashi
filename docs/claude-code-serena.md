@@ -74,7 +74,7 @@ Claude Code 組み込みの指示を残したまま、ツール選択ルール�
 - **コードの編集は組み込み Edit。** Claude Code は自分の Edit / Write の後にしか LSP の自動診断を返さず、
   Serena の編集（`replace_symbol_body` / `replace_content` 等）はディスクを直接書き換えるので診断が一切出ない。
   Serena で入れた型エラーは、同じファイルを後で Edit したときにまとめて表面化する（`gopls-lsp` で実測）。
-  Serena の書き込み系で残すのはリネーム・移動・削除・インラインだけ。Edit で代替できる
+  Serena の書き込み系で残すのはリネーム・削除（`rename_symbol` / `safe_delete_symbol`）だけ。Edit で代替できる
   `replace_symbol_body` / `insert_before_symbol` / `insert_after_symbol` / `replace_content` /
   `replace_in_files` は、自作 mode `common/.serena/modes/claude-code-tools.yml` で Claude Code への
   公開自体を止めている（後述「ツールの絞り込み」）。
@@ -85,6 +85,9 @@ Claude Code 組み込みの指示を残したまま、ツール選択ルール�
   （[Tools reference の Edit tool behavior](https://code.claude.com/docs/en/tools-reference)。
   Opus 4.6・Haiku 4.5 以前は今も Read が必須）。後者も出力トークンはほぼ同じ。
 - `Output-token economy of edits` / `Denied paths` 節と、Serena 注入プロンプトの FORBIDDEN への補足。
+- **Mapping 表は実際に公開される 9 ツールの実名に合わせている。** 公式は JetBrains バックエンド専用の
+  `move` / `inline_symbol` / `type_hierarchy` や `_find_implementations` のような表記を含むが、
+  LSP バックエンドのこの環境には存在しない。
 
 このため公式出力での上書きはしない。Serena 側の override が更新されたら、差分を見て手で取り込む:
 

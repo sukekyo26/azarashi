@@ -32,14 +32,13 @@ See a code file's structure             get_symbols_overview
 Read a specific symbol's body           find_symbol (include_body=true)
 Find a symbol by name across the repo   find_symbol
 Find references / callers               find_referencing_symbols
-Find declarations / implementations     find_declaration / _find_implementations
+Find declarations / implementations     find_declaration / find_implementations
+Check diagnostics after a refactor      get_diagnostics_for_file
 Edit, insert, or pattern-replace code   built-in Edit (replace_all for repeats)
-Rename / move / delete a symbol         rename / _move / _safe_delete
-Inline a symbol                         inline_symbol
-Type hierarchy                          type_hierarchy
+Rename / delete a symbol                rename_symbol / safe_delete_symbol
 
-Rename, move, delete, and inline stay on Serena: they are cross-file refactors
-the language server performs, which Edit cannot replace.
+Rename and delete stay on Serena: they are cross-file refactors the language
+server performs, which Edit cannot replace.
 
 Built-in Read/Glob/Grep are permitted on code files ONLY when:
 - Serena has been tried on the target and failed, OR
@@ -109,5 +108,5 @@ dependency/cache paths. Secret paths (`~/.ssh`, `~/.aws/credentials`,
 
 Before every Read, Glob, or Grep call: "Does this target a code file, and does
 the mapping above name a Serena tool for this task?" If yes, switch. Before
-writing code with a Serena tool: "Is this a rename/move/delete/inline?" If not,
+writing code with a Serena tool: "Is this a rename/delete?" If not,
 use Edit. Do these checks every time — not just once per session.
