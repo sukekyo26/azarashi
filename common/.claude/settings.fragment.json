@@ -217,7 +217,6 @@
       "Bash(rtk tsc *)",
       "Bash(rtk lint *)",
       "Bash(rtk prettier *)",
-      "Bash(rtk playwright test)",
       "Bash(rtk playwright test *)",
       "Bash(playwright *)",
       "Bash(npx playwright *)",
