@@ -32,14 +32,13 @@ See a code file's structure             get_symbols_overview
 Read a specific symbol's body           find_symbol (include_body=true)
 Find a symbol by name across the repo   find_symbol
 Find references / callers               find_referencing_symbols
-Find declarations / implementations     find_declaration / _find_implementations
+Find declarations / implementations     find_declaration / find_implementations
+Check diagnostics after a refactor      get_diagnostics_for_file
 Edit, insert, or pattern-replace code   built-in Edit (replace_all for repeats)
-Rename / move / delete a symbol         rename / _move / _safe_delete
-Inline a symbol                         inline_symbol
-Type hierarchy                          type_hierarchy
+Rename / delete a symbol                rename_symbol / safe_delete_symbol
 
-Rename, move, delete, and inline stay on Serena: they are cross-file refactors
-the language server performs, which Edit cannot replace.
+Rename and delete stay on Serena: they are cross-file refactors the language
+server performs, which Edit cannot replace.
 
 Built-in Read/Glob/Grep are permitted on code files ONLY when:
 - Serena has been tried on the target and failed, OR
@@ -74,9 +73,9 @@ resets the counter and does not prevent the retry.
 3. Edit with the built-in Edit, anchored on text from the find_symbol body. A
    prior Read of the whole file is not needed; if Edit refuses an unread file,
    Read only the symbol's line range.
-4. If a Serena tool did write code (rename, replace_in_files, or a large
-   replace_symbol_body), check it with get_diagnostics_for_file or the
-   project's build, since no diagnostics arrive on their own.
+4. If a Serena refactor did write code (rename, delete), check it with
+   get_diagnostics_for_file or the project's build, since no diagnostics
+   arrive on their own.
 
 ## Output-token economy of edits
 
@@ -89,8 +88,8 @@ cannot shrink this; only how you write the call can.
   edits in many places: replace_all, not repeated calls.
 - Adding code: anchor Edit on the one line next to the insertion point.
 - Rewriting most of a large symbol is the one case where Edit costs roughly
-  double (old and new body). Accept that for ordinary sizes; for a very large
-  body, replace_symbol_body is allowed, followed by step 4 above.
+  double (old and new body). Accept that: Serena's editing tools are not
+  exposed in this setup.
 - Never Write an existing file to modify it: that re-emits the whole file.
 
 ## Denied paths (dependencies and caches)
@@ -109,5 +108,5 @@ dependency/cache paths. Secret paths (`~/.ssh`, `~/.aws/credentials`,
 
 Before every Read, Glob, or Grep call: "Does this target a code file, and does
 the mapping above name a Serena tool for this task?" If yes, switch. Before
-writing code with a Serena tool: "Is this a rename/move/delete/inline?" If not,
+writing code with a Serena tool: "Is this a rename/delete?" If not,
 use Edit. Do these checks every time — not just once per session.

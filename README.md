@@ -39,6 +39,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
   - `.codex/config.fragment.toml`, `.codex/hooks.json`
   - `.copilot/settings.fragment.json`, `.copilot/statusline.sh`
   - `.config/git/ignore`, `.config/starship.toml`
+  - `.serena/modes/` — Serena の自作 mode（`claude-code-tools.yml`: Claude Code に公開するツールの絞り込み。`docs/claude-code-serena.md`）
   - `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE/release.md` — プロジェクトに PR テンプレートが無いときの既定（`pr-create` スキルが通常 / リリースで使い分ける）
 - `profiles/<name>/` — 環境レイヤー（`--profile` で選択）
 - `workspace/<name>/` — cocoon で生成する devcontainer 一式（`cocoon.toml` が正典、`.devcontainer/` は生成物、`post-start.sh` だけ手書き）

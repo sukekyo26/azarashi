@@ -74,7 +74,10 @@ Claude Code 組み込みの指示を残したまま、ツール選択ルール�
 - **コードの編集は組み込み Edit。** Claude Code は自分の Edit / Write の後にしか LSP の自動診断を返さず、
   Serena の編集（`replace_symbol_body` / `replace_content` 等）はディスクを直接書き換えるので診断が一切出ない。
   Serena で入れた型エラーは、同じファイルを後で Edit したときにまとめて表面化する（`gopls-lsp` で実測）。
-  Serena の書き込み系で残すのはリネーム・移動・削除・インラインだけ。
+  Serena の書き込み系で残すのはリネーム・削除（`rename_symbol` / `safe_delete_symbol`）だけ。Edit で代替できる
+  `replace_symbol_body` / `insert_before_symbol` / `insert_after_symbol` / `replace_content` /
+  `replace_in_files` は、自作 mode `common/.serena/modes/claude-code-tools.yml` で Claude Code への
+  公開自体を止めている（後述「ツールの絞り込み」）。
   Serena の `--context claude-code` の prompt（`serena/resources/config/contexts/claude-code.yml`）は
   Edit を FORBIDDEN とし、根拠に「Serena で読んだだけのファイルは Edit が拒否する」「Serena の方が
   トークン効率が良い」を挙げるが、どちらも現状とは合わない。前者は v2.1.208 で緩和され、Opus 4.6 /
@@ -82,6 +85,9 @@ Claude Code 組み込みの指示を残したまま、ツール選択ルール�
   （[Tools reference の Edit tool behavior](https://code.claude.com/docs/en/tools-reference)。
   Opus 4.6・Haiku 4.5 以前は今も Read が必須）。後者も出力トークンはほぼ同じ。
 - `Output-token economy of edits` / `Denied paths` 節と、Serena 注入プロンプトの FORBIDDEN への補足。
+- **Mapping 表は実際に公開される 9 ツールの実名に合わせている。** 公式は JetBrains バックエンド専用の
+  `move` / `inline_symbol` / `type_hierarchy` や `_find_implementations` のような表記を含むが、
+  LSP バックエンドのこの環境には存在しない。
 
 このため公式出力での上書きはしない。Serena 側の override が更新されたら、差分を見て手で取り込む:
 
@@ -100,10 +106,31 @@ serena prompts print-cc-system-prompt-override |
 - システムプロンプトに `# Tool selection` の節（Serena 優先ルール）が入っているか
 - 「Do your work through the Bash tool …」の指示が消えているか
 
+## ツールの絞り込み
+
+使わないツールはツール一覧そのものから外す（Claude Code の `permissions.deny` は一覧に残したまま呼び出しを拒否するだけ）。
+
+| 設定 | 対象 | 外すもの |
+| --- | --- | --- |
+| `.claude.fragment.json` の `--add-mode no-memories`（Serena 標準 mode） | Claude Code | メモリ系 6 つと `onboarding`。Serena のメモリは使っておらず、各エージェントの自前の指示・メモリと役割が重なる |
+| `.claude.fragment.json` の `--add-mode claude-code-tools`（自作 mode） | Claude Code | 上記の編集系 5 つと `open_dashboard`（`--open-web-dashboard false` で使わない） |
+| `.codex/config.fragment.toml` の `disabled_tools` | Codex | メモリ系 6 つと `onboarding` |
+
+- mode 名は `~/.serena/modes/<name>.yml` → Serena 同梱の順で引かれる。自作 mode は
+  `common/.serena/modes/` に置き、`dotfiles` で `~/.serena/modes/` に symlink される。
+- `--add-mode` で足した mode の除外は、通常は「後で解除できる弱い除外」で一覧に残る。`single_project: true` の
+  context（`claude-code`）で `--project-from-cwd` によりプロジェクトが決まった場合だけ、起動時に一覧から外れる
+  （`serena/agent.py` の base toolset 決定処理）。cwd がプロジェクトとして認識されないと外れない。
+  `codex` context は `single_project` でないので効かず、Codex 側の `disabled_tools` で落とす。
+- 反映確認: Claude Code は新しいセッションで `mcp__serena__replace_symbol_body` や `mcp__serena__write_memory` が
+  ツール一覧に無いこと。Codex は `codex mcp get serena` に `disabled_tools` が出ること。
+
 ## 注意点
 
-- **SessionStart hook で「Serena を使え」と流しても効かない。** serena の activate hook は既に
-  同種の警告を毎回注入しており、CLAUDE.md にも同じ規約が書いてあるが、どちらも守られなかった。
+- **SessionStart hook で「Serena を使え」と流しても効かない。** serena の activate hook
+  （`serena-hooks activate`）で同種の警告を毎回注入し、CLAUDE.md にも同じ規約を書いたが、どちらも守られなかった。
+  この hook は定型文を流すだけで、`claude-code` context では `activate_project` 自体が公開されない
+  （`single_project` で起動時に有効化済み）ため指示に従いようもなく、設定から外した。
   会話に注入される層は CLAUDE.md と同じ重みしか無く、Serena 公式も CLAUDE.md への追記について
   *"the effect may be insufficient"* と認めている。効かせたいならシステムプロンプト層に置く。
 - `CLAUDE_CODE_THRIFTY_SONIC=0` は output style 導入後も**消さない**。Bash 優先の指示は

@@ -9,7 +9,11 @@
         "claude-code",
         "--project-from-cwd",
         "--open-web-dashboard",
-        "false"
+        "false",
+        "--add-mode",
+        "no-memories",
+        "--add-mode",
+        "claude-code-tools"
       ],
       "env": {
         "SERENA_USAGE_REPORTING": "false"
