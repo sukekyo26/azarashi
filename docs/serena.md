@@ -59,12 +59,22 @@ rm -f ~/.claude.fragment.base.json  # 消えた .claude.fragment.json の前回�
 （`common/.config/git/ignore`）の `.serena/` は、消し忘れた `.serena/` が未追跡として出ないよう残している
 （`project.yml` も含めて丸ごと無視する。git 管理下に置いたリポジトリでは、そのリポジトリ側で `git rm` する）。
 
+プラグイン版（`serena@claude-plugins-official`）を使ったことがある環境では、`~/.claude.json` に使用回数の記録が残る。
+実害は無いが消すなら次のとおり（Claude Code は動作中もこのファイルを書き換えるので、`mv` ではなく中身を書き戻して
+パーミッション 600 を保つ）:
+
+```sh
+jq 'del(.pluginUsage["serena@claude-plugins-official"])' ~/.claude.json > /tmp/claude.json &&
+  cat /tmp/claude.json > ~/.claude.json && rm /tmp/claude.json
+```
+
 ### 3. 確認する
 
 ```sh
 jq '.mcpServers | has("serena")' ~/.claude.json                # => false
 jq '.outputStyle' ~/.claude/settings.json                      # => "Lean"
 grep -c 'serena' ~/.claude/settings.json                       # => 0
+grep -c -i 'serena' ~/.claude.json                             # => 0（pluginUsage の記録も消した場合）
 python3 -c 'import tomllib;c=tomllib.load(open("'"$HOME"'/.codex/config.toml","rb"));print("developer_instructions" in c, "serena" in c.get("mcp_servers",{}))'
                                                                # => False False
 command -v serena serena-hooks                                 # => 何も出ない
