@@ -63,9 +63,12 @@ hooks = true
 # プラグイン版 (.mcp.json) は git のデフォルトブランチを引くため、レビューを経ない
 # 上流変更がそのまま実行される。
 # --context codex は execute_shell_command と、codex 本体と重複する read/list 系を除く。
+# メモリ系と onboarding は使っていないので外す。--add-mode no-memories は codex context
+# （single_project でない）では一覧から消えないため、Codex 側の disabled_tools で落とす。
 [mcp_servers.serena]
 command = "serena"
 args = ["start-mcp-server", "--context", "codex", "--project-from-cwd", "--open-web-dashboard", "false"]
+disabled_tools = ["write_memory", "read_memory", "edit_memory", "delete_memory", "rename_memory", "list_memories", "onboarding"]
 
 [mcp_servers.serena.env]
 SERENA_USAGE_REPORTING = "false"
