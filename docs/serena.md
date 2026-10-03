@@ -23,20 +23,52 @@ Serena（シンボル単位の読み取り・参照追跡・リネームを提�
 - **指示を効かせるのが難しい。** SessionStart hook や CLAUDE.md で「Serena を使え」と流しても守られず、
   Claude Code では output style、Codex では `developer_instructions` という system / developer 層に置く必要があった。
 
-## 移行（各環境で 1 回）
+## 削除方法
+
+Claude Code / Codex を使う環境（ホストと `workspace/*` の各コンテナ）ごとに 1 回行う。
+このリポジトリが Serena を外したコミット以降をチェックアウトしている状態で実行する。
+
+### 1. 設定から消す
 
 ```sh
+cd ~/work/azarashi
 ./dotfiles install --force
 claude mcp remove serena --scope user
-uv tool uninstall serena-agent
 ```
 
-- `--force` で Claude Code の `settings.json`（`outputStyle`・`serena-hooks`・`mcp__serena` の allow）と、Codex の
-  `config.toml`（`developer_instructions`・`[mcp_servers.serena]`）から消える。いずれも前回 `--force` で適用した
-  fragment（`*.fragment.base.json`）に記録済みのキーだけが 3-way 削除の対象になる。
-- `~/.claude.json` の MCP 定義は fragment ごと無くなったため 3-way 削除の対象にならず、`claude mcp remove` で消す。
-- `uv tool uninstall` は `workspace/*/post-start.sh` が入れていた Serena 本体を消す。`~/.serena/`（ログ・設定）は
-  不要なら手で消す。
+- `./dotfiles install --force` で次が消える。`--force` は手で変えた値もリポジトリ側で上書きする点に注意。
+  - Claude Code の `~/.claude/settings.json`: `outputStyle: "Serena"`（`Lean` に置き換わる）、`serena-hooks` の hook、
+    `mcp__serena` の allow
+  - Codex の `~/.codex/config.toml`: `developer_instructions`、`[mcp_servers.serena]`
+  - `~/.claude/output-styles/serena.md` と `~/.serena/modes/claude-code-tools.yml` の symlink（配布元が無くなったため掃除される）
+- 3-way 削除の対象は、前回 `--force` で適用した fragment（`~/.claude/settings.fragment.base.json` /
+  `~/.codex/config.fragment.base.json`）に記録済みのキーだけ。`--force` を一度も通していない環境では消えずに残るので、
+  手順 3 の確認で残っていたら手で消す。
+- `~/.claude.json` の MCP 定義は fragment ごと無くなったため 3-way 削除の対象にならない。`claude mcp remove` で消す
+  （`jq 'del(.mcpServers.serena)' ~/.claude.json` でもよい）。
+
+### 2. 本体とデータを消す
+
+```sh
+uv tool uninstall serena-agent   # workspace/*/post-start.sh が入れていた serena / serena-hooks
+rm -rf ~/.serena                 # ログ・言語サーバーのキャッシュ・グローバル設定
+```
+
+各リポジトリの `.serena/`（プロジェクト設定とキャッシュ）も不要なら消す。グローバル gitignore
+（`common/.config/git/ignore`）の `.serena/*` は、消し忘れた `.serena/` が未追跡として出ないよう残している。
+
+### 3. 確認する
+
+```sh
+jq '.mcpServers | has("serena")' ~/.claude.json                # => false
+jq '.outputStyle' ~/.claude/settings.json                      # => "Lean"
+grep -c 'serena' ~/.claude/settings.json                       # => 0
+python3 -c 'import tomllib;c=tomllib.load(open("'"$HOME"'/.codex/config.toml","rb"));print("developer_instructions" in c, "serena" in c.get("mcp_servers",{}))'
+                                                               # => False False
+command -v serena serena-hooks                                 # => 何も出ない
+```
+
+起動中の Claude Code / Codex は再起動する（MCP サーバーと output style はセッション開始時にしか読み直さない）。
 
 ## 戻すとき
 
