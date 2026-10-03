@@ -4,7 +4,7 @@
   "env": {
     "CLAUDE_CODE_THRIFTY_SONIC": "0"
   },
-  "outputStyle": "Serena",
+  "outputStyle": "Lean",
   "syncClaudeAiSkills": false,
   "enabledPlugins": {
     "gopls-lsp@claude-plugins-official": true,
@@ -79,7 +79,6 @@
       "Bash(npm view *)",
       "mcp__context7__query-docs",
       "mcp__context7__resolve-library-id",
-      "mcp__serena",
       "Bash(rtk go build *)",
       "Bash(rtk go test *)",
       "Bash(rtk go vet *)",
@@ -175,20 +174,6 @@
         "matcher": "Bash",
         "hooks": [
           { "type": "command", "command": "\"$HOME/.agents/hooks/route-command-output.mjs\" --client=claude-code" }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          { "type": "command", "command": "serena-hooks remind --client=claude-code" }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "matcher": "",
-        "hooks": [
-          { "type": "command", "command": "serena-hooks cleanup --client=claude-code" }
         ]
       }
     ],

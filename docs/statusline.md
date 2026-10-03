@@ -4,7 +4,7 @@
 
 ```
 ~/work/azarashi (develop) ⑂wt +12/-3
-Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳59:58 (16:42:07) 5h ██░░░░░░░░ 18% (20:00) 7d █░░░░░░░░░ 12% (09/21 15:00) v2.1.0
+Opus {lean} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳59:58 (16:42:07) 5h ██░░░░░░░░ 18% (20:00) 7d █░░░░░░░░░ 12% (09/21 15:00) v2.1.0
 💥miss $0.89 (model_changed)
 ```
 
@@ -22,7 +22,7 @@ Opus {serena} high 🧠 ███░░░░░░░ 32% $1.234 cache 98% ⏳5
 | 表示 | 意味 |
 |---|---|
 | `Opus` | モデルの表示名 |
-| `{serena}` | output style。`default` のときは出ない |
+| `{lean}` | output style。`default` のときは出ない |
 | `high` | effort level |
 | `🧠` | extended thinking が有効 |
 | `███░░░░░░░ 32%` | コンテキスト使用率。緑 < 60% ≤ 黄 < 80% ≤ 赤 |
