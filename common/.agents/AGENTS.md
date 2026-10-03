@@ -38,19 +38,10 @@
 
 - **最新ドキュメントを取れる MCP（Context7 等）があれば先に使う** — ライブラリ・フレームワーク・SDK・API の仕様や設定を調べる際は、学習データから答える前に MCP 経由で最新ドキュメントを取得できないか検討する。学習データより新しい変更が反映されている。
 
-## serena MCP の利用
-
-serena MCP が登録されているエージェント向け（現状は Codex のみ。Claude Code には登録していない）。エージェント固有のツール選択規範がある場合はそちらが優先で、この節はそれと矛盾しない実務指針に留める。
-
-- **構造・参照関係が未知のコードは serena を優先する** — 探索に `get_symbols_overview` → `find_symbol`、参照追跡に `find_referencing_symbols`、参照をまたぐリネーム・削除に `rename_symbol` / `safe_delete_symbol` を使う。それ以外の編集に Serena の編集ツールを使うかはエージェント固有の指示に従う。ファイル全読みを避けられる分だけトークン効率が良い。
-- **例外は通常のファイル操作でよい** — 非コードファイル（Markdown・JSON・TOML・設定ファイル・シェルスクリプト）、数行読めば足りる箇所、LSP が無い言語、新規ファイルの作成。serena の注入プロンプトが「FORBIDDEN」と言うのはコードファイルに対してで（Read は discovery 用途のみ禁止、Edit は無条件）、非コードや数行読みはもともと対象外。コードファイルでも serena が失敗した・パースできない場合は組み込みの編集でよい。
-- **節約対象は「正しく完了するまでの呼び出し回数」** — 既に場所が分かっている数行の修正で、構造の再導出から始めない。serena の使用率を上げること自体は目的ではない。
-- **Vue SFC は 1 段深い** — `.vue` は `template` / `script setup` という Module シンボルの配下に実体がぶら下がる。`get_symbols_overview` は既定の depth 0 では Module 名しか出ず、`depth=1` にしても子の関数だけで `ref` / `computed` などの Variable は省かれる（overview は構造シンボルのみを出す仕様）。中身を一覧するには `find_symbol` に `name_path="script setup"`, `depth=1` を渡す。個別シンボルの `name_path` は `script setup/<name>`（名前だけでも引ける）。
-
 ## ast-grep の利用
 
 - **構造パターンの検索・置換は ast-grep** — 「この形の呼び出しを全部」「この構文を一括で書き換え」は、テキスト検索の正規表現（複数行・ネスト・空白揺れに弱い）やシンボル名検索（形では引けない）ではなく `ast-grep -p '<pattern>' -r '<rewrite>' -l <lang>` を使う。適用前に `-r` 無しで一致箇所を確認する。短縮名 `sg` は非推奨（警告が出る上、Debian の `/usr/bin/sg` と同名）なので使わない。
-- **名前が分かっているシンボルはシンボル検索、文字列・設定・非コードはテキスト検索** — ast-grep は同名の別物やスコープを区別しない。定義・参照の追跡は serena が使えるなら `find_symbol` / `find_referencing_symbols`、無ければ LSP や grep。Markdown・JSON・TOML・ログ文言はテキスト検索のまま。
+- **名前が分かっているシンボルはシンボル検索、文字列・設定・非コードはテキスト検索** — ast-grep は同名の別物やスコープを区別しない。定義・参照の追跡は LSP（使えなければ grep）。Markdown・JSON・TOML・ログ文言はテキスト検索のまま。
 
 ## CHANGELOG の更新
 
