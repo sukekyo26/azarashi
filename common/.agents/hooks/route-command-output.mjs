@@ -22,7 +22,8 @@ function allow() {
 // 引用符・バッククォート・括弧 `( )` `$( )` `<( )` `{ ...; }` の内側も割らず 1 セグメントに
 // 保って rtk に丸ごと渡す (rtk はサブシェル入りを exit 1 で据え置く)。
 // heredoc は `<<` を含むセグメントに heredoc=true を立てて書き換え対象から外し、本文は raw
-// トークンとして原文のまま保持する。終端行が見つからないときだけ flags.unparsable を立てる。
+// トークンとして原文のまま保持する。delimiter が読めないか終端行が見つからないときだけ
+// flags.unparsable を立てる。
 export function tokenize(cmd) {
   const tokens = [];
   const flags = { unparsable: false };
@@ -164,7 +165,7 @@ const EXCLUDE =
   /(--watch|--watchAll|--ui|--debug|--headed|--interactive|--tty|--follow)\b|\s-(it|ti)\b|\battach\b|pytest-watch|\bptw\b/;
 
 // find: rtk フィルタが GNU find 構文を誤解釈 /
-// ps: rtk 0.42 系は rewrite を返すが subcommand 表に無く実行時に死ぬ /
+// ps: rewrite は `rtk ps` を返すが subcommand 表に無く、素の ps を実行するだけで畳まれない /
 // それ以外は出力を原文のまま使うもの。欠けると取り直すしかなく、節約分より高くつく:
 //  diff・ファイル本体 (git diff/show, log -p, stash show, gh pr diff) / 削除を見落とせない
 //  plan / 呼ぶ側が絞り込み済みの値 (jq, gh api, log --format は rtk が 50 件で切る) /
@@ -190,8 +191,10 @@ function keepSeg(tok) {
   return EXCLUDE.test(head) || FORCE_PASSTHROUGH.some((re) => re.test(head));
 }
 
-// テストランナー系は内側ツールが隠れて rtk rewrite が効かないため、`rtk test` で
-// 実行ごと包んで失敗行だけに畳む。
+// テストランナー系は内側ツールが隠れて rtk rewrite では畳めない。据え置く (`npm test` は exit 1)
+// か、ほぼ素の出力の `rtk npm run` / `rtk just` / `rtk make` に書き換えるか、`npm run lint` を
+// ESLint 専用の `rtk lint` にしてスクリプトを無視する。`rtk test` で実行ごと包み、失敗行
+// (拾えなければ末尾 5 行) だけに畳む。
 // `npm ci` (clean install) と区別するため `ci` は `run ci` のみ拾う。
 const TEST_RUNNER_PATTERNS = [
   /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|test:[\w:-]+|quality|e2e|lint|check)\b/,
@@ -200,8 +203,9 @@ const TEST_RUNNER_PATTERNS = [
   /^just\s+(test|e2e|quality|lint|ci|check)\b/,
 ];
 
-// Playwright は `rtk playwright test` に確定的に書き換える。rtk rewrite に任せると同じ
-// 結果を exit 3 (ask) で返して毎回権限確認になり、汎用 `rtk test` は末尾 5 行しか残さず
+// Playwright は `rtk playwright test` に確定的に書き換える。rtk rewrite に任せると接頭辞で
+// 結果がばらつき (bunx は汎用の `rtk bunx`、yarn は exit 1 で据え置き)、元コマンドが allow
+// されていなければ exit 3 (ask) で毎回権限確認になる。汎用 `rtk test` は末尾 5 行しか残さず
 // 失敗内容が落ちる。専用パーサーは JSON レポーターで走らせて PASS/FAIL と失敗詳細だけに畳む。
 // ランナー接頭辞 (npx/bunx/pnpm/yarn [exec]) は落とす: rtk 側が `npx --no-install` で
 // 起動し、ローカル・グローバルどちらの playwright にも解決できる。
@@ -244,14 +248,14 @@ export function hasPipeOrRedirect(seg) {
   return false;
 }
 
-// rtk rewrite の exit code 規約: 0=ok / 1=N/A / 2=deny / 3=ask
+// rtk rewrite の exit code 規約: 0=ok / 1=N/A / 2=deny / 3=ask。0/2/3 は元コマンドを
+// Claude Code の権限ルール (settings の allow/deny) と照合した結果で、どちらにも無ければ 3。
 export function rewriteSegmentBody(rtk, body) {
   if (!body.trim()) return { action: 'keep' };
-  // テストランナーは内側ツールが隠れて rtk rewrite が効かない (exit 3 を返す) ので、
-  // `rtk test` で実行ごと包んで失敗行だけに畳む。exit code は透過される。
-  // 呼ぶ側が出力の形を決めているもの (パイプ・リダイレクト・--reporter) は包まない。
-  // 畳んだ出力が下流の grep やファイルに入って壊れる。rtk 本体もパイプ・リダイレクト付きは
-  // exit 1 で据え置く。
+  // テストランナーは `rtk test` で実行ごと包む (理由は TEST_RUNNER_PATTERNS の上)。exit code は
+  // 透過される。呼ぶ側が出力の形を決めているもの (パイプ・リダイレクト・--reporter) は包まない。
+  // 畳んだ出力が下流の grep やファイルに入って壊れる。rtk 本体もテストランナーにパイプ・
+  // リダイレクトが付くと exit 1 で据え置く。
   const head = commandHead(body);
   const shaped = hasPipeOrRedirect(body) || /\s--reporter\b/.test(head);
   if (TEST_RUNNER_PATTERNS.some((re) => re.test(head))) {
