@@ -1,8 +1,7 @@
 approval_policy = "on-request"
 approvals_reviewer = "auto_review"
 
-# Claude Code の output style（.claude/output-styles/serena.md）に相当する。
-# developer ロールのメッセージとして組み込み system prompt に追記され、AGENTS.md
+# developer_instructions は developer ロールのメッセージとして組み込み system prompt に追記され、AGENTS.md
 # （user_instructions）より強く効く。AGENTS.md に書いただけでは Serena を使わないため。
 # model_instructions_file は組み込み prompt を丸ごと置換するので使わない。
 developer_instructions = '''

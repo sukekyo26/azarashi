@@ -40,7 +40,7 @@
 
 ## serena MCP の利用
 
-serena MCP が登録されているエージェント向け（Claude Code・Codex）。エージェント固有のツール選択規範（Claude Code の output style 等）がある場合はそちらが優先で、この節はそれと矛盾しない実務指針に留める。
+serena MCP が登録されているエージェント向け（現状は Codex のみ。Claude Code には登録していない）。エージェント固有のツール選択規範がある場合はそちらが優先で、この節はそれと矛盾しない実務指針に留める。
 
 - **構造・参照関係が未知のコードは serena を優先する** — 探索に `get_symbols_overview` → `find_symbol`、参照追跡に `find_referencing_symbols`、改修に `replace_symbol_body` / `rename_symbol` を使う。ファイル全読みを避けられる分だけトークン効率が良い。
 - **例外は通常のファイル操作でよい** — 非コードファイル（Markdown・JSON・TOML・設定ファイル・シェルスクリプト）、数行読めば足りる箇所、LSP が無い言語、新規ファイルの作成。serena の注入プロンプトが「FORBIDDEN」と言うのはコードファイルに対してで（Read は discovery 用途のみ禁止、Edit は無条件）、非コードや数行読みはもともと対象外。コードファイルでも serena が失敗した・パースできない場合は組み込みの編集でよい。
