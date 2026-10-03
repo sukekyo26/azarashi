@@ -52,10 +52,12 @@ claude mcp remove serena --scope user
 ```sh
 uv tool uninstall serena-agent   # workspace/*/post-start.sh が入れていた serena / serena-hooks
 rm -rf ~/.serena                 # ログ・言語サーバーのキャッシュ・グローバル設定
+rm -f ~/.claude.fragment.base.json  # 消えた .claude.fragment.json の前回適用記録（もう参照されない）
 ```
 
 各リポジトリの `.serena/`（プロジェクト設定とキャッシュ）も不要なら消す。グローバル gitignore
-（`common/.config/git/ignore`）の `.serena/*` は、消し忘れた `.serena/` が未追跡として出ないよう残している。
+（`common/.config/git/ignore`）の `.serena/` は、消し忘れた `.serena/` が未追跡として出ないよう残している
+（`project.yml` も含めて丸ごと無視する。git 管理下に置いたリポジトリでは、そのリポジトリ側で `git rm` する）。
 
 ### 3. 確認する
 
