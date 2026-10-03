@@ -184,14 +184,6 @@
         ]
       }
     ],
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          { "type": "command", "command": "serena-hooks activate --client=claude-code" }
-        ]
-      }
-    ],
     "SessionEnd": [
       {
         "matcher": "",

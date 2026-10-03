@@ -127,8 +127,10 @@ serena prompts print-cc-system-prompt-override |
 
 ## 注意点
 
-- **SessionStart hook で「Serena を使え」と流しても効かない。** serena の activate hook は既に
-  同種の警告を毎回注入しており、CLAUDE.md にも同じ規約が書いてあるが、どちらも守られなかった。
+- **SessionStart hook で「Serena を使え」と流しても効かない。** serena の activate hook
+  （`serena-hooks activate`）で同種の警告を毎回注入し、CLAUDE.md にも同じ規約を書いたが、どちらも守られなかった。
+  この hook は定型文を流すだけで、`claude-code` context では `activate_project` 自体が公開されない
+  （`single_project` で起動時に有効化済み）ため指示に従いようもなく、設定から外した。
   会話に注入される層は CLAUDE.md と同じ重みしか無く、Serena 公式も CLAUDE.md への追記について
   *"the effect may be insufficient"* と認めている。効かせたいならシステムプロンプト層に置く。
 - `CLAUDE_CODE_THRIFTY_SONIC=0` は output style 導入後も**消さない**。Bash 優先の指示は
