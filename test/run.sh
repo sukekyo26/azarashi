@@ -984,6 +984,26 @@ cw_out=$(jq -nc --arg t "$CW_T2" '{session_id:"cw3", transcript_path:$t}' | TMPD
 expect_true "warn-cold-cache-cost: an expired persisted clock flags a fresh transcript at the clock's tier" \
   sh -c "printf '%s' '$cw_out' | jq -e '.systemMessage | test(\"\\\\\$0.66\")' >/dev/null"
 
+# --- repo-rulesets apply.sh --dry-run ---------------------------------------
+# --check names land in both rulesets' required_status_checks (strict only on
+# develop); without any, that rule is dropped so a check that never reports
+# can't block every merge.
+
+RULESETS="$SCRIPT_DIR/../common/.agents/skills/repo-rulesets/apply.sh"
+assert_eq "repo-rulesets: --check fills both rulesets, strict only on develop" \
+  "$(bash "$RULESETS" --dry-run --check 'a b' --check c | jq -sc 'map(.name, (.rules[] |
+    select(.type == "required_status_checks").parameters | [.strict_required_status_checks_policy,
+    (.required_status_checks | map(.context))]))')" \
+  '["develop_ruleset",[true,["a b","c"]],"main_ruleset",[false,["a b","c"]]]'
+assert_eq "repo-rulesets: without --check the status-check rule is dropped, the rest kept" \
+  "$(bash "$RULESETS" --dry-run | jq -sc 'map([.rules[].type])')" \
+  '[["deletion","non_fast_forward","pull_request"],["deletion","non_fast_forward","pull_request"]]'
+assert_eq "repo-rulesets: develop squashes, main merges" \
+  "$(bash "$RULESETS" --dry-run | jq -sc 'map(.rules[] | select(.type == "pull_request").parameters.allowed_merge_methods[])')" \
+  '["squash","merge"]'
+expect_false "repo-rulesets: an unknown argument fails" \
+  sh -c "bash '$RULESETS' --bogus 2>/dev/null"
+
 # --- summary ---------------------------------------------------------------
 
 printf '\n%s test(s), %s failure(s)\n' "$TESTS" "$FAILS"
