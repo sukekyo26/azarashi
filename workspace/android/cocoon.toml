@@ -39,6 +39,7 @@ enable = [
     "docker-cli",
     "github-cli",
     "gitleaks",
+    "google-chrome",
     "just",
     "node",
     "rtk",
