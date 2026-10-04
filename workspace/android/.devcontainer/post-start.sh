@@ -30,7 +30,7 @@ if command -v google-chrome-stable >/dev/null 2>&1; then
 [Desktop Entry]
 Type=Application
 Name=Google Chrome (no sandbox)
-Exec=/usr/bin/google-chrome-stable --no-sandbox %U
+Exec=/usr/bin/google-chrome-stable --no-sandbox --no-first-run %U
 MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
 NoDisplay=true
 EOF
