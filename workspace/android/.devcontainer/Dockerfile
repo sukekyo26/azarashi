@@ -313,7 +313,7 @@ ENV PATH="/usr/local/android-sdk/cmdline-tools/latest/bin:/usr/local/android-sdk
 # Install Android Studio
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="2026.1.4.8-quail4-patch1" CHECKSUM_AMD64="25c97ca6c6b505f2a20bff962dfd28718327f61e25b09a9bc915f1dae7b1e534" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="2026.2.1.8-rabbit1" CHECKSUM_AMD64="f8775c67cf899d9133712a2d7ee3ef7231e07fb16dbe0544c47e5f5babd5931b" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Android Studio (https://developer.android.com/studio)
 #
