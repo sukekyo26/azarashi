@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Apply develop_ruleset.json / main_ruleset.json (next to this script) to a GitHub repository.
+# Apply repo_settings.json, then develop_ruleset.json / main_ruleset.json (all next to
+# this script) to a GitHub repository.
 set -euo pipefail
 
 usage() {
@@ -10,8 +11,10 @@ Usage: apply.sh [--repo OWNER/REPO] [--check NAME]... [--force] [--dry-run]
   --check    required status check name, repeated per check. Without any, the
              required_status_checks rule is left out: a required check that never
              reports would block every merge
-  --force    overwrite rulesets that already exist under the same name
-  --dry-run  print the payloads instead of calling the API
+  --force    overwrite rulesets that already exist under the same name (the
+             repository settings are always written; they are absolute values)
+  --dry-run  print the payloads (settings first, then each ruleset) instead of
+             calling the API
 EOF
 }
 
@@ -49,6 +52,7 @@ payload() { # <template>
 }
 
 if [ "$dry_run" = 1 ]; then
+  jq . "$DIR/repo_settings.json"
   for tpl in "$DIR/develop_ruleset.json" "$DIR/main_ruleset.json"; do payload "$tpl"; done
   exit 0
 fi
@@ -59,6 +63,11 @@ if [ -z "$repo" ]; then
 fi
 [ ${#checks[@]} -gt 0 ] ||
   printf 'apply.sh: no --check given; applying without required status checks\n' >&2
+
+# Settings first: the rulesets' allowed merge methods must be enabled on the repository.
+gh api -X PATCH "repos/$repo" --input "$DIR/repo_settings.json" >/dev/null ||
+  die "could not update the settings of $repo (see the gh error above)"
+printf 'updated: repository settings on %s\n' "$repo"
 
 for tpl in "$DIR/develop_ruleset.json" "$DIR/main_ruleset.json"; do
   name=$(jq -r .name "$tpl")
