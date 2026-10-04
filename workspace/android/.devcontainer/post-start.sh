@@ -22,6 +22,21 @@ rustup component add rust-analyzer >/dev/null 2>&1 || true
 # 非推奨 (警告が出る) かつ Debian の /usr/bin/sg と同名なので、指示側は ast-grep で統一。非 fatal。
 npm install -g @ast-grep/cli@0.45.3 || true
 
+# Docker の seccomp で Chrome のサンドボックスが namespace を作れず即落ちするため、--no-sandbox 版を既定にする。
+# Docker ソケットがあるので、このブラウザは Google サインイン等の信頼できるページ専用にする。
+if command -v google-chrome-stable >/dev/null 2>&1; then
+	mkdir -p ~/.local/share/applications
+	cat >~/.local/share/applications/google-chrome-no-sandbox.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Google Chrome (no sandbox)
+Exec=/usr/bin/google-chrome-stable --no-sandbox %U
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+NoDisplay=true
+EOF
+	xdg-mime default google-chrome-no-sandbox.desktop text/html x-scheme-handler/http x-scheme-handler/https || true
+fi
+
 cd ~/work/azarashi
 
 # Run ./dotfiles, echo its output live, and condense the actions into one line so
