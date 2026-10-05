@@ -523,7 +523,7 @@ deploy_rel() {
   link_path "$_eff" "$HOME/$1"
 }
 
-# --- file mirrors ----------------------------------------------------------
+# --- mirrors ---------------------------------------------------------------
 # mirror.conf maps a target path to a single canonical source, so shared
 # content lives in one place. A file source becomes one managed file symlink; a
 # directory source is deployed like a layer directory (real dirs, leaf links,
