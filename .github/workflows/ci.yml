@@ -306,13 +306,13 @@ jobs:
           grep -q 'mirror source not found, skipping' err.out
           [ ! -e "$HOME/.nope/MISSING.md" ]
           [ -L "$HOME/.codex/AGENTS.md" ]
-          grep -v '.nope/MISSING.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
+          grep -vF '.nope/MISSING.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
           # so does a source that is itself only a mirror target (sources resolve one hop)
           printf '%s\n' '.nope/CHAIN.md     .codex/AGENTS.md' >>mirror.conf
           ./dotfiles install 2>err.out
           grep -qF 'mirror source not found, skipping: .nope/CHAIN.md <- .codex/AGENTS.md' err.out
           [ ! -e "$HOME/.nope/CHAIN.md" ]
-          grep -v '.nope/CHAIN.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
+          grep -vF '.nope/CHAIN.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
 
       - name: Common-only — mirror.conf rejects unsafe and malformed rules
         run: |
