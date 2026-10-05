@@ -1066,6 +1066,8 @@ RECORDER
     sh -c "head -1 '$ART_TMP/store/untitled/index.html' | grep -qi '^<!doctype html>' &&
       grep -q 'content=\"local-artifacts template\"' '$ART_TMP/store/untitled/index.html' &&
       grep -q '<p>untitled</p>' '$ART_TMP/store/untitled/index.html'"
+  expect_true "artifact: a templated page links back to the management page" \
+    grep -qF '<nav class="home"><a href="/">' "$ART_TMP/store/untitled/index.html"
   expect_false "artifact: a page with its own <title> is stored as is" \
     grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
   printf '<h1>A &amp; <em>B</em></h1>\n<p>keeps %s</p>\n' "\$& and \$1" >"$ART_TMP/frag.html"
