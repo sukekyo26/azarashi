@@ -1054,6 +1054,12 @@ RECORDER
   assert_eq "artifact: republishing the same slug does not open another tab" "$(art_opened | wc -l | tr -d ' ')" 1
   art publish "$ART_TMP/untitled.html" >/dev/null
   assert_eq "artifact: a page without <title> is titled by its slug" "$(jq -r .title "$ART_TMP/store/untitled/meta.json")" untitled
+  # 63 letters then a separator: cutting the derived slug at 64 must not leave a trailing hyphen
+  ART_LONG=$(printf '%063d' 0 | tr 0 a)
+  printf '<p>long</p>\n' >"$ART_TMP/$ART_LONG b.html"
+  assert_eq "artifact: a slug cut at 64 characters drops a trailing hyphen" \
+    "$(art publish "$ART_TMP/$ART_LONG b.html")" "http://localhost:$ART_PORT/a/$ART_LONG/"
+  art rm "$ART_LONG"
   expect_false "artifact: an invalid slug is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
   expect_false "artifact: a missing file is rejected" \

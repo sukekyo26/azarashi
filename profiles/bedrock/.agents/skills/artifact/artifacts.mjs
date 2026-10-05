@@ -66,7 +66,7 @@ function writeAtomic(path, data) {
 
 function slugFromFile(file) {
   return basename(file, extname(file)).toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+    .replace(/[^a-z0-9]+/g, '-').slice(0, 64).replace(/^-+|-+$/g, '');
 }
 
 function titleOf(html) {
