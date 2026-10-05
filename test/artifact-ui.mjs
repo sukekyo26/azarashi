@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// test/artifact-ui.mjs <chrome> <base-url> — artifact skill の管理画面をヘッドレス Chrome で操作し、
-// 観測結果を | 区切りの 1 行で出す（run.sh が期待値と比べる）。
-// 前提: ストアに my-demo（Demo Page、新しい方）と untitled の 2 件だけがある。
-import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+// test/artifact-ui.mjs <chrome> <base-url> <scenario> [artifacts.mjs] — artifact skill の画面を
+// ヘッドレス Chrome で操作し、観測結果を | 区切りの 1 行で出す（run.sh が期待値と比べる）。
+//   manage: 管理画面。前提はストアに my-demo（Demo Page、新しい方）と untitled の 2 件だけがあること
+//   reload: ライブリロード。artifacts.mjs で live を公開し直す（ARTIFACTS_DIR / ARTIFACTS_PORT を引き継ぐ）
+import { execFileSync, spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const [chrome, base] = process.argv.slice(2);
+const [chrome, base, scenario, art] = process.argv.slice(2);
 const profile = mkdtempSync(join(tmpdir(), 'artifact-ui-'));
 const proc = spawn(chrome, [
   '--headless=new', '--no-sandbox', '--disable-gpu', '--no-first-run',
@@ -27,6 +28,68 @@ async function until(fn, what, tries = 100) {
     await sleep(50);
   }
   throw new Error(`timed out waiting for ${what}`);
+}
+
+async function manage({ send, evaluate }) {
+  const titles = () => evaluate("[...document.querySelectorAll('#list li .title')].map((a) => a.textContent).join(',')");
+  const rows = () => evaluate("document.querySelectorAll('#list li').length");
+  const filter = (q) => evaluate(`(() => {
+    const q = document.getElementById('q');
+    q.value = ${JSON.stringify(q)};
+    q.dispatchEvent(new Event('input'));
+  })()`);
+  const clickDelete = (title) => evaluate(`(() => {
+    const li = [...document.querySelectorAll('#list li')].find((l) => l.querySelector('.title').textContent === ${JSON.stringify(title)});
+    const b = li.querySelector('button');
+    b.click();
+    return b.textContent;
+  })()`);
+
+  const out = [];
+  await send('Page.navigate', { url: `${base}/` });
+  out.push(await until(titles, 'the list to render'));
+  await filter('untitled');
+  out.push(await rows());
+  await filter('');
+  out.push(await clickDelete('untitled'));
+  out.push(await rows());
+  await clickDelete('untitled');
+  await until(async () => (await rows()) === 1, 'the deleted row to disappear');
+  out.push(await titles());
+  out.push(await evaluate("fetch('/api/artifacts').then((r) => r.json()).then((a) => a.map((x) => x.slug).join(','))"));
+  // a DELETE that cannot reach the server shows an error and keeps the row
+  await evaluate("window.realFetch = window.fetch; window.fetch = () => Promise.reject(new TypeError('Failed to fetch'))");
+  await clickDelete('Demo Page');
+  await clickDelete('Demo Page');
+  out.push(await until(() => evaluate("(() => { const e = document.getElementById('error'); return !e.hidden && e.textContent.includes('削除できませんでした'); })()"), 'the delete error'));
+  out.push(await rows());
+  await evaluate('window.fetch = window.realFetch');
+  // the button stays armed, so one more click deletes
+  await clickDelete('Demo Page');
+  out.push(await until(() => evaluate("!document.getElementById('empty').hidden"), 'the empty state'));
+  return out;
+}
+
+// 開いているページが、公開し直しに合わせて（sandbox の中から）読み直されること
+async function reload({ send, evaluate }) {
+  const dir = mkdtempSync(join(tmpdir(), 'artifact-live-'));
+  const publish = (v) => {
+    writeFileSync(join(dir, 'live.html'), `<title>Live</title><p id="v">${v}</p>`);
+    execFileSync(process.execPath, [art, 'publish', join(dir, 'live.html'), '--slug', 'live'], { stdio: 'ignore' });
+  };
+  // reload の最中は実行コンテキストが入れ替わるので、評価の失敗は「まだ」とみなす
+  const shown = (v) => async () => (await evaluate("document.getElementById('v')?.textContent").catch(() => null)) === v;
+  try {
+    const out = [];
+    publish('1');
+    await send('Page.navigate', { url: `${base}/a/live/` });
+    out.push(await until(shown('1'), 'the first version') && '1');
+    publish('2');
+    out.push(await until(shown('2'), 'the page to reload') && '2');
+    return out;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 let ws;
@@ -69,43 +132,10 @@ try {
     if (result.exceptionDetails) throw new Error(`${expression}: ${result.exceptionDetails.exception?.description}`);
     return result.result.value;
   };
-  const titles = () => evaluate("[...document.querySelectorAll('#list li .title')].map((a) => a.textContent).join(',')");
-  const rows = () => evaluate("document.querySelectorAll('#list li').length");
-  const filter = (q) => evaluate(`(() => {
-    const q = document.getElementById('q');
-    q.value = ${JSON.stringify(q)};
-    q.dispatchEvent(new Event('input'));
-  })()`);
-  const clickDelete = (title) => evaluate(`(() => {
-    const li = [...document.querySelectorAll('#list li')].find((l) => l.querySelector('.title').textContent === ${JSON.stringify(title)});
-    const b = li.querySelector('button');
-    b.click();
-    return b.textContent;
-  })()`);
 
-  const out = [];
-  await send('Page.navigate', { url: `${base}/` });
-  out.push(await until(titles, 'the list to render'));
-  await filter('untitled');
-  out.push(await rows());
-  await filter('');
-  out.push(await clickDelete('untitled'));
-  out.push(await rows());
-  await clickDelete('untitled');
-  await until(async () => (await rows()) === 1, 'the deleted row to disappear');
-  out.push(await titles());
-  out.push(await evaluate("fetch('/api/artifacts').then((r) => r.json()).then((a) => a.map((x) => x.slug).join(','))"));
-  // a DELETE that cannot reach the server shows an error and keeps the row
-  await evaluate("window.realFetch = window.fetch; window.fetch = () => Promise.reject(new TypeError('Failed to fetch'))");
-  await clickDelete('Demo Page');
-  await clickDelete('Demo Page');
-  out.push(await until(() => evaluate("(() => { const e = document.getElementById('error'); return !e.hidden && e.textContent.includes('削除できませんでした'); })()"), 'the delete error'));
-  out.push(await rows());
-  await evaluate('window.fetch = window.realFetch');
-  // the button stays armed, so one more click deletes
-  await clickDelete('Demo Page');
-  out.push(await until(() => evaluate("!document.getElementById('empty').hidden"), 'the empty state'));
-  console.log(out.join('|'));
+  const scenarios = { manage, reload };
+  if (!scenarios[scenario]) throw new Error(`unknown scenario "${scenario}" (manage | reload)`);
+  console.log((await scenarios[scenario]({ send, evaluate })).join('|'));
 } catch (e) {
   console.error(`artifact-ui: ${e.message}`);
   if (stderr) console.error(`--- Chrome stderr (tail) ---\n${stderr}`);

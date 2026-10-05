@@ -131,9 +131,35 @@ function send(res, status, body, headers = {}) {
   res.end(body);
 }
 
+// 公開し直したら開いているタブを再読み込みさせるスクリプトを、配信時にだけ末尾へ足す。
+// 読み込んだ版を since に埋め込むので、接続前に公開し直されても取りこぼさない。
+function withReloader(page, slug) {
+  const since = encodeURIComponent(readMeta(slug)?.updatedAt ?? '');
+  return `${page}\n<script>new EventSource('/api/events/${slug}?since=${since}')`
+    + ".addEventListener('reload', () => location.reload());</script>\n";
+}
+
+// ページは sandbox（opaque origin）から購読するので CORS を開ける。返すのは再読み込みの合図だけ。
+// LIMIT: 接続ごとに 1 秒間隔で meta.json を読む。同時に開くタブが数十を超えるなら fs.watch に替える
+function watch(req, res, slug, since) {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream', 'cache-control': 'no-store', 'access-control-allow-origin': '*',
+  });
+  res.write('retry: 1000\n\n');
+  const timer = setInterval(check, 1000);
+  req.on('close', () => clearInterval(timer));
+  check();
+  function check() {
+    const now = readMeta(slug)?.updatedAt ?? '';
+    if (now === since) return;
+    clearInterval(timer);
+    res.end(`event: reload\ndata: ${now}\n\n`);
+  }
+}
+
 function handle(req, res, ui) {
   if (!HOSTS.has(req.headers.host)) return send(res, 403, 'forbidden host');
-  const { pathname } = new URL(req.url, BASE);
+  const { pathname, searchParams } = new URL(req.url, BASE);
   const html = { 'content-type': 'text/html; charset=utf-8' };
   const json = { 'content-type': 'application/json' };
   let m;
@@ -142,6 +168,9 @@ function handle(req, res, ui) {
     return send(res, 200, JSON.stringify({ app: APP, pid: process.pid, root: ROOT }), json);
   }
   if (req.method === 'GET' && pathname === '/api/artifacts') return send(res, 200, JSON.stringify(listArtifacts()), json);
+  if (req.method === 'GET' && (m = pathname.match(/^\/api\/events\/([^/]+)$/)) && SLUG_RE.test(m[1])) {
+    return watch(req, res, m[1], searchParams.get('since') ?? '');
+  }
   if (req.method === 'DELETE' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)$/))) {
     // 他サイトのページや sandbox 内のページ（Origin: null）からの削除を拒否する
     if (!ORIGINS.has(req.headers.origin)) return send(res, 403, 'forbidden origin');
@@ -157,7 +186,7 @@ function handle(req, res, ui) {
     } catch {
       return send(res, 404, 'not found');
     }
-    return send(res, 200, page, { ...html, 'content-security-policy': PAGE_CSP });
+    return send(res, 200, withReloader(page, m[1]), { ...html, 'content-security-policy': PAGE_CSP });
   }
   return send(res, 404, 'not found');
 }
