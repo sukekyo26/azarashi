@@ -1017,15 +1017,29 @@ if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   art() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" "$@"; }
   http_code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
   printf '<title>Demo  Page</title><p>hi</p>\n' >"$ART_TMP/My Demo.html"
+  printf '<p>untitled</p>\n' >"$ART_TMP/untitled.html"
 
   assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
     "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "http://localhost:$ART_PORT/a/my-demo/"
   assert_eq "artifact: list shows the slug and the <title>" "$(art list | cut -f2-)" "$(printf 'my-demo\tDemo Page')"
+  ART_CREATED=$(jq -r .createdAt "$ART_TMP/store/my-demo/meta.json")
   art publish "$ART_TMP/My Demo.html" --slug my-demo >/dev/null
   assert_eq "artifact: republishing keeps the description and createdAt" \
-    "$(jq -r '[.description, (.createdAt <= .updatedAt)] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'a demo\ttrue')"
+    "$(jq -r '[.description, .createdAt] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'a demo\t%s' "$ART_CREATED")"
+  art publish "$ART_TMP/My Demo.html" --title 'Renamed' >/dev/null
+  assert_eq "artifact: --title overrides the <title>" "$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" Renamed
+  art publish "$ART_TMP/untitled.html" >/dev/null
+  assert_eq "artifact: a page without <title> is titled by its slug" "$(jq -r .title "$ART_TMP/store/untitled/meta.json")" untitled
   expect_false "artifact: an invalid slug is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
+  expect_false "artifact: a missing file is rejected" \
+    sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/nope.html' 2>/dev/null"
+  expect_false "artifact: publishing to a server that serves another store fails" \
+    sh -c "ARTIFACTS_DIR='$ART_TMP/other' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/My Demo.html' 2>/dev/null"
+  expect_true "artifact: the management page is served" \
+    sh -c "curl -s '$ART_URL/' | grep -q '<title>Local Artifacts</title>'"
+  assert_eq "artifact: a page URL without the trailing slash redirects, an unknown slug is 404" \
+    "$(http_code "$ART_URL/a/my-demo") $(http_code "$ART_URL/a/no-such/")" "301 404"
   expect_true "artifact: the page is served in a sandbox" \
     sh -c "curl -s -D - -o /dev/null '$ART_URL/a/my-demo/' | grep -qi '^content-security-policy: sandbox'"
   assert_eq "artifact: a request under a foreign Host is refused" \
@@ -1035,11 +1049,20 @@ if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   assert_eq "artifact: DELETE from a sandboxed page (Origin: null) is refused" \
     "$(http_code -X DELETE -H 'Origin: null' "$ART_URL/api/artifacts/my-demo")" 403
   assert_eq "artifact: DELETE from the management page removes the page" \
-    "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo")|$(art list)" "204|"
-  art publish "$ART_TMP/My Demo.html" >/dev/null
-  art rm my-demo
+    "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo")|$(art list | cut -f2)" "204|untitled"
+  art rm untitled
   assert_eq "artifact: rm deletes the page" "$(art list)" ""
+  expect_false "artifact: rm of an unknown slug fails" sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' rm untitled 2>/dev/null"
   art stop >/dev/null
+  _art_up=1
+  for _i in 1 2 3 4 5 6 7 8 9 10; do
+    http_code "$ART_URL/api/health" | grep -q 200 || {
+      _art_up=0
+      break
+    }
+    sleep 0.1
+  done
+  assert_eq "artifact: stop shuts the server down" "$_art_up" 0
   rm -rf "$ART_TMP"
 else
   printf '  skip - artifact skill tests (node or curl not available)\n'
