@@ -135,7 +135,13 @@ function send(res, status, body, headers = {}) {
 
 function handle(req, res, ui) {
   if (!HOSTS.has(req.headers.host)) return send(res, 403, 'forbidden host');
-  const { pathname } = new URL(req.url, BASE);
+  let pathname;
+  try {
+    ({ pathname } = new URL(req.url, BASE));
+  } catch {
+    // `//` などの不正なリクエストは、内部エラー（500）ではなく利用側の誤りとして返す
+    return send(res, 400, 'bad request');
+  }
   const html = { 'content-type': 'text/html; charset=utf-8' };
   const json = { 'content-type': 'application/json' };
   let m;

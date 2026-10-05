@@ -1081,6 +1081,8 @@ RECORDER
     "$(http_code "$ART_URL/a/my-demo") $(http_code "$ART_URL/a/no-such/")" "301 404"
   expect_true "artifact: the page is served in a sandbox" \
     sh -c "curl -s -D - -o /dev/null '$ART_URL/a/my-demo/' | grep -qi '^content-security-policy: sandbox'"
+  assert_eq "artifact: a malformed request target is a client error, not a server error" \
+    "$(http_code --request-target '//' "$ART_URL/") $(http_code --request-target 'http://[' "$ART_URL/")" "400 400"
   assert_eq "artifact: a request under a foreign Host is refused" \
     "$(http_code -H 'Host: evil.example' "$ART_URL/")" 403
   assert_eq "artifact: DELETE from a foreign origin is refused" \
