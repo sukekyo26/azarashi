@@ -1007,6 +1007,44 @@ assert_eq "repo-setup: develop squashes, main merges, and the settings enable ex
 expect_false "repo-setup: an unknown argument fails" \
   sh -c "bash '$REPO_SETUP' --bogus 2>/dev/null"
 
+# --- artifact skill (skipped when node or curl unavailable) -----------------
+
+if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+  ART="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/artifacts.mjs"
+  ART_TMP=$(mktemp -d)
+  ART_PORT=$((40000 + $$ % 20000))
+  ART_URL="http://127.0.0.1:$ART_PORT"
+  art() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" "$@"; }
+  http_code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+  printf '<title>Demo  Page</title><p>hi</p>\n' >"$ART_TMP/My Demo.html"
+
+  assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
+    "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "http://localhost:$ART_PORT/a/my-demo/"
+  assert_eq "artifact: list shows the slug and the <title>" "$(art list | cut -f2-)" "$(printf 'my-demo\tDemo Page')"
+  art publish "$ART_TMP/My Demo.html" --slug my-demo >/dev/null
+  assert_eq "artifact: republishing keeps the description and createdAt" \
+    "$(jq -r '[.description, (.createdAt <= .updatedAt)] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'a demo\ttrue')"
+  expect_false "artifact: an invalid slug is rejected" \
+    sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
+  expect_true "artifact: the page is served in a sandbox" \
+    sh -c "curl -s -D - -o /dev/null '$ART_URL/a/my-demo/' | grep -qi '^content-security-policy: sandbox'"
+  assert_eq "artifact: a request under a foreign Host is refused" \
+    "$(http_code -H 'Host: evil.example' "$ART_URL/")" 403
+  assert_eq "artifact: DELETE from a foreign origin is refused" \
+    "$(http_code -X DELETE -H 'Origin: http://evil.example' "$ART_URL/api/artifacts/my-demo")" 403
+  assert_eq "artifact: DELETE from a sandboxed page (Origin: null) is refused" \
+    "$(http_code -X DELETE -H 'Origin: null' "$ART_URL/api/artifacts/my-demo")" 403
+  assert_eq "artifact: DELETE from the management page removes the page" \
+    "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo")|$(art list)" "204|"
+  art publish "$ART_TMP/My Demo.html" >/dev/null
+  art rm my-demo
+  assert_eq "artifact: rm deletes the page" "$(art list)" ""
+  art stop >/dev/null
+  rm -rf "$ART_TMP"
+else
+  printf '  skip - artifact skill tests (node or curl not available)\n'
+fi
+
 # --- summary ---------------------------------------------------------------
 
 printf '\n%s test(s), %s failure(s)\n' "$TESTS" "$FAILS"
