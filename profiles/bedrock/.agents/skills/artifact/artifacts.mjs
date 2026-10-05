@@ -154,6 +154,8 @@ const HOME_LINK = '<style>:where(.artifact-home){display:block;margin:0 0 1rem;f
   + '<nav class="artifact-home"><a href="/">← Home</a></nav>';
 
 function withHomeLink(page) {
+  // 配信後の HTML をブラウザで保存して公開し直したページなど、既に持っていれば足さない
+  if (page.includes('<nav class="artifact-home">')) return page;
   const body = page.match(/<body\b[^>]*>/i);
   if (!body) return HOME_LINK + page;
   const at = body.index + body[0].length;

@@ -1079,6 +1079,12 @@ RECORDER
     sh -c "curl -s '$ART_URL/a/my-demo/' | head -c 30 | grep -qF '<style>:where(.artifact-home)'"
   expect_false "artifact: the Home link is not written into the stored page" \
     grep -qF 'class="artifact-home"' "$ART_TMP/store/my-demo/index.html" "$ART_TMP/store/untitled/index.html"
+  # a served page saved from the browser and published again keeps a single Home link
+  curl -s "$ART_URL/a/my-demo/" >"$ART_TMP/resaved.html"
+  art publish "$ART_TMP/resaved.html" >/dev/null
+  assert_eq "artifact: a page that already has the Home link does not get a second one" \
+    "$(curl -s "$ART_URL/a/resaved/" | grep -oF 'class="artifact-home"' | wc -l | tr -d ' ')" 1
+  art rm resaved
   expect_false "artifact: a page with its own <title> is stored as is" \
     grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
   printf '  <h1>A &amp; <em>B</em></h1>\n<p>keeps %s</p>\n\n' "\$& and \$1" >"$ART_TMP/frag.html"
