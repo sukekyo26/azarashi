@@ -184,6 +184,10 @@ jobs:
           # a directory mirror deployed by an older dotfiles as one dir symlink is
           # replaced by a real dir, without writing anything through it into the repo
           rm -r "$HOME/.demo/skills"; ln -s "$PWD/common/.agents/skills" "$HOME/.demo/skills"
+          # --dry-run only reports the replacement and leaves the old link in place
+          ./dotfiles install --dry-run | tee migrate.out
+          grep -qF "[dry-run] replace $HOME/.demo/skills with a directory" migrate.out
+          [ -L "$HOME/.demo/skills" ]
           ./dotfiles install >/dev/null
           [ ! -L "$HOME/.demo/skills" ]
           [ -L "$HOME/.demo/skills/demoskill/SKILL.md" ]
@@ -266,8 +270,16 @@ jobs:
           ./dotfiles install >/dev/null
           [ ! -e "$HOME/.demo/INSTRUCTIONS.md" ]
           [ -L "$HOME/.demo/skills/demoskill/SKILL.md" ]
+          # a directory mirror's leaves and dirs go too once its rule is dropped
+          grep -vF '.demo/skills' mirror.conf.orig >mirror.conf
+          ./dotfiles status | tee rule.out
+          grep -qE '^[[:space:]]*orphan[[:space:]]*:.*/\.demo/skills/demoskill/SKILL\.md$' rule.out
+          ./dotfiles install >/dev/null
+          [ ! -e "$HOME/.demo/skills" ]
+          [ -L "$HOME/.demo/INSTRUCTIONS.md" ]
           mv mirror.conf.orig mirror.conf
           ./dotfiles install >/dev/null
+          [ -L "$HOME/.demo/skills/demoskill/SKILL.md" ]
           [ -L "$HOME/.demo/INSTRUCTIONS.md" ]
           # clean-backups: report-only lists; --keep 1 keeps the newest per original
           for ts in 20230101T000000Z 20250101T000000Z; do : >"$HOME/.claude/foo.dotfiles-bak.$ts"; done
@@ -294,7 +306,13 @@ jobs:
           grep -q 'mirror source not found, skipping' err.out
           [ ! -e "$HOME/.nope/MISSING.md" ]
           [ -L "$HOME/.codex/AGENTS.md" ]
-          grep -v '.nope/MISSING.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
+          grep -vF '.nope/MISSING.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
+          # so does a source that is itself only a mirror target (sources resolve one hop)
+          printf '%s\n' '.nope/CHAIN.md     .codex/AGENTS.md' >>mirror.conf
+          ./dotfiles install 2>err.out
+          grep -qF 'mirror source not found, skipping: .nope/CHAIN.md <- .codex/AGENTS.md' err.out
+          [ ! -e "$HOME/.nope/CHAIN.md" ]
+          grep -vF '.nope/CHAIN.md' mirror.conf >mirror.conf.tmp && mv mirror.conf.tmp mirror.conf
 
       - name: Common-only — mirror.conf rejects unsafe and malformed rules
         run: |

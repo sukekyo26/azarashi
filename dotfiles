@@ -452,10 +452,12 @@ ensure_destdir() {
 # active layers. A name is deployed only from the layer layer_src picks for it,
 # so each name is handled exactly once and precedence lives in one place.
 deploy_children() {
+  # a mirror target has no layer dir of its own; list its source's instead.
+  # Kept in $2, not a global: deploy_rel recurses back here and would clobber it.
+  _dcs=$(mirror_source "$1")
+  set -- "$1" "${_dcs:-$1}"
   for _dcl in $LAYERS; do
-    # a mirror target has no layer dir of its own; list its source's instead
-    _dcd=$(mirror_source "$1")
-    _dcd="$REPO_DIR/$_dcl/${_dcd:-$1}"
+    _dcd="$REPO_DIR/$_dcl/$2"
     [ -d "$_dcd" ] || continue
     for _dc in "$_dcd"/* "$_dcd"/.*; do
       [ -e "$_dc" ] || [ -L "$_dc" ] || continue
@@ -521,7 +523,7 @@ deploy_rel() {
   link_path "$_eff" "$HOME/$1"
 }
 
-# --- file mirrors ----------------------------------------------------------
+# --- mirrors ---------------------------------------------------------------
 # mirror.conf maps a target path to a single canonical source, so shared
 # content lives in one place. A file source becomes one managed file symlink; a
 # directory source is deployed like a layer directory (real dirs, leaf links,
@@ -580,7 +582,9 @@ mirror_source() {
 # materializing the target's parent directory first. deploy_rel resolves the
 # target to its source through effective_src.
 deploy_mirror() {
-  if [ -z "$(effective_src "$2")" ]; then
+  # layer_src, not effective_src: deploy_rel resolves the source against the
+  # layers only, so a source that is itself a mirror target must warn here
+  if [ -z "$(layer_src "$2")" ]; then
     warn "mirror source not found, skipping: $1 <- $2"
     return 0
   fi
