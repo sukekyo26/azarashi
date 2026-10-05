@@ -1066,6 +1066,10 @@ RECORDER
     "$(for d in alias wt outside; do jq -r .project "$ART_TMP/store/proj-$d/meta.json"; done | paste -sd' ' -)" \
     "upstream-name plain outside"
   art rm proj-alias proj-wt proj-outside
+  # basename of / is empty, which would collide with the management page's "all" value
+  (cd / && art publish "$ART_TMP/untitled.html" --slug proj-root >/dev/null)
+  assert_eq "artifact: publishing from / records no project" "$(jq 'has("project")' "$ART_TMP/store/proj-root/meta.json")" false
+  art rm proj-root
   # 63 letters then a separator: cutting the derived slug at 64 must not leave a trailing hyphen
   ART_LONG=$(printf '%063d' 0 | tr 0 a)
   printf '<p>long</p>\n' >"$ART_TMP/$ART_LONG b.html"

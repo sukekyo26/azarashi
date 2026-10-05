@@ -130,7 +130,8 @@ async function publish(file, opts) {
   const meta = {
     title: opts.title ?? (titleOf(html) || prev?.title || slug),
     description: opts.description ?? prev?.description ?? '',
-    project: projectName(),
+    // ルート（/）では名前が空になる。空は記録せず「記録なし」に入れる（管理画面の「すべて」の値 '' と衝突するため）
+    project: projectName() || undefined,
     createdAt: prev?.createdAt ?? now,
     updatedAt: now,
   };
