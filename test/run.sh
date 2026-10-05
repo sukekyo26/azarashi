@@ -1066,7 +1066,7 @@ RECORDER
     sh -c "head -1 '$ART_TMP/store/untitled/index.html' | grep -qi '^<!doctype html>' &&
       grep -q 'content=\"local-artifacts template\"' '$ART_TMP/store/untitled/index.html' &&
       grep -q '<p>untitled</p>' '$ART_TMP/store/untitled/index.html'"
-  # every served page gets one Home link right after <body> (or first, without a <body> tag);
+  # every served page gets one Home link right after <body>;
   # it is added when serving, so the stored file is untouched
   assert_eq "artifact: a templated page gets exactly one Home link, right after <body>" \
     "$(curl -s "$ART_URL/a/untitled/" | grep -cF '<body><style>:where(.artifact-home)')|$(curl -s "$ART_URL/a/untitled/" | grep -oF 'class="artifact-home"' | wc -l | tr -d ' ')" "1|1"
@@ -1075,6 +1075,16 @@ RECORDER
   expect_true "artifact: a whole document gets the Home link right after its own <body>" \
     sh -c "curl -s '$ART_URL/a/with-body/' | grep -qF '<body class=\"x\"><style>:where(.artifact-home)'"
   art rm with-body
+  # without a <body> tag: after </head>, else after the doctype (before it would mean quirks mode)
+  printf '<!doctype html><html><head><title>h</title></head><p>h</p>\n' >"$ART_TMP/no-body-head.html"
+  printf '<!doctype html><title>d</title><p>d</p>\n' >"$ART_TMP/no-body-doctype.html"
+  art publish "$ART_TMP/no-body-head.html" >/dev/null
+  art publish "$ART_TMP/no-body-doctype.html" >/dev/null
+  expect_true "artifact: a document without <body> gets the Home link after </head>" \
+    sh -c "curl -s '$ART_URL/a/no-body-head/' | grep -qF '</head><style>:where(.artifact-home)'"
+  expect_true "artifact: a document with only a doctype keeps it first, the Home link right after" \
+    sh -c "curl -s '$ART_URL/a/no-body-doctype/' | grep -qF '<!doctype html><style>:where(.artifact-home)'"
+  art rm no-body-head no-body-doctype
   expect_true "artifact: a document without a <body> tag gets the Home link first" \
     sh -c "curl -s '$ART_URL/a/my-demo/' | head -c 30 | grep -qF '<style>:where(.artifact-home)'"
   expect_false "artifact: the Home link is not written into the stored page" \

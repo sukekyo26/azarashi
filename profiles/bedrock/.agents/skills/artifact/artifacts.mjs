@@ -146,7 +146,8 @@ function remove(slug) {
   rmSync(join(ROOT, slug), { recursive: true, force: true });
 }
 
-// 管理画面へ戻るリンク。保存した HTML は変えず、配信時に <body> の直後（無ければ先頭）へ差し込む。
+// 管理画面へ戻るリンク。保存した HTML は変えず、配信時に <body> の直後へ差し込む。
+// <body> を省いた文書では </head> か doctype の直後に入れる（doctype より前に置くと quirks mode になる）。
 // 既定の見た目は詳細度 0 の :where() で付け、ページ側（雛形を含む）の CSS が上書きできるようにする。
 const HOME_LINK = '<style>:where(.artifact-home){display:block;margin:0 0 1rem;font:0.85rem/1.6 system-ui,sans-serif}'
   + ':where(.artifact-home a){color:inherit;opacity:.7;text-decoration:none}'
@@ -156,9 +157,9 @@ const HOME_LINK = '<style>:where(.artifact-home){display:block;margin:0 0 1rem;f
 function withHomeLink(page) {
   // 配信後の HTML をブラウザで保存して公開し直したページなど、既に持っていれば足さない
   if (page.includes('<nav class="artifact-home">')) return page;
-  const body = page.match(/<body\b[^>]*>/i);
-  if (!body) return HOME_LINK + page;
-  const at = body.index + body[0].length;
+  const anchor = page.match(/<body\b[^>]*>/i) ?? page.match(/<\/head\s*>/i) ?? page.match(/<!doctype\b[^>]*>/i);
+  if (!anchor) return HOME_LINK + page;
+  const at = anchor.index + anchor[0].length;
   return page.slice(0, at) + HOME_LINK + page.slice(at);
 }
 
