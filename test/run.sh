@@ -1007,6 +1007,128 @@ assert_eq "repo-setup: develop squashes, main merges, and the settings enable ex
 expect_false "repo-setup: an unknown argument fails" \
   sh -c "bash '$REPO_SETUP' --bogus 2>/dev/null"
 
+# --- artifact skill (skipped when node or curl unavailable) -----------------
+
+if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+  ART="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/artifacts.mjs"
+  ART_TMP=$(mktemp -d)
+  # a port the OS reports free right now, rather than a guess that a busy host may already use
+  ART_PORT=$(node -e 'const s = require("node:net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); });')
+  ART_URL="http://127.0.0.1:$ART_PORT"
+  art() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" "$@"; }
+  http_code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+  printf '<title>Demo  Page</title><p>hi</p>\n' >"$ART_TMP/My Demo.html"
+  printf '<p>untitled</p>\n' >"$ART_TMP/untitled.html"
+  # every publish in this block opens "the browser" through this recorder, never a real one
+  cat >"$ART_TMP/browser" <<RECORDER
+#!/bin/sh
+printf '%s\n' "\$1" >>"$ART_TMP/opened"
+RECORDER
+  chmod +x "$ART_TMP/browser"
+  BROWSER="$ART_TMP/browser"
+  export BROWSER
+  art_opened() { # print the URLs the recorder got, once the detached opener has had time to run
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      [ -s "$ART_TMP/opened" ] && break
+      sleep 0.1
+    done
+    cat "$ART_TMP/opened" 2>/dev/null
+  }
+
+  assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
+    "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "$ART_URL/a/my-demo/"
+  assert_eq "artifact: a first publish opens the page in \$BROWSER" "$(art_opened)" "$ART_URL/a/my-demo/"
+  assert_eq "artifact: list shows the slug and the <title>" "$(art list | cut -f2-)" "$(printf 'my-demo\tDemo Page')"
+  mkdir -p "$ART_TMP/store/no-meta" "$ART_TMP/store/bad-json" "$ART_TMP/store/bad-time"
+  printf '{bad' >"$ART_TMP/store/bad-json/meta.json"
+  printf '{"title":"t","updatedAt":12345}' >"$ART_TMP/store/bad-time/meta.json"
+  assert_eq "artifact: entries with a missing or broken meta.json are skipped, not fatal" \
+    "$(art list 2>&1 | cut -f2)" my-demo
+  rm -rf "$ART_TMP/store/no-meta" "$ART_TMP/store/bad-json" "$ART_TMP/store/bad-time"
+  ART_CREATED=$(jq -r .createdAt "$ART_TMP/store/my-demo/meta.json")
+  art publish "$ART_TMP/My Demo.html" --slug my-demo >/dev/null
+  assert_eq "artifact: republishing keeps the description and createdAt" \
+    "$(jq -r '[.description, .createdAt] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'a demo\t%s' "$ART_CREATED")"
+  art publish "$ART_TMP/My Demo.html" --title 'Renamed' >/dev/null
+  assert_eq "artifact: --title overrides the <title>" "$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" Renamed
+  sleep 0.3 # let a (wrong) opener from the republishes above reach the recorder
+  assert_eq "artifact: republishing the same slug does not open another tab" "$(art_opened | wc -l | tr -d ' ')" 1
+  art publish "$ART_TMP/untitled.html" >/dev/null
+  assert_eq "artifact: a page without <title> is titled by its slug" "$(jq -r .title "$ART_TMP/store/untitled/meta.json")" untitled
+  # 63 letters then a separator: cutting the derived slug at 64 must not leave a trailing hyphen
+  ART_LONG=$(printf '%063d' 0 | tr 0 a)
+  printf '<p>long</p>\n' >"$ART_TMP/$ART_LONG b.html"
+  assert_eq "artifact: a slug cut at 64 characters drops a trailing hyphen" \
+    "$(art publish "$ART_TMP/$ART_LONG b.html")" "$ART_URL/a/$ART_LONG/"
+  art rm "$ART_LONG"
+  expect_false "artifact: an invalid slug is rejected" \
+    sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
+  assert_eq "artifact: an invalid ARTIFACTS_PORT fails at once with a clear message" \
+    "$(
+      ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT=abc node "$ART" list 2>&1
+      echo "rc=$?"
+    )" \
+    "$(printf 'invalid ARTIFACTS_PORT "abc": use a port number from 1 to 65535\nrc=1')"
+  expect_false "artifact: port 0 and out-of-range ports are rejected too" \
+    sh -c "ARTIFACTS_PORT=0 node '$ART' list 2>/dev/null || ARTIFACTS_PORT=70000 node '$ART' list 2>/dev/null"
+  expect_false "artifact: a missing file is rejected" \
+    sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/nope.html' 2>/dev/null"
+  expect_false "artifact: publishing to a server that serves another store fails" \
+    sh -c "ARTIFACTS_DIR='$ART_TMP/other' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/My Demo.html' 2>/dev/null"
+  expect_false "artifact: a failed publish leaves nothing in the store" test -e "$ART_TMP/other/my-demo"
+  expect_true "artifact: the management page is served" \
+    sh -c "curl -s '$ART_URL/' | grep -q '<title>Local Artifacts</title>'"
+  assert_eq "artifact: a page URL without the trailing slash redirects, an unknown slug is 404" \
+    "$(http_code "$ART_URL/a/my-demo") $(http_code "$ART_URL/a/no-such/")" "301 404"
+  expect_true "artifact: the page is served in a sandbox" \
+    sh -c "curl -s -D - -o /dev/null '$ART_URL/a/my-demo/' | grep -qi '^content-security-policy: sandbox'"
+  assert_eq "artifact: a malformed request target is a client error, not a server error" \
+    "$(http_code --request-target '//' "$ART_URL/") $(http_code --request-target 'http://[' "$ART_URL/")" "400 400"
+  assert_eq "artifact: a page opened as localhost is still served" \
+    "$(http_code -H "Host: localhost:$ART_PORT" "$ART_URL/")" 200
+  assert_eq "artifact: a request under a foreign Host is refused" \
+    "$(http_code -H 'Host: evil.example' "$ART_URL/")" 403
+  assert_eq "artifact: DELETE from a foreign origin is refused" \
+    "$(http_code -X DELETE -H 'Origin: http://evil.example' "$ART_URL/api/artifacts/my-demo")" 403
+  assert_eq "artifact: DELETE from a sandboxed page (Origin: null) is refused" \
+    "$(http_code -X DELETE -H 'Origin: null' "$ART_URL/api/artifacts/my-demo")" 403
+  assert_eq "artifact: DELETE from the management page removes the page" \
+    "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo")|$(art list | cut -f2)" "204|untitled"
+  assert_eq "artifact: DELETE of a page that is already gone, or of a bad slug, is 404" \
+    "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo") $(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/Bad_Slug")" "404 404"
+  # management page in a headless browser (skipped without Chrome or Node's WebSocket):
+  # newest-first list | filtered rows | first click only arms | row still there |
+  # rows after the second click | store after it | error shown when DELETE cannot
+  # reach the server | row kept | empty state once all are gone
+  ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
+  if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
+    art publish "$ART_TMP/My Demo.html" >/dev/null
+    assert_eq "artifact: the management page lists, filters and deletes with a confirming second click" \
+      "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL")" \
+      "Demo Page,untitled|1|本当に削除|2|Demo Page|my-demo|true|1|true"
+    art publish "$ART_TMP/untitled.html" >/dev/null
+  else
+    printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'
+  fi
+  art rm untitled
+  assert_eq "artifact: rm deletes the page" "$(art list)" ""
+  expect_false "artifact: rm of an unknown slug fails" sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' rm untitled 2>/dev/null"
+  art stop >/dev/null
+  _art_up=1
+  for _i in 1 2 3 4 5 6 7 8 9 10; do
+    http_code "$ART_URL/api/health" | grep -q 200 || {
+      _art_up=0
+      break
+    }
+    sleep 0.1
+  done
+  assert_eq "artifact: stop shuts the server down" "$_art_up" 0
+  rm -rf "$ART_TMP"
+  unset BROWSER
+else
+  printf '  skip - artifact skill tests (node or curl not available)\n'
+fi
+
 # --- summary ---------------------------------------------------------------
 
 printf '\n%s test(s), %s failure(s)\n' "$TESTS" "$FAILS"
