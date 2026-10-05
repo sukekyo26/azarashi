@@ -89,7 +89,7 @@ function wrapFragment(html, title) {
   if (/<!doctype|<(html|head|body|title)[\s>]/i.test(html)) return html;
   const template = readFileSync(join(dirname(SCRIPT), 'template.html'), 'utf8');
   // 置換文字列の $& などを解釈させないよう関数で渡す
-  return template.replace('{{title}}', () => escapeHtml(title)).replace('{{content}}', () => html.trim());
+  return template.replace('{{title}}', () => escapeHtml(title)).replace('{{content}}', () => html);
 }
 
 async function publish(file, opts) {

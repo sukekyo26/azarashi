@@ -1081,12 +1081,14 @@ RECORDER
     grep -qF 'class="artifact-home"' "$ART_TMP/store/my-demo/index.html" "$ART_TMP/store/untitled/index.html"
   expect_false "artifact: a page with its own <title> is stored as is" \
     grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
-  printf '<h1>A &amp; <em>B</em></h1>\n<p>keeps %s</p>\n' "\$& and \$1" >"$ART_TMP/frag.html"
+  printf '  <h1>A &amp; <em>B</em></h1>\n<p>keeps %s</p>\n\n' "\$& and \$1" >"$ART_TMP/frag.html"
   art publish "$ART_TMP/frag.html" >/dev/null
   assert_eq "artifact: a fragment is titled by its <h1> as plain text, escaped again in <title>" \
     "$(jq -r .title "$ART_TMP/store/frag/meta.json")|$(grep -o '<title>.*</title>' "$ART_TMP/store/frag/index.html")" \
     'A & B|<title>A &amp; B</title>'
-  expect_true "artifact: the fragment is inserted verbatim" grep -qF "keeps \$& and \$1" "$ART_TMP/store/frag/index.html"
+  expect_true "artifact: the fragment is inserted verbatim" \
+    node -e 'const fs = require("node:fs"); process.exit(fs.readFileSync(process.argv[1], "utf8").includes(fs.readFileSync(process.argv[2], "utf8")) ? 0 : 1)' \
+    "$ART_TMP/store/frag/index.html" "$ART_TMP/frag.html"
   art rm frag
   expect_false "artifact: an invalid slug is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
