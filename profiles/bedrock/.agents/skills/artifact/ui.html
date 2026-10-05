@@ -46,6 +46,14 @@
     color: var(--danger); background: transparent; border: 1px solid var(--line);
   }
   button.armed { background: var(--danger-soft); border-color: var(--danger); font-weight: 700; }
+  .actions { display: flex; gap: 0.4rem; }
+  a.download {
+    font-size: 0.85rem; padding: 0.3rem 0.8rem; border-radius: 5px; text-decoration: none;
+    color: var(--accent); border: 1px solid var(--line);
+  }
+  a.download:hover { border-color: var(--accent); }
+  /* 狭い幅ではボタンを下に回し、タイトルの幅を確保する */
+  @media (max-width: 30rem) { li { grid-template-columns: 1fr; } .actions { justify-content: flex-end; } }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .empty, .error { color: var(--muted); padding: 1.5rem 0; }
   .error { color: var(--danger); }
@@ -70,7 +78,10 @@
       <span class="desc"></span>
       <span class="meta"></span>
     </div>
-    <button type="button">削除</button>
+    <div class="actions">
+      <a class="download">ダウンロード</a>
+      <button type="button">削除</button>
+    </div>
   </li>
 </template>
 <script>
@@ -97,6 +108,10 @@
       li.querySelector('.desc').textContent = a.description;
       li.querySelector('.desc').hidden = !a.description;
       li.querySelector('.meta').textContent = `${a.slug} · 更新 ${fmt(a.updatedAt)}`;
+      const dl = li.querySelector('.download');
+      dl.href = `/api/artifacts/${a.slug}/download`;
+      dl.download = `${a.slug}.html`;
+      dl.setAttribute('aria-label', `${a.title} をダウンロード`);
       const btn = li.querySelector('button');
       btn.setAttribute('aria-label', `${a.title} を削除`);
       btn.addEventListener('click', () => remove(a, btn));
