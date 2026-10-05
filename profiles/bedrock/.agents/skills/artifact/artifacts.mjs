@@ -216,7 +216,12 @@ async function stop() {
     console.log('server is not running');
     return;
   }
-  process.kill(p.pid, 'SIGTERM');
+  try {
+    process.kill(p.pid, 'SIGTERM');
+  } catch (e) {
+    // probe と kill の間に自分で終了していれば、止まっている状態なので成功扱い
+    if (e.code !== 'ESRCH') throw e;
+  }
   console.log(`stopped server (pid ${p.pid})`);
 }
 
