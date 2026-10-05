@@ -12,12 +12,16 @@ const profile = mkdtempSync(join(tmpdir(), 'artifact-ui-'));
 const proc = spawn(chrome, [
   '--headless=new', '--no-sandbox', '--disable-gpu', '--no-first-run',
   '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank',
-], { stdio: 'ignore' });
+], { stdio: ['ignore', 'ignore', 'pipe'] });
+let stderr = '';
+proc.stderr.on('data', (d) => {
+  stderr = (stderr + d).slice(-2000);
+});
 const exited = new Promise((r) => proc.once('exit', r));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function until(fn, what) {
-  for (let i = 0; i < 100; i++) {
+async function until(fn, what, tries = 100) {
+  for (let i = 0; i < tries; i++) {
     const v = await fn();
     if (v) return v;
     await sleep(50);
@@ -27,13 +31,15 @@ async function until(fn, what) {
 
 let ws;
 try {
+  // a cold CI runner can take several seconds to start Chrome
   const port = await until(() => {
+    if (proc.exitCode !== null) throw new Error(`Chrome exited with code ${proc.exitCode}`);
     try {
       return readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0];
     } catch {
       return null;
     }
-  }, 'Chrome to start');
+  }, 'Chrome to start', 600);
   const target = await until(async () => {
     try {
       return (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === 'page');
@@ -95,6 +101,7 @@ try {
   console.log(out.join('|'));
 } catch (e) {
   console.error(`artifact-ui: ${e.message}`);
+  if (stderr) console.error(`--- Chrome stderr (tail) ---\n${stderr}`);
   process.exitCode = 1;
 } finally {
   ws?.close();
