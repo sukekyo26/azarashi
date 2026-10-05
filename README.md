@@ -41,7 +41,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
   - `.config/git/ignore`, `.config/starship.toml`
   - `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE/release.md` — プロジェクトに PR テンプレートが無いときの既定（`pr-create` スキルが通常 / リリースで使い分ける）
 - `profiles/<name>/` — 環境レイヤー（`--profile` で選択）
-  - `bedrock/.agents/skills/artifact/` — Artifacts の代わりに単一 HTML ページを `http://localhost:4317` で配信・管理するスキル（`artifacts.mjs` は Node 標準ライブラリのみ）
+  - `bedrock/.agents/skills/artifact/` — Artifacts の代わりに単一 HTML ページを `http://127.0.0.1:4317` で配信・管理するスキル（`artifacts.mjs` は Node 標準ライブラリのみ）
 - `workspace/<name>/` — cocoon で生成する devcontainer 一式（`cocoon.toml` が正典、`.devcontainer/` は生成物、`post-start.sh` だけ手書き）
 
 ## 仕組み

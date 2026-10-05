@@ -1036,8 +1036,8 @@ RECORDER
   }
 
   assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
-    "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "http://localhost:$ART_PORT/a/my-demo/"
-  assert_eq "artifact: a first publish opens the page in \$BROWSER" "$(art_opened)" "http://localhost:$ART_PORT/a/my-demo/"
+    "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "$ART_URL/a/my-demo/"
+  assert_eq "artifact: a first publish opens the page in \$BROWSER" "$(art_opened)" "$ART_URL/a/my-demo/"
   assert_eq "artifact: list shows the slug and the <title>" "$(art list | cut -f2-)" "$(printf 'my-demo\tDemo Page')"
   mkdir -p "$ART_TMP/store/no-meta" "$ART_TMP/store/bad-json" "$ART_TMP/store/bad-time"
   printf '{bad' >"$ART_TMP/store/bad-json/meta.json"
@@ -1059,7 +1059,7 @@ RECORDER
   ART_LONG=$(printf '%063d' 0 | tr 0 a)
   printf '<p>long</p>\n' >"$ART_TMP/$ART_LONG b.html"
   assert_eq "artifact: a slug cut at 64 characters drops a trailing hyphen" \
-    "$(art publish "$ART_TMP/$ART_LONG b.html")" "http://localhost:$ART_PORT/a/$ART_LONG/"
+    "$(art publish "$ART_TMP/$ART_LONG b.html")" "$ART_URL/a/$ART_LONG/"
   art rm "$ART_LONG"
   expect_false "artifact: an invalid slug is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
@@ -1084,6 +1084,8 @@ RECORDER
     sh -c "curl -s -D - -o /dev/null '$ART_URL/a/my-demo/' | grep -qi '^content-security-policy: sandbox'"
   assert_eq "artifact: a malformed request target is a client error, not a server error" \
     "$(http_code --request-target '//' "$ART_URL/") $(http_code --request-target 'http://[' "$ART_URL/")" "400 400"
+  assert_eq "artifact: a page opened as localhost is still served" \
+    "$(http_code -H "Host: localhost:$ART_PORT" "$ART_URL/")" 200
   assert_eq "artifact: a request under a foreign Host is refused" \
     "$(http_code -H 'Host: evil.example' "$ART_URL/")" 403
   assert_eq "artifact: DELETE from a foreign origin is refused" \

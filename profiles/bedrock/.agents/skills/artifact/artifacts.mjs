@@ -17,7 +17,8 @@ const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = process.env.ARTIFACTS_DIR
   || join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'artifacts');
 const PORT = Number(process.env.ARTIFACTS_PORT || 4317);
-const BASE = `http://localhost:${PORT}`;
+// 待ち受けと同じアドレスを表示する。localhost は環境によって ::1 に解決され、届かないことがある
+const BASE = `http://127.0.0.1:${PORT}`;
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 // DNS rebinding 対策: 自分の名前以外で届いたリクエストは拒否する
 const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
@@ -199,7 +200,7 @@ function serve() {
 async function probe() {
   let res;
   try {
-    res = await fetch(`http://127.0.0.1:${PORT}/api/health`, { signal: AbortSignal.timeout(1000) });
+    res = await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(1000) });
   } catch {
     return { state: 'down' };
   }
