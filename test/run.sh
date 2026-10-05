@@ -1066,8 +1066,19 @@ RECORDER
     sh -c "head -1 '$ART_TMP/store/untitled/index.html' | grep -qi '^<!doctype html>' &&
       grep -q 'content=\"local-artifacts template\"' '$ART_TMP/store/untitled/index.html' &&
       grep -q '<p>untitled</p>' '$ART_TMP/store/untitled/index.html'"
-  expect_true "artifact: a templated page links back to the management page" \
-    grep -qF '<nav class="home"><a href="/">' "$ART_TMP/store/untitled/index.html"
+  # every served page gets one Home link right after <body> (or first, without a <body> tag);
+  # it is added when serving, so the stored file is untouched
+  assert_eq "artifact: a templated page gets exactly one Home link, right after <body>" \
+    "$(curl -s "$ART_URL/a/untitled/" | grep -cF '<body><style>:where(.artifact-home)')|$(curl -s "$ART_URL/a/untitled/" | grep -oF 'class="artifact-home"' | wc -l | tr -d ' ')" "1|1"
+  printf '<!doctype html><html><body class="x"><p>b</p></body></html>\n' >"$ART_TMP/with-body.html"
+  art publish "$ART_TMP/with-body.html" >/dev/null
+  expect_true "artifact: a whole document gets the Home link right after its own <body>" \
+    sh -c "curl -s '$ART_URL/a/with-body/' | grep -qF '<body class=\"x\"><style>:where(.artifact-home)'"
+  art rm with-body
+  expect_true "artifact: a document without a <body> tag gets the Home link first" \
+    sh -c "curl -s '$ART_URL/a/my-demo/' | head -c 30 | grep -qF '<style>:where(.artifact-home)'"
+  expect_false "artifact: the Home link is not written into the stored page" \
+    grep -qF 'class="artifact-home"' "$ART_TMP/store/my-demo/index.html" "$ART_TMP/store/untitled/index.html"
   expect_false "artifact: a page with its own <title> is stored as is" \
     grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
   printf '<h1>A &amp; <em>B</em></h1>\n<p>keeps %s</p>\n' "\$& and \$1" >"$ART_TMP/frag.html"

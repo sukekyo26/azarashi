@@ -146,6 +146,20 @@ function remove(slug) {
   rmSync(join(ROOT, slug), { recursive: true, force: true });
 }
 
+// 管理画面へ戻るリンク。保存した HTML は変えず、配信時に <body> の直後（無ければ先頭）へ差し込む。
+// 既定の見た目は詳細度 0 の :where() で付け、ページ側（雛形を含む）の CSS が上書きできるようにする。
+const HOME_LINK = '<style>:where(.artifact-home){display:block;margin:0 0 1rem;font:0.85rem/1.6 system-ui,sans-serif}'
+  + ':where(.artifact-home a){color:inherit;opacity:.7;text-decoration:none}'
+  + ':where(.artifact-home a:hover){opacity:1;text-decoration:underline}</style>'
+  + '<nav class="artifact-home"><a href="/">← Home</a></nav>';
+
+function withHomeLink(page) {
+  const body = page.match(/<body\b[^>]*>/i);
+  if (!body) return HOME_LINK + page;
+  const at = body.index + body[0].length;
+  return page.slice(0, at) + HOME_LINK + page.slice(at);
+}
+
 function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...headers });
   res.end(body);
@@ -188,7 +202,7 @@ function handle(req, res, ui) {
     } catch {
       return send(res, 404, 'not found');
     }
-    return send(res, 200, page, { ...html, 'content-security-policy': PAGE_CSP });
+    return send(res, 200, withHomeLink(page.toString('utf8')), { ...html, 'content-security-policy': PAGE_CSP });
   }
   return send(res, 404, 'not found');
 }
