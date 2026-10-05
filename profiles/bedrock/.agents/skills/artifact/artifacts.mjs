@@ -183,6 +183,16 @@ function handle(req, res, ui) {
   if (req.method === 'GET' && (m = pathname.match(/^\/api\/events\/([^/]+)$/)) && SLUG_RE.test(m[1])) {
     return watch(req, res, m[1], searchParams.get('since') ?? '');
   }
+  if (req.method === 'GET' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)\/download$/)) && SLUG_RE.test(m[1])) {
+    // 保存したままの HTML を返す。配信時に差し込むものは含めず、1 ファイルで完結したページとして渡す
+    let page;
+    try {
+      page = readFileSync(join(ROOT, m[1], 'index.html'));
+    } catch {
+      return send(res, 404, 'not found');
+    }
+    return send(res, 200, page, { ...html, 'content-disposition': `attachment; filename="${m[1]}.html"` });
+  }
   if (req.method === 'DELETE' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)$/))) {
     // 他サイトのページや sandbox 内のページ（Origin: null）からの削除を拒否する
     if (!ORIGINS.has(req.headers.origin)) return send(res, 403, 'forbidden origin');

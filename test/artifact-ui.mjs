@@ -53,6 +53,7 @@ async function manage({ send, evaluate }) {
   const out = [];
   await send('Page.navigate', { url: `${base}/` });
   out.push(await until(titles, 'the list to render'));
+  out.push(await evaluate("(() => { const d = document.querySelector('#list li .download'); return `${d.getAttribute('href')} ${d.getAttribute('download')}`; })()"));
   await filter('untitled');
   out.push(await rows());
   await filter('');
