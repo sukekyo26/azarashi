@@ -2,7 +2,7 @@
 // Artifacts の代わりに、単一 HTML ページを保存して 127.0.0.1 のローカルサーバーで配信する。
 // 保存先は ARTIFACTS_DIR（既定 ~/.local/share/artifacts/<slug>/{index.html,meta.json}）。
 // サーバーは保存先を毎回読むので、CLI とサーバーの間に受け渡しはない。
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
   accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync,
 } from 'node:fs';
@@ -92,6 +92,25 @@ function wrapFragment(html, title) {
   return template.replace('{{title}}', () => escapeHtml(title)).replace('{{content}}', () => html);
 }
 
+// 生成元のプロジェクト名。別名で clone しても揃うよう origin の URL（https・scp 形式・パス）から取る。
+// origin が無ければリポジトリのディレクトリ名、git の外なら cwd のディレクトリ名にする。
+// worktree でも元のリポジトリにまとまるよう、show-toplevel ではなく共通の .git から辿る
+function projectName() {
+  const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  try {
+    const name = git('remote', 'get-url', 'origin').replace(/\/+$/, '').split(/[/:]/).pop().replace(/\.git$/, '');
+    if (name) return name;
+  } catch {
+    // origin が無い、または git の外
+  }
+  try {
+    const common = git('rev-parse', '--path-format=absolute', '--git-common-dir');
+    return basename(basename(common) === '.git' ? dirname(common) : common);
+  } catch {
+    return basename(process.cwd());
+  }
+}
+
 async function publish(file, opts) {
   if (!file) fail(USAGE);
   let html;
@@ -111,6 +130,7 @@ async function publish(file, opts) {
   const meta = {
     title: opts.title ?? (titleOf(html) || prev?.title || slug),
     description: opts.description ?? prev?.description ?? '',
+    project: projectName(),
     createdAt: prev?.createdAt ?? now,
     updatedAt: now,
   };

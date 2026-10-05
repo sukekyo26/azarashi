@@ -27,10 +27,13 @@
   header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem 1rem; }
   h1 { margin: 0; font-size: 1.4rem; }
   .count { color: var(--muted); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
-  input[type="search"] {
-    width: 100%; padding: 0.55rem 0.75rem; font: inherit; color: var(--fg);
+  .filters { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  input[type="search"], select {
+    padding: 0.55rem 0.75rem; font: inherit; color: var(--fg);
     background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
   }
+  input[type="search"] { flex: 1 1 14rem; min-width: 0; }
+  select { flex: 0 1 auto; min-width: 0; max-width: 100%; }
   ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
   li {
     background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
@@ -66,7 +69,10 @@
     <h1>Local Artifacts</h1>
     <span class="count" id="count"></span>
   </header>
-  <input type="search" id="q" placeholder="タイトル・説明・slug で絞り込み" aria-label="絞り込み">
+  <div class="filters">
+    <input type="search" id="q" placeholder="キーワードで絞り込み" aria-label="絞り込み">
+    <select id="project" aria-label="プロジェクト"></select>
+  </div>
   <ul id="list"></ul>
   <p class="empty" id="empty" hidden>まだページがありません。エージェントに「ページにして」と頼むか、<code>artifacts.mjs publish &lt;file.html&gt;</code> で追加できます。</p>
   <p class="error" id="error" hidden></p>
@@ -87,8 +93,25 @@
 <script>
   const $ = (id) => document.getElementById(id);
   let items = [];
+  // 選んだプロジェクトは URL に持ち、再読み込みやリンクで同じ絞り込みを開けるようにする
+  let project = new URLSearchParams(location.search).get('project') ?? '';
+  // 生成元を記録する前のページ。project はディレクトリ名で / を含まないので衝突しない
+  const NONE = '/';
 
   const fmt = (iso) => new Date(iso).toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' });
+
+  function renderProjects() {
+    const counts = new Map();
+    for (const a of items) counts.set(a.project ?? NONE, (counts.get(a.project ?? NONE) ?? 0) + 1);
+    // 最後の 1 件を消しても選択が勝手に「すべて」へ戻らないよう、0 件でも選択肢に残す
+    if (project && !counts.has(project)) counts.set(project, 0);
+    const names = [...counts.keys()].filter((k) => k !== NONE).sort((x, y) => x.localeCompare(y));
+    const options = [new Option(`すべて (${items.length})`, '')];
+    for (const name of names) options.push(new Option(`${name} (${counts.get(name)})`, name));
+    if (counts.has(NONE)) options.push(new Option(`記録なし (${counts.get(NONE)})`, NONE));
+    $('project').replaceChildren(...options);
+    $('project').value = project;
+  }
 
   function showError(msg) {
     $('error').textContent = msg;
@@ -97,8 +120,10 @@
 
   function render() {
     const q = $('q').value.trim().toLowerCase();
-    const shown = items.filter((a) => !q || [a.title, a.description, a.slug].join(' ').toLowerCase().includes(q));
-    $('count').textContent = `${items.length} 件`;
+    renderProjects();
+    const shown = items.filter((a) => (!project || (a.project ?? NONE) === project)
+      && (!q || [a.title, a.description, a.slug, a.project].join(' ').toLowerCase().includes(q)));
+    $('count').textContent = shown.length === items.length ? `${items.length} 件` : `${shown.length} / ${items.length} 件`;
     $('empty').hidden = items.length > 0;
     $('list').replaceChildren(...shown.map((a) => {
       const li = $('row').content.firstElementChild.cloneNode(true);
@@ -107,7 +132,7 @@
       link.textContent = a.title;
       li.querySelector('.desc').textContent = a.description;
       li.querySelector('.desc').hidden = !a.description;
-      li.querySelector('.meta').textContent = `${a.slug} · 更新 ${fmt(a.updatedAt)}`;
+      li.querySelector('.meta').textContent = `${a.project ? `${a.project} · ` : ''}${a.slug} · 更新 ${fmt(a.updatedAt)}`;
       const dl = li.querySelector('.download');
       dl.href = `/api/artifacts/${a.slug}/download`;
       dl.download = `${a.slug}.html`;
@@ -156,6 +181,14 @@
   }
 
   $('q').addEventListener('input', render);
+  $('project').addEventListener('change', () => {
+    project = $('project').value;
+    const url = new URL(location.href);
+    if (project) url.searchParams.set('project', project);
+    else url.searchParams.delete('project');
+    history.replaceState(null, '', url);
+    render();
+  });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
   load();
 </script>
