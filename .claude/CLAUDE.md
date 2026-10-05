@@ -12,6 +12,7 @@
 
 - レイヤーの知識は `resolve_layers` が組み立てる `LAYERS` / `LAYERS_REV` / `ALL_LAYERS` の 3 変数の外に散らさない。優先順位を決めるのは `layer_src` 1 箇所だけで、他の走査はすべてそれに委ねる。
 - レイヤー名は `valid_layer_name` で検証する。3 変数は未クォートの IFS 分割リストなので、空白を含む名前（2 つに割れる）と glob メタ文字 `* ? [ ]` を含む名前（走査のたびに cwd に対して展開される）は拒否される。生の入力（`DOTFILES_PROFILE`、git config の記憶値）は検証前に展開され得るので、その分割ループだけ `set -f` で囲む。
+- skill（`.agents/skills/<name>/`）はフォルダ単位で上書きされる。この単位の判定も `layer_src` の中だけで行う。
 - ディレクトリ全体の symlink は作らない。ディレクトリは常に実体として作成し、葉だけを symlink する（設計の中核制約）。
 
 ## fragment
