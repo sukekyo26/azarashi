@@ -1192,11 +1192,11 @@ RECORDER
     # newest-first list | first row's download link | rows, pressed chip and URL after clicking a project tag |
     # "すべて" chip clears the URL and is pressed | filtered rows | first click only arms | row still there |
     # rows after the second click | store after it | error shown when DELETE cannot
-    # reach the server | row kept | empty state once all are gone
+    # reach the server | row kept | server indicator down | empty state once all are gone | indicator up again
     art publish "$ART_TMP/My Demo.html" >/dev/null
     assert_eq "artifact: the management page lists, filters by text and project, and deletes with a confirming second click" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" manage)" \
-      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html|2 true true|true|1|本当に削除|2|Demo Page|my-demo|true|1|true"
+      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html|2 true true|true|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
     printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'

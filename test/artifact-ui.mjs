@@ -79,10 +79,13 @@ async function manage({ send, evaluate }) {
   await clickDelete('Demo Page');
   out.push(await until(() => evaluate("(() => { const e = document.getElementById('error'); return !e.hidden && e.textContent.includes('削除できませんでした'); })()"), 'the delete error'));
   out.push(await rows());
+  const down = () => evaluate("document.getElementById('server').classList.contains('down')");
+  out.push(await down());
   await evaluate('window.fetch = window.realFetch');
-  // the button stays armed, so one more click deletes
+  // the button stays armed, so one more click deletes, and reaching the server turns the indicator back up
   await clickDelete('Demo Page');
   out.push(await until(() => evaluate("!document.getElementById('empty').hidden"), 'the empty state'));
+  out.push(await down());
   return out;
 }
 

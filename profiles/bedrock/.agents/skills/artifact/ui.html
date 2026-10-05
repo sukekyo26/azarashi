@@ -211,6 +211,18 @@
     $('server').classList.toggle('down', !ok);
   }
 
+  // 接続表示は「サーバーに届いたか」だけで決める。HTTP エラーでも応答があれば届いている
+  async function api(url, init) {
+    try {
+      const res = await fetch(url, init);
+      setServer(true);
+      return res;
+    } catch (e) {
+      setServer(false);
+      throw e;
+    }
+  }
+
   function setProject(value) {
     project = value;
     const url = new URL(location.href);
@@ -304,9 +316,8 @@
     }
     let res;
     try {
-      res = await fetch(`/api/artifacts/${a.slug}`, { method: 'DELETE' });
+      res = await api(`/api/artifacts/${a.slug}`, { method: 'DELETE' });
     } catch (e) {
-      setServer(false);
       showError(`「${a.title}」を削除できませんでした（${e.message}）。サーバーが止まっていれば artifacts.mjs serve で起動してください。`);
       return;
     }
@@ -321,14 +332,12 @@
 
   async function load() {
     try {
-      const res = await fetch('/api/artifacts');
+      const res = await api('/api/artifacts');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       items = await res.json();
-      setServer(true);
       showError('');
       render();
     } catch (e) {
-      setServer(false);
       showError(`一覧を読み込めませんでした（${e.message}）。サーバーが止まっていれば artifacts.mjs serve で起動してください。`);
     }
   }
