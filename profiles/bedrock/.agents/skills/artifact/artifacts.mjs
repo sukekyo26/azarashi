@@ -237,6 +237,9 @@ function localTime(iso) {
 }
 
 async function main() {
+  if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+    fail(`invalid ARTIFACTS_PORT "${process.env.ARTIFACTS_PORT}": use a port number from 1 to 65535`);
+  }
   const { positionals, values } = parseArgs({
     allowPositionals: true,
     options: { slug: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' } },

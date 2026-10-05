@@ -1062,6 +1062,11 @@ RECORDER
   art rm "$ART_LONG"
   expect_false "artifact: an invalid slug is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
+  assert_eq "artifact: an invalid ARTIFACTS_PORT fails at once with a clear message" \
+    "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT=abc node "$ART" list 2>&1; echo "rc=$?")" \
+    "$(printf 'invalid ARTIFACTS_PORT "abc": use a port number from 1 to 65535\nrc=1')"
+  expect_false "artifact: port 0 and out-of-range ports are rejected too" \
+    sh -c "ARTIFACTS_PORT=0 node '$ART' list 2>/dev/null || ARTIFACTS_PORT=70000 node '$ART' list 2>/dev/null"
   expect_false "artifact: a missing file is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/nope.html' 2>/dev/null"
   expect_false "artifact: publishing to a server that serves another store fails" \
