@@ -50,7 +50,8 @@ function listArtifacts() {
   return readdirSync(ROOT)
     .filter((slug) => SLUG_RE.test(slug))
     .map((slug) => ({ slug, ...readMeta(slug) }))
-    .filter((a) => a.updatedAt)
+    // meta.json が無い・壊れたエントリは除き、1 件のために一覧全体を落とさない
+    .filter((a) => typeof a.updatedAt === 'string')
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 

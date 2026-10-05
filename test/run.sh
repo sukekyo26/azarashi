@@ -1022,6 +1022,12 @@ if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
     "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "http://localhost:$ART_PORT/a/my-demo/"
   assert_eq "artifact: list shows the slug and the <title>" "$(art list | cut -f2-)" "$(printf 'my-demo\tDemo Page')"
+  mkdir -p "$ART_TMP/store/no-meta" "$ART_TMP/store/bad-json" "$ART_TMP/store/bad-time"
+  printf '{bad' >"$ART_TMP/store/bad-json/meta.json"
+  printf '{"title":"t","updatedAt":12345}' >"$ART_TMP/store/bad-time/meta.json"
+  assert_eq "artifact: entries with a missing or broken meta.json are skipped, not fatal" \
+    "$(art list 2>&1 | cut -f2)" my-demo
+  rm -rf "$ART_TMP/store/no-meta" "$ART_TMP/store/bad-json" "$ART_TMP/store/bad-time"
   ART_CREATED=$(jq -r .createdAt "$ART_TMP/store/my-demo/meta.json")
   art publish "$ART_TMP/My Demo.html" --slug my-demo >/dev/null
   assert_eq "artifact: republishing keeps the description and createdAt" \
