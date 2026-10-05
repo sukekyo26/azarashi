@@ -1012,7 +1012,8 @@ expect_false "repo-setup: an unknown argument fails" \
 if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   ART="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/artifacts.mjs"
   ART_TMP=$(mktemp -d)
-  ART_PORT=$((40000 + $$ % 20000))
+  # a port the OS reports free right now, rather than a guess that a busy host may already use
+  ART_PORT=$(node -e 'const s = require("node:net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); });')
   ART_URL="http://127.0.0.1:$ART_PORT"
   art() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" "$@"; }
   http_code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
