@@ -1081,6 +1081,8 @@ RECORDER
     "$(http_code -X DELETE -H 'Origin: null' "$ART_URL/api/artifacts/my-demo")" 403
   assert_eq "artifact: DELETE from the management page removes the page" \
     "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo")|$(art list | cut -f2)" "204|untitled"
+  assert_eq "artifact: DELETE of a page that is already gone, or of a bad slug, is 404" \
+    "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo") $(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/Bad_Slug")" "404 404"
   # management page in a headless browser (skipped without Chrome or Node's WebSocket):
   # newest-first list | filtered rows | first click only arms | row still there |
   # rows after the second click | store after it | error shown when DELETE cannot

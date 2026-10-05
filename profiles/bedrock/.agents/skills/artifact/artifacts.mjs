@@ -147,8 +147,13 @@ function handle(req, res, ui) {
   if (req.method === 'DELETE' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)$/))) {
     // 他サイトのページや sandbox 内のページ（Origin: null）からの削除を拒否する
     if (!ORIGINS.has(req.headers.origin)) return send(res, 403, 'forbidden origin');
-    if (!SLUG_RE.test(m[1]) || !readMeta(m[1])) return send(res, 404, 'not found');
-    remove(m[1]);
+    // 存在の確認は remove に任せる。並行した削除で先に消えていても 500 にせず 404 で返す
+    try {
+      remove(m[1]);
+    } catch (e) {
+      if (e instanceof UsageError) return send(res, 404, 'not found');
+      throw e;
+    }
     return send(res, 204, '');
   }
   if (req.method === 'GET' && (m = pathname.match(/^\/a\/([^/]+)(\/?)$/)) && SLUG_RE.test(m[1])) {
