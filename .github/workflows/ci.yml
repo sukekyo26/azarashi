@@ -140,6 +140,11 @@ jobs:
           printf 'bd marker\n'                       >"$FX/profiles/bd/.bdtop/marker"
           mkdir -p "$FX/profiles/bd/.agents/skills/bdskill"
           printf 'bd skill\n'                        >"$FX/profiles/bd/.agents/skills/bdskill/SKILL.md"
+          # bd overrides pskill without its helper, like fx does demoskill
+          mkdir -p "$FX/common/.agents/skills/pskill" "$FX/profiles/bd/.agents/skills/pskill"
+          printf 'common pskill\n'                   >"$FX/common/.agents/skills/pskill/SKILL.md"
+          printf 'common helper\n'                   >"$FX/common/.agents/skills/pskill/helper.sh"
+          printf 'bd pskill\n'                       >"$FX/profiles/bd/.agents/skills/pskill/SKILL.md"
           printf '#!/usr/bin/env bash\necho bd2\n'   >"$FX/profiles/bd2/.claude/demo.sh"
           printf '%s\n' '.codex/AGENTS.md        .agents/AGENTS.md' \
                         '.demo/INSTRUCTIONS.md   .agents/AGENTS.md' \
@@ -423,6 +428,11 @@ jobs:
           case "$(readlink "$HOME/.demo/skills/demoskill/SKILL.md")" in */common/.agents/skills/demoskill/SKILL.md) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
           # a profile-only entry joins common's in the directory mirror
           case "$(readlink "$HOME/.demo/skills/bdskill/SKILL.md")" in */profiles/bd/.agents/skills/bdskill/SKILL.md) ;; *) echo "dir mirror merge FAIL"; exit 1 ;; esac
+          # a skill the profile overrides comes wholly from the profile layer
+          for d in .agents/skills .demo/skills; do
+            case "$(readlink "$HOME/$d/pskill/SKILL.md")" in */profiles/bd/.agents/skills/pskill/SKILL.md) ;; *) echo "profile skill override FAIL ($d)"; exit 1 ;; esac
+            [ ! -e "$HOME/$d/pskill/helper.sh" ]
+          done
           # a profile-only top-level entry is a real dir whose leaves link into the profile layer
           [ -d "$HOME/.bdtop" ]
           [ ! -L "$HOME/.bdtop" ]
@@ -442,6 +452,9 @@ jobs:
           # bd's entry in the directory mirror is pruned with its now-empty dir
           [ ! -e "$HOME/.demo/skills/bdskill" ]
           [ -L "$HOME/.demo/skills/demoskill/SKILL.md" ]
+          # without bd, common's pskill is back whole
+          case "$(readlink "$HOME/.demo/skills/pskill/SKILL.md")" in */common/.agents/skills/pskill/SKILL.md) ;; *) echo "profile skill restore FAIL"; exit 1 ;; esac
+          [ -L "$HOME/.demo/skills/pskill/helper.sh" ]
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
           # buffer `config` output before grepping: grep -q exits on the first
           # match and would SIGPIPE dotfiles, which pipefail turns into a failure
