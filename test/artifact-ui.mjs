@@ -9,6 +9,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const [chrome, base, scenario, art] = process.argv.slice(2);
+// Chrome を起動する前に確かめ、引数の取り違えを型エラーではなく使い方で知らせる
+if (!chrome || !base || !['manage', 'reload'].includes(scenario) || (scenario === 'reload' && !art)) {
+  console.error('usage: artifact-ui.mjs <chrome> <base-url> manage | reload <artifacts.mjs>');
+  process.exit(2);
+}
 const profile = mkdtempSync(join(tmpdir(), 'artifact-ui-'));
 const proc = spawn(chrome, [
   '--headless=new', '--no-sandbox', '--disable-gpu', '--no-first-run',
@@ -134,7 +139,6 @@ try {
   };
 
   const scenarios = { manage, reload };
-  if (!scenarios[scenario]) throw new Error(`unknown scenario "${scenario}" (manage | reload)`);
   console.log((await scenarios[scenario]({ send, evaluate })).join('|'));
 } catch (e) {
   console.error(`artifact-ui: ${e.message}`);
