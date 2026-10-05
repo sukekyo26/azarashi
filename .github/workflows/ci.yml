@@ -134,6 +134,8 @@ jobs:
           printf '{ "statusLine": { "x": "profile" }, "profileKey": true }\n' \
             >"$FX/profiles/bd/.claude/settings.fragment.json"
           printf 'bd marker\n'                       >"$FX/profiles/bd/.bdtop/marker"
+          mkdir -p "$FX/profiles/bd/.agents/skills/bdskill"
+          printf 'bd skill\n'                        >"$FX/profiles/bd/.agents/skills/bdskill/SKILL.md"
           printf '#!/usr/bin/env bash\necho bd2\n'   >"$FX/profiles/bd2/.claude/demo.sh"
           printf '%s\n' '.codex/AGENTS.md        .agents/AGENTS.md' \
                         '.demo/INSTRUCTIONS.md   .agents/AGENTS.md' \
@@ -165,10 +167,12 @@ jobs:
           cmp -s "$HOME/.codex/AGENTS.md" "$HOME/.agents/AGENTS.md"
           [ -L "$HOME/.demo/INSTRUCTIONS.md" ]
           cmp -s "$HOME/.demo/INSTRUCTIONS.md" "$HOME/.agents/AGENTS.md"
-          # the directory mirror is a single dir symlink
-          [ -L "$HOME/.demo/skills" ]
+          # the directory mirror is a real dir; only its leaves are symlinked
           [ -d "$HOME/.demo/skills" ]
-          [ -e "$HOME/.demo/skills/demoskill/SKILL.md" ]
+          [ ! -L "$HOME/.demo/skills" ]
+          [ ! -L "$HOME/.demo/skills/demoskill" ]
+          [ -L "$HOME/.demo/skills/demoskill/SKILL.md" ]
+          cmp -s "$HOME/.demo/skills/demoskill/SKILL.md" "$HOME/.agents/skills/demoskill/SKILL.md"
           # a fragment is merged into a real settings.json
           [ -f "$HOME/.claude/settings.json" ]
           [ ! -L "$HOME/.claude/settings.json" ]
@@ -177,6 +181,13 @@ jobs:
           ! grep -E '^[[:space:]]*(drift|missing|orphan)[[:space:]]*:' status.out
           ./dotfiles install | tee install2.out
           ! grep -E '^[[:space:]]*(linked|merged)[[:space:]]*:' install2.out
+          # a directory mirror deployed by an older dotfiles as one dir symlink is
+          # replaced by a real dir, without writing anything through it into the repo
+          rm -r "$HOME/.demo/skills"; ln -s "$PWD/common/.agents/skills" "$HOME/.demo/skills"
+          ./dotfiles install >/dev/null
+          [ ! -L "$HOME/.demo/skills" ]
+          [ -L "$HOME/.demo/skills/demoskill/SKILL.md" ]
+          [ -z "$(find common -type l)" ]
 
       - name: Common-only — force re-merge and 3-way delete
         run: |
@@ -254,7 +265,7 @@ jobs:
           grep -qE '^[[:space:]]*orphan[[:space:]]*:.*/\.demo/INSTRUCTIONS\.md$' rule.out
           ./dotfiles install >/dev/null
           [ ! -e "$HOME/.demo/INSTRUCTIONS.md" ]
-          [ -L "$HOME/.demo/skills" ]
+          [ -L "$HOME/.demo/skills/demoskill/SKILL.md" ]
           mv mirror.conf.orig mirror.conf
           ./dotfiles install >/dev/null
           [ -L "$HOME/.demo/INSTRUCTIONS.md" ]
@@ -338,7 +349,7 @@ jobs:
           # the file mirror follows the per-user override of its source
           case "$(readlink "$HOME/.codex/AGENTS.md")" in */users/fx/.agents/AGENTS.md) ;; *) echo "mirror-follows-override FAIL"; exit 1 ;; esac
           # a source with no user override falls back to common
-          case "$(readlink "$HOME/.demo/skills")" in */common/.agents/skills) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
+          case "$(readlink "$HOME/.demo/skills/demoskill/SKILL.md")" in */common/.agents/skills/demoskill/SKILL.md) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
           # a user-only top-level entry is a real dir whose leaves link into the user layer
           [ -d "$HOME/.fxtop" ]
           [ ! -L "$HOME/.fxtop" ]
@@ -393,7 +404,9 @@ jobs:
           case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd/.claude/demo.sh) ;; *) echo "profile override FAIL"; exit 1 ;; esac
           case "$(readlink "$HOME/.codex/AGENTS.md")" in */profiles/bd/.agents/AGENTS.md) ;; *) echo "mirror-follows-profile FAIL"; exit 1 ;; esac
           # a source with no profile override falls back to common
-          case "$(readlink "$HOME/.demo/skills")" in */common/.agents/skills) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
+          case "$(readlink "$HOME/.demo/skills/demoskill/SKILL.md")" in */common/.agents/skills/demoskill/SKILL.md) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
+          # a profile-only entry joins common's in the directory mirror
+          case "$(readlink "$HOME/.demo/skills/bdskill/SKILL.md")" in */profiles/bd/.agents/skills/bdskill/SKILL.md) ;; *) echo "dir mirror merge FAIL"; exit 1 ;; esac
           # a profile-only top-level entry is a real dir whose leaves link into the profile layer
           [ -d "$HOME/.bdtop" ]
           [ ! -L "$HOME/.bdtop" ]
@@ -410,6 +423,9 @@ jobs:
           cd "$FX"
           DOTFILES_PROFILE=bd2 ./dotfiles install >/dev/null
           case "$(readlink "$HOME/.claude/demo.sh")" in */profiles/bd2/.claude/demo.sh) ;; *) echo "env profile FAIL"; exit 1 ;; esac
+          # bd's entry in the directory mirror is pruned with its now-empty dir
+          [ ! -e "$HOME/.demo/skills/bdskill" ]
+          [ -L "$HOME/.demo/skills/demoskill/SKILL.md" ]
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
           # buffer `config` output before grepping: grep -q exits on the first
           # match and would SIGPIPE dotfiles, which pipefail turns into a failure

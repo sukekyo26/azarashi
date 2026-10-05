@@ -64,3 +64,4 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 ### mirror.conf
 
 - 各行 `target source`（レイヤ相対、`#` はコメント）。source はレイヤ解決を通るのでユーザー上書きに追従する。ソースが無い行は警告してスキップ。
+- ディレクトリの source は target に実ディレクトリとして作られ、子はレイヤー間で合成される（profile にだけある skill も common の skill と並ぶ）。葉だけが symlink になる。
