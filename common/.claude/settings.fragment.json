@@ -266,6 +266,8 @@
       "Bash(*git push* -f*)",
       "Bash(rtk gh pr merge *)",
       "Bash(rtk gh repo delete *)",
+      "Bash(gh api *DELETE*)",
+      "Bash(rtk gh api *DELETE*)",
       "Bash(rtk git checkout -- *)",
       "Bash(rtk git branch -D *)",
       "Bash(rtk git stash drop *)"
