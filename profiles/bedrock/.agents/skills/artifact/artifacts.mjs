@@ -28,6 +28,7 @@ const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-forms allow-modals al
 const USAGE = `usage: artifacts.mjs <command>
   publish <file.html> [--slug s] [--title t] [--description d]
                  store the page (same slug overwrites) and print its URL;
+                 body-only HTML (no doctype/html/head/body/title) is wrapped in template.html;
                  a new slug is also opened in the browser ($BROWSER, wslview, xdg-open)
   list           list stored pages, newest first (updated<TAB>slug<TAB>title)
   rm <slug>...   delete pages
@@ -69,9 +70,25 @@ function slugFromFile(file) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
 }
 
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
+
+// <title>、なければ最初の <h1> の中身をプレーンテキストにして返す（meta.json と管理画面はテキストで扱う）
 function titleOf(html) {
-  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  return m ? m[1].replace(/\s+/g, ' ').trim() : '';
+  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) ?? html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (!m) return '';
+  return m[1].replace(/<[^>]*>/g, '').replace(/&(amp|lt|gt|quot|#39);/g, (_, e) => ENTITIES[e])
+    .replace(/\s+/g, ' ').trim();
+}
+
+const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => `&${Object.keys(ENTITIES).find((k) => ENTITIES[k] === c)};`);
+
+// 文書の枠（<!doctype> <html> <head> <body> <title>）を持たない入力は本文だけの断片とみなし、
+// 同梱の雛形で包む。包んだ結果を保存するので、雛形を後で変えても公開済みのページは変わらない。
+function wrapFragment(html, title) {
+  if (/<!doctype|<(html|head|body|title)[\s>]/i.test(html)) return html;
+  const template = readFileSync(join(dirname(SCRIPT), 'template.html'), 'utf8');
+  // 置換文字列の $& などを解釈させないよう関数で渡す
+  return template.replace('{{title}}', () => escapeHtml(title)).replace('{{content}}', () => html.trim());
 }
 
 function publish(file, opts) {
@@ -94,7 +111,7 @@ function publish(file, opts) {
     createdAt: prev?.createdAt ?? now,
     updatedAt: now,
   };
-  writeAtomic(join(dir, 'index.html'), html);
+  writeAtomic(join(dir, 'index.html'), wrapFragment(html, meta.title));
   writeAtomic(join(dir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
   return { slug, created: !prev };
 }

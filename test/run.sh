@@ -1054,6 +1054,20 @@ RECORDER
   assert_eq "artifact: republishing the same slug does not open another tab" "$(art_opened | wc -l | tr -d ' ')" 1
   art publish "$ART_TMP/untitled.html" >/dev/null
   assert_eq "artifact: a page without <title> is titled by its slug" "$(jq -r .title "$ART_TMP/store/untitled/meta.json")" untitled
+  # body-only HTML is wrapped in the template; a whole document is stored as is
+  expect_true "artifact: a body-only page is wrapped in the template" \
+    sh -c "head -1 '$ART_TMP/store/untitled/index.html' | grep -qi '^<!doctype html>' &&
+      grep -q 'content=\"local-artifacts template\"' '$ART_TMP/store/untitled/index.html' &&
+      grep -q '<p>untitled</p>' '$ART_TMP/store/untitled/index.html'"
+  expect_false "artifact: a page with its own <title> is stored as is" \
+    grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
+  printf '<h1>A &amp; <em>B</em></h1>\n<p>keeps %s</p>\n' "\$& and \$1" >"$ART_TMP/frag.html"
+  art publish "$ART_TMP/frag.html" >/dev/null
+  assert_eq "artifact: a fragment is titled by its <h1> as plain text, escaped again in <title>" \
+    "$(jq -r .title "$ART_TMP/store/frag/meta.json")|$(grep -o '<title>.*</title>' "$ART_TMP/store/frag/index.html")" \
+    'A & B|<title>A &amp; B</title>'
+  expect_true "artifact: the fragment is inserted verbatim" grep -qF "keeps \$& and \$1" "$ART_TMP/store/frag/index.html"
+  art rm frag
   expect_false "artifact: an invalid slug is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
   expect_false "artifact: a missing file is rejected" \
