@@ -1012,7 +1012,8 @@ expect_false "repo-setup: an unknown argument fails" \
 if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   ART="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/artifacts.mjs"
   ART_TMP=$(mktemp -d)
-  ART_PORT=$((40000 + $$ % 20000))
+  # a port the OS reports free right now, rather than a guess that a busy host may already use
+  ART_PORT=$(node -e 'const s = require("node:net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); });')
   ART_URL="http://127.0.0.1:$ART_PORT"
   art() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" "$@"; }
   http_code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
@@ -1035,8 +1036,8 @@ RECORDER
   }
 
   assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
-    "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "http://localhost:$ART_PORT/a/my-demo/"
-  assert_eq "artifact: a first publish opens the page in \$BROWSER" "$(art_opened)" "http://localhost:$ART_PORT/a/my-demo/"
+    "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "$ART_URL/a/my-demo/"
+  assert_eq "artifact: a first publish opens the page in \$BROWSER" "$(art_opened)" "$ART_URL/a/my-demo/"
   assert_eq "artifact: list shows the slug and the <title>" "$(art list | cut -f2-)" "$(printf 'my-demo\tDemo Page')"
   mkdir -p "$ART_TMP/store/no-meta" "$ART_TMP/store/bad-json" "$ART_TMP/store/bad-time"
   printf '{bad' >"$ART_TMP/store/bad-json/meta.json"
@@ -1054,18 +1055,37 @@ RECORDER
   assert_eq "artifact: republishing the same slug does not open another tab" "$(art_opened | wc -l | tr -d ' ')" 1
   art publish "$ART_TMP/untitled.html" >/dev/null
   assert_eq "artifact: a page without <title> is titled by its slug" "$(jq -r .title "$ART_TMP/store/untitled/meta.json")" untitled
+  # 63 letters then a separator: cutting the derived slug at 64 must not leave a trailing hyphen
+  ART_LONG=$(printf '%063d' 0 | tr 0 a)
+  printf '<p>long</p>\n' >"$ART_TMP/$ART_LONG b.html"
+  assert_eq "artifact: a slug cut at 64 characters drops a trailing hyphen" \
+    "$(art publish "$ART_TMP/$ART_LONG b.html")" "$ART_URL/a/$ART_LONG/"
+  art rm "$ART_LONG"
   expect_false "artifact: an invalid slug is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
+  assert_eq "artifact: an invalid ARTIFACTS_PORT fails at once with a clear message" \
+    "$(
+      ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT=abc node "$ART" list 2>&1
+      echo "rc=$?"
+    )" \
+    "$(printf 'invalid ARTIFACTS_PORT "abc": use a port number from 1 to 65535\nrc=1')"
+  expect_false "artifact: port 0 and out-of-range ports are rejected too" \
+    sh -c "ARTIFACTS_PORT=0 node '$ART' list 2>/dev/null || ARTIFACTS_PORT=70000 node '$ART' list 2>/dev/null"
   expect_false "artifact: a missing file is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/nope.html' 2>/dev/null"
   expect_false "artifact: publishing to a server that serves another store fails" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/other' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/My Demo.html' 2>/dev/null"
+  expect_false "artifact: a failed publish leaves nothing in the store" test -e "$ART_TMP/other/my-demo"
   expect_true "artifact: the management page is served" \
     sh -c "curl -s '$ART_URL/' | grep -q '<title>Local Artifacts</title>'"
   assert_eq "artifact: a page URL without the trailing slash redirects, an unknown slug is 404" \
     "$(http_code "$ART_URL/a/my-demo") $(http_code "$ART_URL/a/no-such/")" "301 404"
   expect_true "artifact: the page is served in a sandbox" \
     sh -c "curl -s -D - -o /dev/null '$ART_URL/a/my-demo/' | grep -qi '^content-security-policy: sandbox'"
+  assert_eq "artifact: a malformed request target is a client error, not a server error" \
+    "$(http_code --request-target '//' "$ART_URL/") $(http_code --request-target 'http://[' "$ART_URL/")" "400 400"
+  assert_eq "artifact: a page opened as localhost is still served" \
+    "$(http_code -H "Host: localhost:$ART_PORT" "$ART_URL/")" 200
   # live reload: the served page subscribes with the version it was rendered from
   ART_NOW=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
   expect_true "artifact: a served page subscribes to reloads with its own version" \
@@ -1088,6 +1108,8 @@ RECORDER
     "$(http_code -X DELETE -H 'Origin: null' "$ART_URL/api/artifacts/my-demo")" 403
   assert_eq "artifact: DELETE from the management page removes the page" \
     "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo")|$(art list | cut -f2)" "204|untitled"
+  assert_eq "artifact: DELETE of a page that is already gone, or of a bad slug, is 404" \
+    "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo") $(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/Bad_Slug")" "404 404"
   # in a headless browser (skipped without Chrome or Node's WebSocket)
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then

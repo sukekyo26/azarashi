@@ -17,7 +17,8 @@ const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = process.env.ARTIFACTS_DIR
   || join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'artifacts');
 const PORT = Number(process.env.ARTIFACTS_PORT || 4317);
-const BASE = `http://localhost:${PORT}`;
+// 待ち受けと同じアドレスを表示する。localhost は環境によって ::1 に解決され、届かないことがある
+const BASE = `http://127.0.0.1:${PORT}`;
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 // DNS rebinding 対策: 自分の名前以外で届いたリクエストは拒否する
 const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
@@ -66,7 +67,7 @@ function writeAtomic(path, data) {
 
 function slugFromFile(file) {
   return basename(file, extname(file)).toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+    .replace(/[^a-z0-9]+/g, '-').slice(0, 64).replace(/^-+|-+$/g, '');
 }
 
 function titleOf(html) {
@@ -74,7 +75,7 @@ function titleOf(html) {
   return m ? m[1].replace(/\s+/g, ' ').trim() : '';
 }
 
-function publish(file, opts) {
+async function publish(file, opts) {
   if (!file) fail(USAGE);
   let html;
   try {
@@ -84,6 +85,8 @@ function publish(file, opts) {
   }
   const slug = opts.slug ?? slugFromFile(file);
   if (!SLUG_RE.test(slug)) fail(`invalid slug "${slug}": use lowercase letters, digits and hyphens via --slug`);
+  // サーバーを確かめてから書く。失敗した publish が保存先にページを残さないように
+  await ensureServer();
   const dir = join(ROOT, slug);
   mkdirSync(dir, { recursive: true });
   const prev = readMeta(slug);
@@ -159,7 +162,14 @@ function watch(req, res, slug, since) {
 
 function handle(req, res, ui) {
   if (!HOSTS.has(req.headers.host)) return send(res, 403, 'forbidden host');
-  const { pathname, searchParams } = new URL(req.url, BASE);
+  let pathname;
+  let searchParams;
+  try {
+    ({ pathname, searchParams } = new URL(req.url, BASE));
+  } catch {
+    // `//` などの不正なリクエストは、内部エラー（500）ではなく利用側の誤りとして返す
+    return send(res, 400, 'bad request');
+  }
   const html = { 'content-type': 'text/html; charset=utf-8' };
   const json = { 'content-type': 'application/json' };
   let m;
@@ -174,8 +184,13 @@ function handle(req, res, ui) {
   if (req.method === 'DELETE' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)$/))) {
     // 他サイトのページや sandbox 内のページ（Origin: null）からの削除を拒否する
     if (!ORIGINS.has(req.headers.origin)) return send(res, 403, 'forbidden origin');
-    if (!SLUG_RE.test(m[1]) || !readMeta(m[1])) return send(res, 404, 'not found');
-    remove(m[1]);
+    // 存在の確認は remove に任せる。並行した削除で先に消えていても 500 にせず 404 で返す
+    try {
+      remove(m[1]);
+    } catch (e) {
+      if (e instanceof UsageError) return send(res, 404, 'not found');
+      throw e;
+    }
     return send(res, 204, '');
   }
   if (req.method === 'GET' && (m = pathname.match(/^\/a\/([^/]+)(\/?)$/)) && SLUG_RE.test(m[1])) {
@@ -215,7 +230,7 @@ function serve() {
 async function probe() {
   let res;
   try {
-    res = await fetch(`http://127.0.0.1:${PORT}/api/health`, { signal: AbortSignal.timeout(1000) });
+    res = await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(1000) });
   } catch {
     return { state: 'down' };
   }
@@ -243,7 +258,12 @@ async function stop() {
     console.log('server is not running');
     return;
   }
-  process.kill(p.pid, 'SIGTERM');
+  try {
+    process.kill(p.pid, 'SIGTERM');
+  } catch (e) {
+    // probe と kill の間に自分で終了していれば、止まっている状態なので成功扱い
+    if (e.code !== 'ESRCH') throw e;
+  }
   console.log(`stopped server (pid ${p.pid})`);
 }
 
@@ -254,6 +274,9 @@ function localTime(iso) {
 }
 
 async function main() {
+  if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+    fail(`invalid ARTIFACTS_PORT "${process.env.ARTIFACTS_PORT}": use a port number from 1 to 65535`);
+  }
   const { positionals, values } = parseArgs({
     allowPositionals: true,
     options: { slug: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' } },
@@ -261,8 +284,7 @@ async function main() {
   const [cmd, ...args] = positionals;
   switch (cmd) {
     case 'publish': {
-      const { slug, created } = publish(args[0], values);
-      await ensureServer();
+      const { slug, created } = await publish(args[0], values);
       const url = `${BASE}/a/${slug}/`;
       // 公開し直すたびにタブを増やさない。更新は開いているタブの再読み込みで見る
       if (created) openBrowser(url);

@@ -119,6 +119,7 @@ jobs:
           mkdir -p "$FX/common/.agents/skills/demoskill" "$FX/common/.claude"
           printf 'CANONICAL (common)\n'              >"$FX/common/.agents/AGENTS.md"
           printf 'demo skill\n'                      >"$FX/common/.agents/skills/demoskill/SKILL.md"
+          printf 'skills notes\n'                    >"$FX/common/.agents/skills/NOTES.md"
           printf '#!/usr/bin/env bash\necho common\n' >"$FX/common/.claude/demo.sh"
           printf '{ "statusLine": { "x": "common" }, "commonOnly": 1 }\n' \
             >"$FX/common/.claude/settings.fragment.json"
@@ -128,6 +129,10 @@ jobs:
           printf '{ "statusLine": { "x": "user" }, "userKey": true }\n' \
             >"$FX/users/fx/.claude/settings.fragment.json"
           printf 'fx marker\n'                       >"$FX/users/fx/.fxtop/marker"
+          # fx overrides demoskill without its helper: a skill is replaced as a whole
+          printf 'common helper\n'                   >"$FX/common/.agents/skills/demoskill/helper.sh"
+          mkdir -p "$FX/users/fx/.agents/skills/demoskill"
+          printf 'fx skill\n'                        >"$FX/users/fx/.agents/skills/demoskill/SKILL.md"
           mkdir -p "$FX/profiles/bd/.agents" "$FX/profiles/bd/.claude" "$FX/profiles/bd/.bdtop" "$FX/profiles/bd2/.claude"
           printf 'CANONICAL (profile bd)\n'          >"$FX/profiles/bd/.agents/AGENTS.md"
           printf '#!/usr/bin/env bash\necho bd\n'    >"$FX/profiles/bd/.claude/demo.sh"
@@ -136,6 +141,11 @@ jobs:
           printf 'bd marker\n'                       >"$FX/profiles/bd/.bdtop/marker"
           mkdir -p "$FX/profiles/bd/.agents/skills/bdskill"
           printf 'bd skill\n'                        >"$FX/profiles/bd/.agents/skills/bdskill/SKILL.md"
+          # bd overrides pskill without its helper, like fx does demoskill
+          mkdir -p "$FX/common/.agents/skills/pskill" "$FX/profiles/bd/.agents/skills/pskill"
+          printf 'common pskill\n'                   >"$FX/common/.agents/skills/pskill/SKILL.md"
+          printf 'common helper\n'                   >"$FX/common/.agents/skills/pskill/helper.sh"
+          printf 'bd pskill\n'                       >"$FX/profiles/bd/.agents/skills/pskill/SKILL.md"
           printf '#!/usr/bin/env bash\necho bd2\n'   >"$FX/profiles/bd2/.claude/demo.sh"
           printf '%s\n' '.codex/AGENTS.md        .agents/AGENTS.md' \
                         '.demo/INSTRUCTIONS.md   .agents/AGENTS.md' \
@@ -162,6 +172,10 @@ jobs:
           [ -d "$HOME/.agents/skills" ]
           [ ! -L "$HOME/.agents/skills" ]
           [ -L "$HOME/.agents/skills/demoskill/SKILL.md" ]
+          [ -L "$HOME/.agents/skills/demoskill/helper.sh" ]
+          # a plain file directly under skills/ is not a skill dir, yet still deploys
+          [ -L "$HOME/.agents/skills/NOTES.md" ]
+          [ -L "$HOME/.demo/skills/NOTES.md" ]
           # file mirrors resolve to the single canonical source
           [ -L "$HOME/.codex/AGENTS.md" ]
           cmp -s "$HOME/.codex/AGENTS.md" "$HOME/.agents/AGENTS.md"
@@ -366,8 +380,12 @@ jobs:
           case "$(readlink "$HOME/.agents/AGENTS.md")" in */users/fx/.agents/AGENTS.md) ;; *) echo "AGENTS override FAIL"; exit 1 ;; esac
           # the file mirror follows the per-user override of its source
           case "$(readlink "$HOME/.codex/AGENTS.md")" in */users/fx/.agents/AGENTS.md) ;; *) echo "mirror-follows-override FAIL"; exit 1 ;; esac
-          # a source with no user override falls back to common
-          case "$(readlink "$HOME/.demo/skills/demoskill/SKILL.md")" in */common/.agents/skills/demoskill/SKILL.md) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
+          # a skill the user overrides comes wholly from the user layer, in both
+          # the layer dir and its mirror: common's helper.sh is not filled in
+          for d in .agents/skills .demo/skills; do
+            case "$(readlink "$HOME/$d/demoskill/SKILL.md")" in */users/fx/.agents/skills/demoskill/SKILL.md) ;; *) echo "skill override FAIL ($d)"; exit 1 ;; esac
+            [ ! -e "$HOME/$d/demoskill/helper.sh" ]
+          done
           # a user-only top-level entry is a real dir whose leaves link into the user layer
           [ -d "$HOME/.fxtop" ]
           [ ! -L "$HOME/.fxtop" ]
@@ -400,6 +418,13 @@ jobs:
           ./dotfiles install --user nobody-no-dir | tee switch.out
           [ ! -e "$HOME/.fxtop" ]
           grep -qE '^[[:space:]]*pruned[[:space:]]*:.*\.fxtop$' switch.out
+          # without fx, common's demoskill is back whole; with fx again, its helper is pruned
+          case "$(readlink "$HOME/.agents/skills/demoskill/SKILL.md")" in */common/.agents/skills/demoskill/SKILL.md) ;; *) echo "skill restore FAIL"; exit 1 ;; esac
+          [ -L "$HOME/.agents/skills/demoskill/helper.sh" ]
+          [ -L "$HOME/.demo/skills/demoskill/helper.sh" ]
+          ./dotfiles install --user fx >/dev/null
+          [ ! -e "$HOME/.agents/skills/demoskill/helper.sh" ]
+          [ ! -e "$HOME/.demo/skills/demoskill/helper.sh" ]
           # an invalid --user is rejected
           ! ./dotfiles install --user '../evil'
           # uninstall removes managed symlinks; the merged settings.json stays
@@ -425,6 +450,11 @@ jobs:
           case "$(readlink "$HOME/.demo/skills/demoskill/SKILL.md")" in */common/.agents/skills/demoskill/SKILL.md) ;; *) echo "common fallback FAIL"; exit 1 ;; esac
           # a profile-only entry joins common's in the directory mirror
           case "$(readlink "$HOME/.demo/skills/bdskill/SKILL.md")" in */profiles/bd/.agents/skills/bdskill/SKILL.md) ;; *) echo "dir mirror merge FAIL"; exit 1 ;; esac
+          # a skill the profile overrides comes wholly from the profile layer
+          for d in .agents/skills .demo/skills; do
+            case "$(readlink "$HOME/$d/pskill/SKILL.md")" in */profiles/bd/.agents/skills/pskill/SKILL.md) ;; *) echo "profile skill override FAIL ($d)"; exit 1 ;; esac
+            [ ! -e "$HOME/$d/pskill/helper.sh" ]
+          done
           # a profile-only top-level entry is a real dir whose leaves link into the profile layer
           [ -d "$HOME/.bdtop" ]
           [ ! -L "$HOME/.bdtop" ]
@@ -444,6 +474,9 @@ jobs:
           # bd's entry in the directory mirror is pruned with its now-empty dir
           [ ! -e "$HOME/.demo/skills/bdskill" ]
           [ -L "$HOME/.demo/skills/demoskill/SKILL.md" ]
+          # without bd, common's pskill is back whole
+          case "$(readlink "$HOME/.demo/skills/pskill/SKILL.md")" in */common/.agents/skills/pskill/SKILL.md) ;; *) echo "profile skill restore FAIL"; exit 1 ;; esac
+          [ -L "$HOME/.demo/skills/pskill/helper.sh" ]
           [ "$(git config --get-all dotfiles.profile)" = "bd" ]
           # buffer `config` output before grepping: grep -q exits on the first
           # match and would SIGPIPE dotfiles, which pipefail turns into a failure
