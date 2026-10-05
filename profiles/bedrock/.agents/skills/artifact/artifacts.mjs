@@ -168,11 +168,40 @@ function send(res, status, body, headers = {}) {
   res.end(body);
 }
 
+// 公開し直したら開いているタブを再読み込みさせるスクリプトを、配信時にだけ末尾へ足す。
+// 読み込んだ版を since に埋め込むので、接続前に公開し直されても取りこぼさない。
+function withReloader(page, slug) {
+  const since = encodeURIComponent(readMeta(slug)?.updatedAt ?? '');
+  // 合図を受けたら購読を閉じてから読み直す。読み直しが遅いと、再接続で合図がもう一度届くため
+  return `${page}\n<script>{const es = new EventSource('/api/events/${slug}?since=${since}');`
+    + "es.addEventListener('reload', () => { es.close(); location.reload(); });}</script>\n";
+}
+
+// ページは sandbox（opaque origin、Origin: null）から購読するので、CORS は null にだけ開ける。
+// null は他サイトの sandbox iframe からも名乗れるため、合図には更新日時も含めず「変わった」以外を返さない。
+// LIMIT: 接続ごとに 1 秒間隔で meta.json を読む。同時に開くタブが数十を超えるなら fs.watch に替える
+function watch(req, res, slug, since) {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream', 'cache-control': 'no-store', 'access-control-allow-origin': 'null',
+  });
+  res.write('retry: 1000\n\n');
+  const timer = setInterval(check, 1000);
+  req.on('close', () => clearInterval(timer));
+  check();
+  function check() {
+    const now = readMeta(slug)?.updatedAt ?? '';
+    if (now === since) return;
+    clearInterval(timer);
+    res.end('event: reload\ndata: changed\n\n');
+  }
+}
+
 function handle(req, res, ui) {
   if (!HOSTS.has(req.headers.host)) return send(res, 403, 'forbidden host');
   let pathname;
+  let searchParams;
   try {
-    ({ pathname } = new URL(req.url, BASE));
+    ({ pathname, searchParams } = new URL(req.url, BASE));
   } catch {
     // `//` などの不正なリクエストは、内部エラー（500）ではなく利用側の誤りとして返す
     return send(res, 400, 'bad request');
@@ -185,6 +214,9 @@ function handle(req, res, ui) {
     return send(res, 200, JSON.stringify({ app: APP, pid: process.pid, root: ROOT }), json);
   }
   if (req.method === 'GET' && pathname === '/api/artifacts') return send(res, 200, JSON.stringify(listArtifacts()), json);
+  if (req.method === 'GET' && (m = pathname.match(/^\/api\/events\/([^/]+)$/)) && SLUG_RE.test(m[1])) {
+    return watch(req, res, m[1], searchParams.get('since') ?? '');
+  }
   if (req.method === 'GET' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)\/download$/)) && SLUG_RE.test(m[1])) {
     // 保存したままの HTML を返す。配信時に差し込むものは含めず、1 ファイルで完結したページとして渡す
     let page;
@@ -215,7 +247,7 @@ function handle(req, res, ui) {
     } catch {
       return send(res, 404, 'not found');
     }
-    return send(res, 200, withHomeLink(page.toString('utf8')), { ...html, 'content-security-policy': PAGE_CSP });
+    return send(res, 200, withReloader(withHomeLink(page.toString('utf8')), m[1]), { ...html, 'content-security-policy': PAGE_CSP });
   }
   return send(res, 404, 'not found');
 }

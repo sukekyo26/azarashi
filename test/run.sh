@@ -1138,6 +1138,20 @@ RECORDER
     "$(http_code --request-target '//' "$ART_URL/") $(http_code --request-target 'http://[' "$ART_URL/")" "400 400"
   assert_eq "artifact: a page opened as localhost is still served" \
     "$(http_code -H "Host: localhost:$ART_PORT" "$ART_URL/")" 200
+  # live reload: the served page subscribes with the version it was rendered from
+  ART_NOW=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
+  expect_true "artifact: a served page subscribes to reloads with its own version" \
+    sh -c "curl -s '$ART_URL/a/my-demo/' | grep -qF \"new EventSource('/api/events/my-demo?since=\$(node -p 'encodeURIComponent(process.argv[1])' '$ART_NOW')')\""
+  ART_SSE=$(curl -s -D - -N --max-time 3 "$ART_URL/api/events/my-demo?since=stale")
+  assert_eq "artifact: a stale version gets a bare reload event, with CORS only for the sandboxed page (null)" \
+    "$(printf '%s' "$ART_SSE" | grep -ciE '^(access-control-allow-origin: null|event: reload|data: changed)')" 3
+  expect_false "artifact: the current version gets no reload event" \
+    sh -c "curl -s -N --max-time 1.5 '$ART_URL/api/events/my-demo?since=$ART_NOW' | grep -q '^event: reload'"
+  curl -s -N --max-time 4 "$ART_URL/api/events/my-demo?since=$ART_NOW" >"$ART_TMP/sse.out" &
+  sleep 0.3
+  art publish "$ART_TMP/My Demo.html" --slug my-demo >/dev/null
+  wait $!
+  expect_true "artifact: republishing notifies a stream that is already open" grep -q '^event: reload' "$ART_TMP/sse.out"
   assert_eq "artifact: a request under a foreign Host is refused" \
     "$(http_code -H 'Host: evil.example' "$ART_URL/")" 403
   assert_eq "artifact: DELETE from a foreign origin is refused" \
@@ -1148,15 +1162,19 @@ RECORDER
     "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo")|$(art list | cut -f2)" "204|untitled"
   assert_eq "artifact: DELETE of a page that is already gone, or of a bad slug, is 404" \
     "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo") $(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/Bad_Slug")" "404 404"
-  # management page in a headless browser (skipped without Chrome or Node's WebSocket):
-  # newest-first list | first row's download link | filtered rows | first click only arms | row still there |
-  # rows after the second click | store after it | error shown when DELETE cannot
-  # reach the server | row kept | empty state once all are gone
+  # in a headless browser (skipped without Chrome or Node's WebSocket)
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
+    # the page shows version 1, then version 2 once republished, without a manual reload
+    assert_eq "artifact: an open page reloads itself when republished" \
+      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2"
+    art rm live
+    # newest-first list | first row's download link | filtered rows | first click only arms | row still there |
+    # rows after the second click | store after it | error shown when DELETE cannot
+    # reach the server | row kept | empty state once all are gone
     art publish "$ART_TMP/My Demo.html" >/dev/null
     assert_eq "artifact: the management page lists, filters and deletes with a confirming second click" \
-      "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL")" \
+      "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" manage)" \
       "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html|1|本当に削除|2|Demo Page|my-demo|true|1|true"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
