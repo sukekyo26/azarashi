@@ -582,7 +582,9 @@ mirror_source() {
 # materializing the target's parent directory first. deploy_rel resolves the
 # target to its source through effective_src.
 deploy_mirror() {
-  if [ -z "$(effective_src "$2")" ]; then
+  # layer_src, not effective_src: deploy_rel resolves the source against the
+  # layers only, so a source that is itself a mirror target must warn here
+  if [ -z "$(layer_src "$2")" ]; then
     warn "mirror source not found, skipping: $1 <- $2"
     return 0
   fi
