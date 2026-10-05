@@ -1142,7 +1142,7 @@ RECORDER
     sh -c "ARTIFACTS_DIR='$ART_TMP/other' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/My Demo.html' 2>/dev/null"
   expect_false "artifact: a failed publish leaves nothing in the store" test -e "$ART_TMP/other/my-demo"
   expect_true "artifact: the management page is served" \
-    sh -c "curl -s '$ART_URL/' | grep -q '<title>Local Artifacts</title>'"
+    sh -c "curl -s '$ART_URL/' | grep -q '<title>Artifacts</title>'"
   assert_eq "artifact: a page URL without the trailing slash redirects, an unknown slug is 404" \
     "$(http_code "$ART_URL/a/my-demo") $(http_code "$ART_URL/a/no-such/")" "301 404"
   expect_true "artifact: the page is served in a sandbox" \
@@ -1189,13 +1189,14 @@ RECORDER
     assert_eq "artifact: an open page reloads itself when republished" \
       "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2"
     art rm live
-    # newest-first list | first row's download link | filtered rows | first click only arms | row still there |
+    # newest-first list | first row's download link | rows, pressed chip and URL after clicking a project tag |
+    # "すべて" chip clears the URL and is pressed | filtered rows | first click only arms | row still there |
     # rows after the second click | store after it | error shown when DELETE cannot
-    # reach the server | row kept | empty state once all are gone
+    # reach the server | row kept | server indicator down | empty state once all are gone | indicator up again
     art publish "$ART_TMP/My Demo.html" >/dev/null
-    assert_eq "artifact: the management page lists, filters and deletes with a confirming second click" \
+    assert_eq "artifact: the management page lists, filters by text and project, and deletes with a confirming second click" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" manage)" \
-      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html|1|本当に削除|2|Demo Page|my-demo|true|1|true"
+      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html|2 true true|true|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
     printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'

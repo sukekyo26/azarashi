@@ -3,90 +3,183 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Local Artifacts</title>
+<title>Artifacts</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a55c0'/%3E%3Cpath d='M11 6.5h7.5L23 11v13a1.5 1.5 0 0 1-1.5 1.5h-10.5A1.5 1.5 0 0 1 9.5 24V8A1.5 1.5 0 0 1 11 6.5Z' fill='%23fff'/%3E%3Cpath d='M18.5 6.5v3a1.5 1.5 0 0 0 1.5 1.5h3Z' fill='%232a55c0' opacity='.35'/%3E%3Cpath d='M16 13c.4 2.6 1.9 4.1 4.5 4.5-2.6.4-4.1 1.9-4.5 4.5-.4-2.6-1.9-4.1-4.5-4.5 2.6-.4 4.1-1.9 4.5-4.5Z' fill='%232a55c0'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700..800&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
+  /* 道具の画面。検索とプロジェクトのチップを上部に固定し、ページは 1 枚のパネルに行で並べる */
   :root {
-    --bg: #f4f6f6; --surface: #fff; --fg: #18201f; --muted: #5a6663; --line: #d6dddb;
-    --accent: #1d6a73; --danger: #b3261e; --danger-soft: #fbe9e7;
+    --bg: #edf1f4; --panel: #fff; --hover: #f5f8fa; --fg: #0f1a22; --muted: #5a6975; --faint: #84929e;
+    --line: #dbe3e9; --accent: #2a55c0; --accent-soft: #e4ebfa; --on-accent: #fff;
+    --good: #1f8a5b; --danger: #c0352b; --danger-soft: #fbe8e6;
+    --display: "Bricolage Grotesque", system-ui, sans-serif;
+    --body: system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #111716; --surface: #182120; --fg: #e2e9e7; --muted: #97a5a2; --line: #2b3634;
-      --accent: #63b5be; --danger: #f2b8b5; --danger-soft: #3b1f1d;
+      --bg: #0b1015; --panel: #121920; --hover: #18212a; --fg: #e3eaf0; --muted: #94a3af; --faint: #6c7b88;
+      --line: #222d37; --accent: #8fabff; --accent-soft: #1b2744; --on-accent: #0b1015;
+      --good: #4cc38a; --danger: #f2a49d; --danger-soft: #3a1d1b;
       color-scheme: dark;
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body {
     margin: 0; background: var(--bg); color: var(--fg);
-    font: 15px/1.7 system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
-    padding-inline: 16px; padding-block: 2rem 4rem;
+    font: 15px/1.6 var(--body); padding-inline: 16px; padding-block: 0 4rem;
   }
-  main { max-width: 52rem; margin-inline: auto; display: grid; gap: 1.5rem; }
-  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem 1rem; }
-  h1 { margin: 0; font-size: 1.4rem; }
-  .count { color: var(--muted); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
-  .filters { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-  input[type="search"], select {
-    padding: 0.55rem 0.75rem; font: inherit; color: var(--fg);
-    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
-  }
-  input[type="search"] { flex: 1 1 14rem; min-width: 0; }
-  select { flex: 0 1 auto; min-width: 0; max-width: 100%; }
-  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
-  li {
-    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
-    padding: 0.8rem 1rem; display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 1rem; align-items: start;
-  }
-  li > div { min-width: 0; display: grid; gap: 0.15rem; }
-  a.title { color: var(--accent); font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
-  a.title:hover { text-decoration: underline; }
-  .desc { color: var(--fg); font-size: 0.92rem; overflow-wrap: anywhere; }
-  .meta { color: var(--muted); font-size: 0.8rem; font-family: ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
-  button {
-    font: inherit; font-size: 0.85rem; padding: 0.3rem 0.8rem; border-radius: 5px; cursor: pointer;
-    color: var(--danger); background: transparent; border: 1px solid var(--line);
-  }
-  button.armed { background: var(--danger-soft); border-color: var(--danger); font-weight: 700; }
-  .actions { display: flex; gap: 0.4rem; }
-  a.download {
-    font-size: 0.85rem; padding: 0.3rem 0.8rem; border-radius: 5px; text-decoration: none;
-    color: var(--accent); border: 1px solid var(--line);
-  }
-  a.download:hover { border-color: var(--accent); }
-  /* 狭い幅ではボタンを下に回し、タイトルの幅を確保する */
-  @media (max-width: 30rem) { li { grid-template-columns: 1fr; } .actions { justify-content: flex-end; } }
+  .shell { max-width: 56rem; margin-inline: auto; display: grid; gap: 1rem; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .empty, .error { color: var(--muted); padding: 1.5rem 0; }
-  .error { color: var(--danger); }
-  code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85em; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding-block: 2rem 0.25rem; }
+  .brand { display: flex; align-items: center; gap: 0.6rem; }
+  .brand h1 { margin: 0; font: 800 1.75rem/1 var(--display); letter-spacing: -0.03em; }
+  .brand svg { width: 30px; height: 30px; flex: none; }
+  .server { display: flex; align-items: center; gap: 0.45rem; font: 0.78rem/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .server::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 20%, transparent); }
+  .server.down::before { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 20%, transparent); }
+
+  .toolbar {
+    position: sticky; top: 0; z-index: 2; display: grid; gap: 0.65rem;
+    margin-inline: -16px; padding: 0.75rem 16px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(10px);
+  }
+  .search { position: relative; }
+  .search svg { position: absolute; left: 0.8rem; top: 50%; translate: 0 -50%; width: 16px; height: 16px; color: var(--faint); pointer-events: none; }
+  .search input {
+    width: 100%; padding: 0.6rem 2.6rem 0.6rem 2.3rem; font: inherit; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .search input::placeholder { color: var(--faint); }
+  .search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .search input::-webkit-search-cancel-button { display: none; }
+  .search kbd {
+    position: absolute; right: 0.7rem; top: 50%; translate: 0 -50%; font: 0.72rem/1 var(--mono); color: var(--faint);
+    border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0.2rem 0.4rem;
+  }
+  .search input:focus + kbd { display: none; }
+
+  .filters { display: flex; align-items: center; gap: 0.75rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; min-width: 0; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.28rem 0.75rem; font-size: 0.85rem;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .chip:hover { border-color: var(--faint); }
+  .chip .n { font: 0.72rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
+  .chip.none { border-style: dashed; color: var(--muted); }
+  .chip[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+  .chip[aria-pressed="true"] .n { color: inherit; opacity: 0.65; }
+  .count { margin-left: auto; flex: none; font: 0.78rem/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li {
+    position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.2rem 1rem;
+    align-items: center; padding: 0.9rem 0.75rem 0.9rem 1.15rem; transition: background-color 0.15s;
+  }
+  li + li { border-top: 1px solid var(--line); }
+  li:hover { background: var(--hover); }
+  .body { min-width: 0; display: grid; gap: 0.2rem; }
+  /* 行全体をリンクの当たり判定にし、操作部品だけをその上に出す */
+  a.title { color: var(--fg); font-weight: 650; text-decoration: none; overflow-wrap: anywhere; }
+  a.title::after { content: ""; position: absolute; inset: 0; }
+  li:hover a.title { color: var(--accent); }
+  .desc { color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.6rem; font: 0.74rem/1.5 var(--mono); color: var(--faint); }
+  .meta > * { min-width: 0; overflow-wrap: anywhere; }
+  .tag {
+    position: relative; z-index: 1; font: inherit; color: var(--accent); background: var(--accent-soft);
+    border: 0; border-radius: 5px; padding: 0.05rem 0.45rem;
+  }
+  .tag:hover { text-decoration: underline; }
+  .actions { position: relative; z-index: 1; display: flex; gap: 0.15rem; }
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; height: 34px; min-width: 34px; padding-inline: 0.5rem;
+    color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 8px; text-decoration: none;
+    transition: background-color 0.15s, color 0.15s;
+  }
+  .icon-btn svg { width: 17px; height: 17px; }
+  .icon-btn:hover { background: var(--bg); color: var(--fg); }
+  .delete:hover { color: var(--danger); }
+  .delete .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .delete.armed { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); font-size: 0.82rem; font-weight: 700; }
+  .delete.armed .label { position: static; width: auto; height: auto; clip-path: none; }
+
+  .state { display: grid; justify-items: center; gap: 0.5rem; padding: 3rem 1.5rem; text-align: center; color: var(--muted); }
+  .state svg { width: 44px; height: 44px; color: var(--faint); }
+  .state p { margin: 0; max-width: 32rem; }
+  .state strong { color: var(--fg); font-size: 1rem; }
+  .state code { font-family: var(--mono); font-size: 0.82em; background: var(--bg); padding: 0.1rem 0.35rem; border-radius: 4px; overflow-wrap: anywhere; }
+  .link-btn { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .error { margin: 0; padding: 0.7rem 1rem; border-radius: 10px; color: var(--danger); background: var(--danger-soft); font-size: 0.9rem; }
+
+  /* 狭い幅ではチップの下に件数を回す */
+  @media (max-width: 30rem) { .filters { flex-wrap: wrap; } .count { margin-left: 0; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <h1>Local Artifacts</h1>
-    <span class="count" id="count"></span>
+<div class="shell">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="8" fill="var(--accent)"/>
+        <path d="M11 6.5h7.5L23 11v13a1.5 1.5 0 0 1-1.5 1.5h-10.5A1.5 1.5 0 0 1 9.5 24V8A1.5 1.5 0 0 1 11 6.5Z" fill="var(--on-accent)"/>
+        <path d="M18.5 6.5v3a1.5 1.5 0 0 0 1.5 1.5h3Z" fill="var(--accent)" opacity=".35"/>
+        <path d="M16 13c.4 2.6 1.9 4.1 4.5 4.5-2.6.4-4.1 1.9-4.5 4.5-.4-2.6-1.9-4.1-4.5-4.5 2.6-.4 4.1-1.9 4.5-4.5Z" fill="var(--accent)"/>
+      </svg>
+      <h1>Artifacts</h1>
+    </div>
+    <span class="server" id="server"></span>
   </header>
-  <div class="filters">
-    <input type="search" id="q" placeholder="キーワードで絞り込み" aria-label="絞り込み">
-    <select id="project" aria-label="プロジェクト"></select>
+  <div class="toolbar">
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" id="q" placeholder="タイトル・説明・slug を検索" aria-label="検索" autocomplete="off">
+      <kbd aria-hidden="true">/</kbd>
+    </label>
+    <div class="filters">
+      <div class="chips" id="chips" role="group" aria-label="プロジェクト"></div>
+      <span class="count" id="count"></span>
+    </div>
   </div>
-  <ul id="list"></ul>
-  <p class="empty" id="empty" hidden>まだページがありません。エージェントに「ページにして」と頼むか、<code>artifacts.mjs publish &lt;file.html&gt;</code> で追加できます。</p>
   <p class="error" id="error" hidden></p>
-</main>
+  <div class="panel">
+    <ul id="list"></ul>
+    <div class="state" id="empty" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 0v5h5"/></svg>
+      <strong>まだページがありません</strong>
+      <p>エージェントに「ページにして」と頼むか、<code>artifacts.mjs publish &lt;file.html&gt;</code> で追加できます。</p>
+    </div>
+    <div class="state" id="nomatch" hidden>
+      <strong>条件に合うページがありません</strong>
+      <p><button type="button" class="link-btn" id="clear">絞り込みを解除</button></p>
+    </div>
+  </div>
+</div>
 <template id="row">
   <li>
-    <div>
+    <div class="body">
       <a class="title" target="_blank" rel="noopener"></a>
       <span class="desc"></span>
-      <span class="meta"></span>
+      <span class="meta"><span class="slug"></span><time></time></span>
     </div>
     <div class="actions">
-      <a class="download">ダウンロード</a>
-      <button type="button">削除</button>
+      <a class="icon-btn download" title="ダウンロード">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+      </a>
+      <button type="button" class="icon-btn delete" title="削除">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 12h10l1-12M9 7V4h6v3"/></svg>
+        <span class="label">削除</span>
+      </button>
     </div>
   </li>
 </template>
@@ -99,18 +192,13 @@
   const NONE = '/';
 
   const fmt = (iso) => new Date(iso).toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' });
+  const rtf = new Intl.RelativeTimeFormat('ja', { numeric: 'auto' });
+  const UNITS = [['year', 31536000], ['month', 2592000], ['day', 86400], ['hour', 3600], ['minute', 60]];
 
-  function renderProjects() {
-    const counts = new Map();
-    for (const a of items) counts.set(a.project ?? NONE, (counts.get(a.project ?? NONE) ?? 0) + 1);
-    // 最後の 1 件を消しても選択が勝手に「すべて」へ戻らないよう、0 件でも選択肢に残す
-    if (project && !counts.has(project)) counts.set(project, 0);
-    const names = [...counts.keys()].filter((k) => k !== NONE).sort((x, y) => x.localeCompare(y));
-    const options = [new Option(`すべて (${items.length})`, '')];
-    for (const name of names) options.push(new Option(`${name} (${counts.get(name)})`, name));
-    if (counts.has(NONE)) options.push(new Option(`記録なし (${counts.get(NONE)})`, NONE));
-    $('project').replaceChildren(...options);
-    $('project').value = project;
+  function ago(iso) {
+    const s = (new Date(iso) - Date.now()) / 1000;
+    const [unit, sec] = UNITS.find(([, n]) => Math.abs(s) >= n) ?? [];
+    return unit ? rtf.format(Math.round(s / sec), unit) : 'たった今';
   }
 
   function showError(msg) {
@@ -118,43 +206,117 @@
     $('error').hidden = !msg;
   }
 
+  function setServer(ok) {
+    $('server').textContent = ok ? location.host : `${location.host} に接続できません`;
+    $('server').classList.toggle('down', !ok);
+  }
+
+  // 接続表示は「サーバーに届いたか」だけで決める。HTTP エラーでも応答があれば届いている
+  async function api(url, init) {
+    try {
+      const res = await fetch(url, init);
+      setServer(true);
+      return res;
+    } catch (e) {
+      setServer(false);
+      throw e;
+    }
+  }
+
+  function setProject(value) {
+    project = value;
+    const url = new URL(location.href);
+    if (project) url.searchParams.set('project', project);
+    else url.searchParams.delete('project');
+    history.replaceState(null, '', url);
+    render();
+  }
+
+  function chip(label, value, n, extra = '') {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `chip ${extra}`;
+    b.setAttribute('aria-pressed', String(value === project));
+    b.append(label);
+    const count = document.createElement('span');
+    count.className = 'n';
+    count.textContent = n;
+    b.append(count);
+    b.addEventListener('click', () => setProject(value));
+    return b;
+  }
+
+  function renderChips() {
+    const counts = new Map();
+    for (const a of items) counts.set(a.project ?? NONE, (counts.get(a.project ?? NONE) ?? 0) + 1);
+    // 最後の 1 件を消しても選択が勝手に「すべて」へ戻らないよう、0 件でも選択肢に残す
+    if (project && !counts.has(project)) counts.set(project, 0);
+    const names = [...counts.keys()].filter((k) => k !== NONE).sort((x, y) => x.localeCompare(y));
+    const chips = [chip('すべて', '', items.length), ...names.map((name) => chip(name, name, counts.get(name)))];
+    if (counts.has(NONE)) chips.push(chip('記録なし', NONE, counts.get(NONE), 'none'));
+    $('chips').replaceChildren(...chips);
+  }
+
+  function row(a) {
+    const li = $('row').content.firstElementChild.cloneNode(true);
+    const link = li.querySelector('.title');
+    link.href = `/a/${a.slug}/`;
+    link.textContent = a.title;
+    li.querySelector('.desc').textContent = a.description;
+    li.querySelector('.desc').hidden = !a.description;
+    if (a.project) {
+      const tag = document.createElement('button');
+      tag.type = 'button';
+      tag.className = 'tag';
+      tag.textContent = a.project;
+      tag.title = `${a.project} で絞り込む`;
+      tag.addEventListener('click', () => setProject(a.project));
+      li.querySelector('.meta').prepend(tag);
+    }
+    li.querySelector('.slug').textContent = a.slug;
+    const time = li.querySelector('time');
+    time.dateTime = a.updatedAt;
+    time.textContent = ago(a.updatedAt);
+    time.title = `更新 ${fmt(a.updatedAt)}`;
+    const dl = li.querySelector('.download');
+    dl.href = `/api/artifacts/${a.slug}/download`;
+    dl.download = `${a.slug}.html`;
+    dl.setAttribute('aria-label', `${a.title} をダウンロード`);
+    const del = li.querySelector('.delete');
+    del.setAttribute('aria-label', `${a.title} を削除`);
+    del.addEventListener('click', () => remove(a, del));
+    del.addEventListener('blur', () => disarm(a, del));
+    return li;
+  }
+
   function render() {
     const q = $('q').value.trim().toLowerCase();
-    renderProjects();
+    renderChips();
     const shown = items.filter((a) => (!project || (a.project ?? NONE) === project)
       && (!q || [a.title, a.description, a.slug, a.project].join(' ').toLowerCase().includes(q)));
     $('count').textContent = shown.length === items.length ? `${items.length} 件` : `${shown.length} / ${items.length} 件`;
     $('empty').hidden = items.length > 0;
-    $('list').replaceChildren(...shown.map((a) => {
-      const li = $('row').content.firstElementChild.cloneNode(true);
-      const link = li.querySelector('.title');
-      link.href = `/a/${a.slug}/`;
-      link.textContent = a.title;
-      li.querySelector('.desc').textContent = a.description;
-      li.querySelector('.desc').hidden = !a.description;
-      li.querySelector('.meta').textContent = `${a.project ? `${a.project} · ` : ''}${a.slug} · 更新 ${fmt(a.updatedAt)}`;
-      const dl = li.querySelector('.download');
-      dl.href = `/api/artifacts/${a.slug}/download`;
-      dl.download = `${a.slug}.html`;
-      dl.setAttribute('aria-label', `${a.title} をダウンロード`);
-      const btn = li.querySelector('button');
-      btn.setAttribute('aria-label', `${a.title} を削除`);
-      btn.addEventListener('click', () => remove(a, btn));
-      btn.addEventListener('blur', () => { btn.classList.remove('armed'); btn.textContent = '削除'; });
-      return li;
-    }));
+    $('nomatch').hidden = items.length === 0 || shown.length > 0;
+    $('list').replaceChildren(...shown.map(row));
+  }
+
+  function disarm(a, btn) {
+    btn.classList.remove('armed');
+    btn.querySelector('.label').textContent = '削除';
+    btn.setAttribute('aria-label', `${a.title} を削除`);
   }
 
   // 1 回目のクリックで確認状態にし、2 回目で削除する
   async function remove(a, btn) {
     if (!btn.classList.contains('armed')) {
       btn.classList.add('armed');
-      btn.textContent = '本当に削除';
+      btn.querySelector('.label').textContent = '本当に削除';
+      btn.setAttribute('aria-label', `${a.title} を本当に削除`);
       return;
     }
     let res;
     try {
-      res = await fetch(`/api/artifacts/${a.slug}`, { method: 'DELETE' });
+      res = await api(`/api/artifacts/${a.slug}`, { method: 'DELETE' });
     } catch (e) {
       showError(`「${a.title}」を削除できませんでした（${e.message}）。サーバーが止まっていれば artifacts.mjs serve で起動してください。`);
       return;
@@ -170,7 +332,7 @@
 
   async function load() {
     try {
-      const res = await fetch('/api/artifacts');
+      const res = await api('/api/artifacts');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       items = await res.json();
       showError('');
@@ -181,13 +343,21 @@
   }
 
   $('q').addEventListener('input', render);
-  $('project').addEventListener('change', () => {
-    project = $('project').value;
-    const url = new URL(location.href);
-    if (project) url.searchParams.set('project', project);
-    else url.searchParams.delete('project');
-    history.replaceState(null, '', url);
+  $('q').addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    $('q').value = '';
+    $('q').blur();
     render();
+  });
+  $('clear').addEventListener('click', () => {
+    $('q').value = '';
+    setProject('');
+  });
+  // 入力中でなければ / で検索欄へ移る
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, [contenteditable]')) return;
+    e.preventDefault();
+    $('q').focus();
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
   load();
