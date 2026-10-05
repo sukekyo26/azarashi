@@ -29,6 +29,7 @@ const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-forms allow-modals al
 const USAGE = `usage: artifacts.mjs <command>
   publish <file.html> [--slug s] [--title t] [--description d]
                  store the page (same slug overwrites) and print its URL;
+                 body-only HTML (no doctype/html/head/body/title) is wrapped in template.html;
                  a new slug is also opened in the browser ($BROWSER, wslview, xdg-open)
   list           list stored pages, newest first (updated<TAB>slug<TAB>title)
   rm <slug>...   delete pages
@@ -70,9 +71,25 @@ function slugFromFile(file) {
     .replace(/[^a-z0-9]+/g, '-').slice(0, 64).replace(/^-+|-+$/g, '');
 }
 
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
+
+// <title>、なければ最初の <h1> の中身をプレーンテキストにして返す（meta.json と管理画面はテキストで扱う）
 function titleOf(html) {
-  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  return m ? m[1].replace(/\s+/g, ' ').trim() : '';
+  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) ?? html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (!m) return '';
+  return m[1].replace(/<[^>]*>/g, '').replace(/&(amp|lt|gt|quot|#39);/g, (_, e) => ENTITIES[e])
+    .replace(/\s+/g, ' ').trim();
+}
+
+const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => `&${Object.keys(ENTITIES).find((k) => ENTITIES[k] === c)};`);
+
+// 文書の枠（<!doctype> <html> <head> <body> <title>）を持たない入力は本文だけの断片とみなし、
+// 同梱の雛形で包む。包んだ結果を保存するので、雛形を後で変えても公開済みのページは変わらない。
+function wrapFragment(html, title) {
+  if (/<!doctype|<(html|head|body|title)[\s>]/i.test(html)) return html;
+  const template = readFileSync(join(dirname(SCRIPT), 'template.html'), 'utf8');
+  // 置換文字列の $& などを解釈させないよう関数で渡す
+  return template.replace('{{title}}', () => escapeHtml(title)).replace('{{content}}', () => html);
 }
 
 async function publish(file, opts) {
@@ -97,7 +114,7 @@ async function publish(file, opts) {
     createdAt: prev?.createdAt ?? now,
     updatedAt: now,
   };
-  writeAtomic(join(dir, 'index.html'), html);
+  writeAtomic(join(dir, 'index.html'), wrapFragment(html, meta.title));
   writeAtomic(join(dir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
   return { slug, created: !prev };
 }
@@ -127,6 +144,24 @@ function openBrowser(url) {
 function remove(slug) {
   if (!SLUG_RE.test(slug) || !readMeta(slug)) fail(`no artifact "${slug}" (see: artifacts.mjs list)`);
   rmSync(join(ROOT, slug), { recursive: true, force: true });
+}
+
+// 管理画面へ戻るリンク。保存した HTML は変えず、配信時に <body> の直後へ差し込む。
+// <body> を省いた文書では </head> か doctype の直後に入れる（doctype より前に置くと quirks mode になる）。
+// 既定の見た目は詳細度 0 の :where() で付け、ページ側（雛形を含む）の CSS が上書きできるようにする。
+const HOME_LINK = '<style>:where(.artifact-home){display:block;margin:0 0 1rem;font:0.85rem/1.6 system-ui,sans-serif}'
+  + ':where(.artifact-home a){color:inherit;opacity:.7;text-decoration:none}'
+  + ':where(.artifact-home a:hover){opacity:1;text-decoration:underline}</style>'
+  + '<nav class="artifact-home"><a href="/">← Home</a></nav>';
+
+function withHomeLink(page) {
+  // 配信後の HTML をブラウザで保存して公開し直したページなど、既に持っていれば足さない
+  // 属性の順序・引用符・空白や他のクラスが違っても、class に artifact-home を持つ <nav> なら既にあるとみなす
+  if (/<nav\b[^>]*\sclass\s*=\s*["']?(?:[^"'>]*\s)?artifact-home(?=[\s"'>])/i.test(page)) return page;
+  const anchor = page.match(/<body\b[^>]*>/i) ?? page.match(/<\/head\s*>/i) ?? page.match(/<!doctype\b[^>]*>/i);
+  if (!anchor) return HOME_LINK + page;
+  const at = anchor.index + anchor[0].length;
+  return page.slice(0, at) + HOME_LINK + page.slice(at);
 }
 
 function send(res, status, body, headers = {}) {
@@ -213,7 +248,7 @@ function handle(req, res, ui) {
     } catch {
       return send(res, 404, 'not found');
     }
-    return send(res, 200, withReloader(page, m[1]), { ...html, 'content-security-policy': PAGE_CSP });
+    return send(res, 200, withReloader(withHomeLink(page.toString('utf8')), m[1]), { ...html, 'content-security-policy': PAGE_CSP });
   }
   return send(res, 404, 'not found');
 }

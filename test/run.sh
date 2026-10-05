@@ -1061,6 +1061,56 @@ RECORDER
   assert_eq "artifact: a slug cut at 64 characters drops a trailing hyphen" \
     "$(art publish "$ART_TMP/$ART_LONG b.html")" "$ART_URL/a/$ART_LONG/"
   art rm "$ART_LONG"
+  # body-only HTML is wrapped in the template; a whole document is stored as is
+  expect_true "artifact: a body-only page is wrapped in the template" \
+    sh -c "head -1 '$ART_TMP/store/untitled/index.html' | grep -qi '^<!doctype html>' &&
+      grep -q 'content=\"local-artifacts template\"' '$ART_TMP/store/untitled/index.html' &&
+      grep -q '<p>untitled</p>' '$ART_TMP/store/untitled/index.html'"
+  # every served page gets one Home link right after <body>;
+  # it is added when serving, so the stored file is untouched
+  assert_eq "artifact: a templated page gets exactly one Home link, right after <body>" \
+    "$(curl -s "$ART_URL/a/untitled/" | grep -cF '<body><style>:where(.artifact-home)')|$(curl -s "$ART_URL/a/untitled/" | grep -oF 'class="artifact-home"' | wc -l | tr -d ' ')" "1|1"
+  printf '<!doctype html><html><body class="x"><p>b</p></body></html>\n' >"$ART_TMP/with-body.html"
+  art publish "$ART_TMP/with-body.html" >/dev/null
+  expect_true "artifact: a whole document gets the Home link right after its own <body>" \
+    sh -c "curl -s '$ART_URL/a/with-body/' | grep -qF '<body class=\"x\"><style>:where(.artifact-home)'"
+  art rm with-body
+  # without a <body> tag: after </head>, else after the doctype (before it would mean quirks mode)
+  printf '<!doctype html><html><head><title>h</title></head><p>h</p>\n' >"$ART_TMP/no-body-head.html"
+  printf '<!doctype html><title>d</title><p>d</p>\n' >"$ART_TMP/no-body-doctype.html"
+  art publish "$ART_TMP/no-body-head.html" >/dev/null
+  art publish "$ART_TMP/no-body-doctype.html" >/dev/null
+  expect_true "artifact: a document without <body> gets the Home link after </head>" \
+    sh -c "curl -s '$ART_URL/a/no-body-head/' | grep -qF '</head><style>:where(.artifact-home)'"
+  expect_true "artifact: a document with only a doctype keeps it first, the Home link right after" \
+    sh -c "curl -s '$ART_URL/a/no-body-doctype/' | grep -qF '<!doctype html><style>:where(.artifact-home)'"
+  art rm no-body-head no-body-doctype
+  expect_true "artifact: a document without a <body> tag gets the Home link first" \
+    sh -c "curl -s '$ART_URL/a/my-demo/' | head -c 30 | grep -qF '<style>:where(.artifact-home)'"
+  expect_false "artifact: the Home link is not written into the stored page" \
+    grep -qF 'class="artifact-home"' "$ART_TMP/store/my-demo/index.html" "$ART_TMP/store/untitled/index.html"
+  # a served page saved from the browser and published again keeps a single Home link
+  curl -s "$ART_URL/a/my-demo/" >"$ART_TMP/resaved.html"
+  art publish "$ART_TMP/resaved.html" >/dev/null
+  assert_eq "artifact: a page that already has the Home link does not get a second one" \
+    "$(curl -s "$ART_URL/a/resaved/" | grep -oF 'class="artifact-home"' | wc -l | tr -d ' ')" 1
+  # ... even after reformatting (attribute order, quotes, extra classes)
+  printf "<!doctype html><body><nav id=\"h\"  class='top artifact-home'><a href=\"/\">Home</a></nav><p>r</p></body>\n" >"$ART_TMP/reformatted.html"
+  art publish "$ART_TMP/reformatted.html" >/dev/null
+  assert_eq "artifact: a reformatted Home nav still counts as the Home link" \
+    "$(curl -s "$ART_URL/a/reformatted/" | grep -o 'artifact-home' | wc -l | tr -d ' ')" 1
+  art rm resaved reformatted
+  expect_false "artifact: a page with its own <title> is stored as is" \
+    grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
+  printf '  <h1>A &amp; <em>B</em></h1>\n<p>keeps %s</p>\n\n' "\$& and \$1" >"$ART_TMP/frag.html"
+  art publish "$ART_TMP/frag.html" >/dev/null
+  assert_eq "artifact: a fragment is titled by its <h1> as plain text, escaped again in <title>" \
+    "$(jq -r .title "$ART_TMP/store/frag/meta.json")|$(grep -o '<title>.*</title>' "$ART_TMP/store/frag/index.html")" \
+    'A & B|<title>A &amp; B</title>'
+  expect_true "artifact: the fragment is inserted verbatim" \
+    node -e 'const fs = require("node:fs"); process.exit(fs.readFileSync(process.argv[1], "utf8").includes(fs.readFileSync(process.argv[2], "utf8")) ? 0 : 1)' \
+    "$ART_TMP/store/frag/index.html" "$ART_TMP/frag.html"
+  art rm frag
   expect_false "artifact: an invalid slug is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
   assert_eq "artifact: an invalid ARTIFACTS_PORT fails at once with a clear message" \
