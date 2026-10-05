@@ -64,7 +64,7 @@ description: 'Artifacts 機能が使えない環境で、表・図・比較・�
 
 雛形で包む場合、色・ダークモード・余白・表のはみ出しは雛形が満たす。残りの規約は本文側で守る。
 
-- **1 ファイルで完結させる**。CSS と JS はインラインで書く。外部スクリプトは cdnjs / jsdelivr / unpkg から、バージョンを固定して読み込む。Web フォントは Google Fonts だけ使い、代替フォントも指定する。Mermaid 図は jsdelivr の mermaid を読み込んで描く。
+- **1 ファイルで完結させる**。CSS と JS はインラインで書く。外部スクリプトは cdnjs / jsdelivr / unpkg から、バージョンを固定して読み込む。Web フォントは Google Fonts だけ使い、代替フォントも指定する。Mermaid 図は jsdelivr の mermaid を読み込んで描く。Mermaid は既定で図を表示幅まで縮めて文字が読めなくなるので、使う図の種類ごとに `useMaxWidth: false` を指定し（例: `mermaid.initialize({ sequence: { useMaxWidth: false }, flowchart: { useMaxWidth: false } })`）、図は `overflow-x: auto` の箱に入れる。
 - **データはページに埋め込む**。ページから他の URL を fetch しない。
 - **タイトル（`<title>` または最初の `<h1>`）はページの名前にする**（2〜4 語の名詞句）。説明は `--description` に書く。
 - **ライト・ダーク両方に対応する**。色は `:root` の CSS 変数として定義し、`@media (prefers-color-scheme: dark)` で変数だけを上書きする。`body` には背景色を明示する。
