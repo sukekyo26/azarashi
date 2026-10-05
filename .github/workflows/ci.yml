@@ -119,6 +119,7 @@ jobs:
           mkdir -p "$FX/common/.agents/skills/demoskill" "$FX/common/.claude"
           printf 'CANONICAL (common)\n'              >"$FX/common/.agents/AGENTS.md"
           printf 'demo skill\n'                      >"$FX/common/.agents/skills/demoskill/SKILL.md"
+          printf 'skills notes\n'                    >"$FX/common/.agents/skills/NOTES.md"
           printf '#!/usr/bin/env bash\necho common\n' >"$FX/common/.claude/demo.sh"
           printf '{ "statusLine": { "x": "common" }, "commonOnly": 1 }\n' \
             >"$FX/common/.claude/settings.fragment.json"
@@ -172,6 +173,9 @@ jobs:
           [ ! -L "$HOME/.agents/skills" ]
           [ -L "$HOME/.agents/skills/demoskill/SKILL.md" ]
           [ -L "$HOME/.agents/skills/demoskill/helper.sh" ]
+          # a plain file directly under skills/ is not a skill dir, yet still deploys
+          [ -L "$HOME/.agents/skills/NOTES.md" ]
+          [ -L "$HOME/.demo/skills/NOTES.md" ]
           # file mirrors resolve to the single canonical source
           [ -L "$HOME/.codex/AGENTS.md" ]
           cmp -s "$HOME/.codex/AGENTS.md" "$HOME/.agents/AGENTS.md"
