@@ -18,6 +18,7 @@ description: 'Artifacts 機能が使えない環境で、表・図・比較・�
    node ~/.agents/skills/artifact/artifacts.mjs publish <file.html> --slug <slug> --description '<一文の説明>'
    ```
 
+   - 作業中のプロジェクトのディレクトリで実行する。実行した場所の git リポジトリ名（origin の URL から。git の外ならディレクトリ名）を生成元として記録し、管理画面で絞り込みに使う。
    - サーバーが止まっていれば裏で起動し、ページの URL（`http://127.0.0.1:4317/a/<slug>/`）を 1 行出す。
    - 新しい slug のときはブラウザでページを開く（`$BROWSER` → `wslview` → `xdg-open`、macOS は `open`）。開く手段が無い環境では URL を出すだけになる。
    - slug は英小文字・数字・ハイフン。内容を表す短い名前にする（例: `q3-sales-review`）。
@@ -77,7 +78,7 @@ description: 'Artifacts 機能が使えない環境で、表・図・比較・�
 
 | 操作 | 方法 |
 |:----|:----|
-| 一覧 | 管理画面、または `artifacts.mjs list`（更新日時・slug・タイトルをタブ区切りで出す） |
+| 一覧 | 管理画面（生成元のプロジェクトで絞り込める）、または `artifacts.mjs list`（更新日時・slug・タイトルをタブ区切りで出す） |
 | 削除 | 管理画面の削除ボタン、または `artifacts.mjs rm <slug>...` |
 | ダウンロード | 管理画面のダウンロードボタン。保存したままの HTML を `<slug>.html` として保存する（1 ファイルで完結し、他の場所でも開ける） |
 | サーバー停止 | `artifacts.mjs stop`。次の `publish` で再び起動する |

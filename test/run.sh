@@ -1055,6 +1055,21 @@ RECORDER
   assert_eq "artifact: republishing the same slug does not open another tab" "$(art_opened | wc -l | tr -d ' ')" 1
   art publish "$ART_TMP/untitled.html" >/dev/null
   assert_eq "artifact: a page without <title> is titled by its slug" "$(jq -r .title "$ART_TMP/store/untitled/meta.json")" untitled
+  # the project comes from origin even when cloned under another name, from the main
+  # checkout's directory for a worktree without origin, and from the cwd outside git
+  git init -q "$ART_TMP/alias" && git -C "$ART_TMP/alias" remote add origin git@github.com:someone/upstream-name.git
+  git init -q "$ART_TMP/plain" && git -C "$ART_TMP/plain" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+  git -C "$ART_TMP/plain" worktree add -q --detach "$ART_TMP/wt"
+  mkdir "$ART_TMP/outside"
+  for d in alias wt outside; do (cd "$ART_TMP/$d" && art publish "$ART_TMP/untitled.html" --slug "proj-$d" >/dev/null); done
+  assert_eq "artifact: publish records the project it was run in" \
+    "$(for d in alias wt outside; do jq -r .project "$ART_TMP/store/proj-$d/meta.json"; done | paste -sd' ' -)" \
+    "upstream-name plain outside"
+  art rm proj-alias proj-wt proj-outside
+  # basename of / is empty, which would collide with the management page's "all" value
+  (cd / && art publish "$ART_TMP/untitled.html" --slug proj-root >/dev/null)
+  assert_eq "artifact: publishing from / records no project" "$(jq 'has("project")' "$ART_TMP/store/proj-root/meta.json")" false
+  art rm proj-root
   # 63 letters then a separator: cutting the derived slug at 64 must not leave a trailing hyphen
   ART_LONG=$(printf '%063d' 0 | tr 0 a)
   printf '<p>long</p>\n' >"$ART_TMP/$ART_LONG b.html"
