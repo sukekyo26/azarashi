@@ -156,7 +156,8 @@ const HOME_LINK = '<style>:where(.artifact-home){display:block;margin:0 0 1rem;f
 
 function withHomeLink(page) {
   // 配信後の HTML をブラウザで保存して公開し直したページなど、既に持っていれば足さない
-  if (page.includes('<nav class="artifact-home">')) return page;
+  // 属性の順序・引用符・空白や他のクラスが違っても、class に artifact-home を持つ <nav> なら既にあるとみなす
+  if (/<nav\b[^>]*\sclass\s*=\s*["']?(?:[^"'>]*\s)?artifact-home(?=[\s"'>])/i.test(page)) return page;
   const anchor = page.match(/<body\b[^>]*>/i) ?? page.match(/<\/head\s*>/i) ?? page.match(/<!doctype\b[^>]*>/i);
   if (!anchor) return HOME_LINK + page;
   const at = anchor.index + anchor[0].length;

@@ -1094,7 +1094,12 @@ RECORDER
   art publish "$ART_TMP/resaved.html" >/dev/null
   assert_eq "artifact: a page that already has the Home link does not get a second one" \
     "$(curl -s "$ART_URL/a/resaved/" | grep -oF 'class="artifact-home"' | wc -l | tr -d ' ')" 1
-  art rm resaved
+  # ... even after reformatting (attribute order, quotes, extra classes)
+  printf "<!doctype html><body><nav id=\"h\"  class='top artifact-home'><a href=\"/\">Home</a></nav><p>r</p></body>\n" >"$ART_TMP/reformatted.html"
+  art publish "$ART_TMP/reformatted.html" >/dev/null
+  assert_eq "artifact: a reformatted Home nav still counts as the Home link" \
+    "$(curl -s "$ART_URL/a/reformatted/" | grep -o 'artifact-home' | wc -l | tr -d ' ')" 1
+  art rm resaved reformatted
   expect_false "artifact: a page with its own <title> is stored as is" \
     grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
   printf '  <h1>A &amp; <em>B</em></h1>\n<p>keeps %s</p>\n\n' "\$& and \$1" >"$ART_TMP/frag.html"
