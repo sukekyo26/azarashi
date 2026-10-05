@@ -372,7 +372,24 @@ resolve_layers() {
 # layer_src <rel> — print the highest-precedence active layer path that has
 # <rel>, or nothing if no layer has it. This is the single place precedence is
 # decided; every other walk defers to it rather than re-implementing the order.
+# A skill (.agents/skills/<name>/) is overridden as a whole: the highest layer
+# that has the skill dir supplies every path in it, and a file it lacks is not
+# filled in from a lower layer (an override may drop the base's scripts).
 layer_src() {
+  case "$1" in
+    .agents/skills/?*)
+      _ls_unit=${1#.agents/skills/}
+      _ls_unit=.agents/skills/${_ls_unit%%/*}
+      for _ls in $LAYERS; do
+        [ -e "$REPO_DIR/$_ls/$_ls_unit" ] || [ -L "$REPO_DIR/$_ls/$_ls_unit" ] || continue
+        if [ -e "$REPO_DIR/$_ls/$1" ] || [ -L "$REPO_DIR/$_ls/$1" ]; then
+          printf '%s' "$REPO_DIR/$_ls/$1"
+        fi
+        return 0
+      done
+      return 0
+      ;;
+  esac
   for _ls in $LAYERS; do
     if [ -e "$REPO_DIR/$_ls/$1" ] || [ -L "$REPO_DIR/$_ls/$1" ]; then
       printf '%s' "$REPO_DIR/$_ls/$1"
