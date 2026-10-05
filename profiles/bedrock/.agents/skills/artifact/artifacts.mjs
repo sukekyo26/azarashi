@@ -138,8 +138,9 @@ function send(res, status, body, headers = {}) {
 // 読み込んだ版を since に埋め込むので、接続前に公開し直されても取りこぼさない。
 function withReloader(page, slug) {
   const since = encodeURIComponent(readMeta(slug)?.updatedAt ?? '');
-  return `${page}\n<script>new EventSource('/api/events/${slug}?since=${since}')`
-    + ".addEventListener('reload', () => location.reload());</script>\n";
+  // 合図を受けたら購読を閉じてから読み直す。読み直しが遅いと、再接続で合図がもう一度届くため
+  return `${page}\n<script>{const es = new EventSource('/api/events/${slug}?since=${since}');`
+    + "es.addEventListener('reload', () => { es.close(); location.reload(); });}</script>\n";
 }
 
 // ページは sandbox（opaque origin）から購読するので CORS を開ける。返すのは再読み込みの合図だけ。

@@ -1089,7 +1089,7 @@ RECORDER
   # live reload: the served page subscribes with the version it was rendered from
   ART_NOW=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
   expect_true "artifact: a served page subscribes to reloads with its own version" \
-    sh -c "curl -s '$ART_URL/a/my-demo/' | grep -qF \"EventSource('/api/events/my-demo?since=\$(node -p 'encodeURIComponent(process.argv[1])' '$ART_NOW')')\""
+    sh -c "curl -s '$ART_URL/a/my-demo/' | grep -qF \"new EventSource('/api/events/my-demo?since=\$(node -p 'encodeURIComponent(process.argv[1])' '$ART_NOW')')\""
   ART_SSE=$(curl -s -D - -N --max-time 3 "$ART_URL/api/events/my-demo?since=stale")
   assert_eq "artifact: a stale version gets a reload event, with CORS for the sandboxed page" \
     "$(printf '%s' "$ART_SSE" | grep -ciE '^(access-control-allow-origin: \*|event: reload)')" 2
