@@ -3,7 +3,9 @@
 // 保存先は ARTIFACTS_DIR（既定 ~/.local/share/artifacts/<slug>/{index.html,meta.json}）。
 // サーバーは保存先を毎回読むので、CLI とサーバーの間に受け渡しはない。
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
@@ -25,7 +27,8 @@ const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-forms allow-modals al
 
 const USAGE = `usage: artifacts.mjs <command>
   publish <file.html> [--slug s] [--title t] [--description d]
-                 store the page (same slug overwrites) and print its URL
+                 store the page (same slug overwrites) and print its URL;
+                 a new slug is also opened in the browser ($BROWSER, wslview, xdg-open)
   list           list stored pages, newest first (updated<TAB>slug<TAB>title)
   rm <slug>...   delete pages
   serve          run the server in the foreground
@@ -93,7 +96,29 @@ function publish(file, opts) {
   };
   writeAtomic(join(dir, 'index.html'), html);
   writeAtomic(join(dir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
-  return slug;
+  return { slug, created: !prev };
+}
+
+function onPath(name) {
+  return (process.env.PATH || '').split(':').some((d) => {
+    try {
+      accessSync(join(d, name), constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+// 開けなくても公開は成功しているので、失敗は無視して表示した URL に任せる。
+// $BROWSER は VS Code の devcontainer 等がホストのブラウザで開く補助スクリプトを入れる。
+// Linux の /usr/bin/open は openvt なので open は macOS でだけ使う。
+// LIMIT: $BROWSER は単一コマンドとして扱う（: 区切りの複数指定は未対応）
+function openBrowser(url) {
+  const cmd = process.env.BROWSER
+    || (process.platform === 'darwin' ? 'open' : ['wslview', 'xdg-open'].find(onPath));
+  if (!cmd) return;
+  spawn(cmd, [url], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
 }
 
 function remove(slug) {
@@ -207,9 +232,12 @@ async function main() {
   const [cmd, ...args] = positionals;
   switch (cmd) {
     case 'publish': {
-      const slug = publish(args[0], values);
+      const { slug, created } = publish(args[0], values);
       await ensureServer();
-      console.log(`${BASE}/a/${slug}/`);
+      const url = `${BASE}/a/${slug}/`;
+      // 公開し直すたびにタブを増やさない。更新は開いているタブの再読み込みで見る
+      if (created) openBrowser(url);
+      console.log(url);
       break;
     }
     case 'list':

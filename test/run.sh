@@ -1018,9 +1018,25 @@ if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   http_code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
   printf '<title>Demo  Page</title><p>hi</p>\n' >"$ART_TMP/My Demo.html"
   printf '<p>untitled</p>\n' >"$ART_TMP/untitled.html"
+  # every publish in this block opens "the browser" through this recorder, never a real one
+  cat >"$ART_TMP/browser" <<RECORDER
+#!/bin/sh
+printf '%s\n' "\$1" >>"$ART_TMP/opened"
+RECORDER
+  chmod +x "$ART_TMP/browser"
+  BROWSER="$ART_TMP/browser"
+  export BROWSER
+  art_opened() { # print the URLs the recorder got, once the detached opener has had time to run
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      [ -s "$ART_TMP/opened" ] && break
+      sleep 0.1
+    done
+    cat "$ART_TMP/opened" 2>/dev/null
+  }
 
   assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
     "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "http://localhost:$ART_PORT/a/my-demo/"
+  assert_eq "artifact: a first publish opens the page in \$BROWSER" "$(art_opened)" "http://localhost:$ART_PORT/a/my-demo/"
   assert_eq "artifact: list shows the slug and the <title>" "$(art list | cut -f2-)" "$(printf 'my-demo\tDemo Page')"
   mkdir -p "$ART_TMP/store/no-meta" "$ART_TMP/store/bad-json" "$ART_TMP/store/bad-time"
   printf '{bad' >"$ART_TMP/store/bad-json/meta.json"
@@ -1034,6 +1050,8 @@ if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
     "$(jq -r '[.description, .createdAt] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'a demo\t%s' "$ART_CREATED")"
   art publish "$ART_TMP/My Demo.html" --title 'Renamed' >/dev/null
   assert_eq "artifact: --title overrides the <title>" "$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" Renamed
+  sleep 0.3 # let a (wrong) opener from the republishes above reach the recorder
+  assert_eq "artifact: republishing the same slug does not open another tab" "$(art_opened | wc -l | tr -d ' ')" 1
   art publish "$ART_TMP/untitled.html" >/dev/null
   assert_eq "artifact: a page without <title> is titled by its slug" "$(jq -r .title "$ART_TMP/store/untitled/meta.json")" untitled
   expect_false "artifact: an invalid slug is rejected" \
@@ -1084,6 +1102,7 @@ if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   done
   assert_eq "artifact: stop shuts the server down" "$_art_up" 0
   rm -rf "$ART_TMP"
+  unset BROWSER
 else
   printf '  skip - artifact skill tests (node or curl not available)\n'
 fi
