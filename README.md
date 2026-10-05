@@ -48,6 +48,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 ### レイヤー
 
 - 優先度の低い順に `common/` → `profiles/<name>/` → `users/<name>/`。全レイヤー同一構造、競合時は上位が勝つ。
+- 上書きはファイル単位。ただし skill（`.agents/skills/<name>/`）はフォルダ単位で、その skill を持つ最上位レイヤーの中身だけが使われる（下位レイヤーのファイルは補われない）。
 - ユーザー解決: `--user` → `git config dotfiles.user` → `gh api user` → 無ければユーザーレイヤー無し。
 - プロファイル解決: `--profile`（繰り返し可、後勝ち）→ 環境変数 `DOTFILES_PROFILE`（空白区切り、後勝ち。記憶されない）→ `git config dotfiles.profile` → 無ければ無し。`install` は `--profile` の選択だけを `git config --local dotfiles.profile` に記憶する（`--dry-run` と参照系は書かない）。git config は checkout に置かれホストと `workspace/*` のコンテナで共有されるので、1 環境だけの選択は `DOTFILES_PROFILE` を使う。
 - `resolve_layers` が `LAYERS`（高→低）/ `LAYERS_REV`（fragment のマージ順、低→高）/ `ALL_LAYERS`（選択に依らない全レイヤー。prune / uninstall / doctor / clean-backups の走査範囲）を組み立て、優先順位は `layer_src` が決める。
