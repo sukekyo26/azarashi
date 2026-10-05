@@ -31,7 +31,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 ## 構成
 
 - `dotfiles` — エントリポイント（POSIX sh）。
-- `mirror.conf` — 1 つの正典ファイルを複数配布先へ symlink するミラー宣言。
+- `mirror.conf` — 1 つの正典（ファイルまたはディレクトリ）を複数の配布先へ展開するミラー宣言。
 - `common/` — 全環境共通の配布ペイロード
   - `.agents/AGENTS.md`, `.agents/skills/` — エージェント共通指示とスキル（mirror.conf で `.claude/` `.codex/` `.copilot/` へ展開）
   - `.agents/hooks/route-command-output.mjs` — 3 エージェント共通の PreToolUse(Bash) hook（rtk 経由の出力圧縮）。各エージェントの設定が `~/.agents/hooks/` を `--client=` 付きで直接呼ぶので mirror 不要。権限ルールは書き換え後のコマンドに対して照合されるので、`rtk` は裸のまま残し（sudo 前置時のみ絶対パス化）、allow/ask は `Bash(rtk git status *)` の形で書く
@@ -64,3 +64,4 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 ### mirror.conf
 
 - 各行 `target source`（レイヤ相対、`#` はコメント）。source はレイヤ解決を通るのでユーザー上書きに追従する。ソースが無い行は警告してスキップ。
+- ディレクトリの source は target に実ディレクトリとして作られ、子はレイヤー間で合成される（profile にだけある skill も common の skill と並ぶ）。葉だけが symlink になる。
