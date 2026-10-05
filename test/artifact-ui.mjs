@@ -45,15 +45,25 @@ async function manage({ send, evaluate }) {
   })()`);
   const clickDelete = (title) => evaluate(`(() => {
     const li = [...document.querySelectorAll('#list li')].find((l) => l.querySelector('.title').textContent === ${JSON.stringify(title)});
-    const b = li.querySelector('button');
+    const b = li.querySelector('.delete');
     b.click();
-    return b.textContent;
+    return b.querySelector('.label').textContent;
   })()`);
 
   const out = [];
   await send('Page.navigate', { url: `${base}/` });
   out.push(await until(titles, 'the list to render'));
   out.push(await evaluate("(() => { const d = document.querySelector('#list li .download'); return `${d.getAttribute('href')} ${d.getAttribute('download')}`; })()"));
+  // a row's project tag filters by it and keeps the choice in the URL; the "すべて" chip clears it
+  out.push(await evaluate(`(() => {
+    const tag = document.querySelector('#list li .tag');
+    tag.click();
+    const pressed = document.querySelector('.chip[aria-pressed="true"]').firstChild.textContent;
+    return [document.querySelectorAll('#list li').length, pressed === tag.textContent,
+      new URLSearchParams(location.search).get('project') === tag.textContent].join(' ');
+  })()`));
+  await evaluate("document.querySelector('.chip').click()");
+  out.push(await evaluate("location.search === '' && document.querySelector('.chip').getAttribute('aria-pressed')"));
   await filter('untitled');
   out.push(await rows());
   await filter('');
