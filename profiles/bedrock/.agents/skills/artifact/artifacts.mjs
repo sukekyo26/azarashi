@@ -143,11 +143,12 @@ function withReloader(page, slug) {
     + "es.addEventListener('reload', () => { es.close(); location.reload(); });}</script>\n";
 }
 
-// ページは sandbox（opaque origin）から購読するので CORS を開ける。返すのは再読み込みの合図だけ。
+// ページは sandbox（opaque origin、Origin: null）から購読するので、CORS は null にだけ開ける。
+// null は他サイトの sandbox iframe からも名乗れるため、合図には更新日時も含めず「変わった」以外を返さない。
 // LIMIT: 接続ごとに 1 秒間隔で meta.json を読む。同時に開くタブが数十を超えるなら fs.watch に替える
 function watch(req, res, slug, since) {
   res.writeHead(200, {
-    'content-type': 'text/event-stream', 'cache-control': 'no-store', 'access-control-allow-origin': '*',
+    'content-type': 'text/event-stream', 'cache-control': 'no-store', 'access-control-allow-origin': 'null',
   });
   res.write('retry: 1000\n\n');
   const timer = setInterval(check, 1000);
@@ -157,7 +158,7 @@ function watch(req, res, slug, since) {
     const now = readMeta(slug)?.updatedAt ?? '';
     if (now === since) return;
     clearInterval(timer);
-    res.end(`event: reload\ndata: ${now}\n\n`);
+    res.end('event: reload\ndata: changed\n\n');
   }
 }
 
