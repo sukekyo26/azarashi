@@ -78,6 +78,8 @@
       "Bash(gh run view *)",
       "Bash(gh api --paginate *)",
       "Bash(gh api repos/*)",
+      "Bash(rtk gh api repos/*)",
+      "Bash(rtk gh api user)",
       "Bash(gh api -X POST repos/*/pulls/*/comments/*/replies *)",
       "Bash(rm /tmp/pr-body-*)",
       "Bash(rm /tmp/reply-*)",
