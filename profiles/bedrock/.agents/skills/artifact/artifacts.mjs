@@ -74,7 +74,7 @@ function titleOf(html) {
   return m ? m[1].replace(/\s+/g, ' ').trim() : '';
 }
 
-function publish(file, opts) {
+async function publish(file, opts) {
   if (!file) fail(USAGE);
   let html;
   try {
@@ -84,6 +84,8 @@ function publish(file, opts) {
   }
   const slug = opts.slug ?? slugFromFile(file);
   if (!SLUG_RE.test(slug)) fail(`invalid slug "${slug}": use lowercase letters, digits and hyphens via --slug`);
+  // サーバーを確かめてから書く。失敗した publish が保存先にページを残さないように
+  await ensureServer();
   const dir = join(ROOT, slug);
   mkdirSync(dir, { recursive: true });
   const prev = readMeta(slug);
@@ -232,8 +234,7 @@ async function main() {
   const [cmd, ...args] = positionals;
   switch (cmd) {
     case 'publish': {
-      const { slug, created } = publish(args[0], values);
-      await ensureServer();
+      const { slug, created } = await publish(args[0], values);
       const url = `${BASE}/a/${slug}/`;
       // 公開し直すたびにタブを増やさない。更新は開いているタブの再読み込みで見る
       if (created) openBrowser(url);

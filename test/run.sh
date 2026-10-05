@@ -1060,6 +1060,7 @@ RECORDER
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/nope.html' 2>/dev/null"
   expect_false "artifact: publishing to a server that serves another store fails" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/other' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/My Demo.html' 2>/dev/null"
+  expect_false "artifact: a failed publish leaves nothing in the store" test -e "$ART_TMP/other/my-demo"
   expect_true "artifact: the management page is served" \
     sh -c "curl -s '$ART_URL/' | grep -q '<title>Local Artifacts</title>'"
   assert_eq "artifact: a page URL without the trailing slash redirects, an unknown slug is 404" \
