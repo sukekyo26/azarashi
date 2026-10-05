@@ -95,7 +95,14 @@ try {
   await until(async () => (await rows()) === 1, 'the deleted row to disappear');
   out.push(await titles());
   out.push(await evaluate("fetch('/api/artifacts').then((r) => r.json()).then((a) => a.map((x) => x.slug).join(','))"));
+  // a DELETE that cannot reach the server shows an error and keeps the row
+  await evaluate("window.realFetch = window.fetch; window.fetch = () => Promise.reject(new TypeError('Failed to fetch'))");
   await clickDelete('Demo Page');
+  await clickDelete('Demo Page');
+  out.push(await until(() => evaluate("(() => { const e = document.getElementById('error'); return !e.hidden && e.textContent.includes('削除できませんでした'); })()"), 'the delete error'));
+  out.push(await rows());
+  await evaluate('window.fetch = window.realFetch');
+  // the button stays armed, so one more click deletes
   await clickDelete('Demo Page');
   out.push(await until(() => evaluate("!document.getElementById('empty').hidden"), 'the empty state'));
   console.log(out.join('|'));

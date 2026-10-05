@@ -1058,13 +1058,14 @@ if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
     "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo")|$(art list | cut -f2)" "204|untitled"
   # management page in a headless browser (skipped without Chrome or Node's WebSocket):
   # newest-first list | filtered rows | first click only arms | row still there |
-  # rows after the second click | store after it | empty state once all are gone
+  # rows after the second click | store after it | error shown when DELETE cannot
+  # reach the server | row kept | empty state once all are gone
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
     art publish "$ART_TMP/My Demo.html" >/dev/null
     assert_eq "artifact: the management page lists, filters and deletes with a confirming second click" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL")" \
-      "Demo Page,untitled|1|本当に削除|2|Demo Page|my-demo|true"
+      "Demo Page,untitled|1|本当に削除|2|Demo Page|my-demo|true|1|true"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
     printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'

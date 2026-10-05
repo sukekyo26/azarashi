@@ -112,7 +112,13 @@
       btn.textContent = '本当に削除';
       return;
     }
-    const res = await fetch(`/api/artifacts/${a.slug}`, { method: 'DELETE' });
+    let res;
+    try {
+      res = await fetch(`/api/artifacts/${a.slug}`, { method: 'DELETE' });
+    } catch (e) {
+      showError(`「${a.title}」を削除できませんでした（${e.message}）。サーバーが止まっていれば artifacts.mjs serve で起動してください。`);
+      return;
+    }
     if (!res.ok && res.status !== 404) {
       showError(`「${a.title}」を削除できませんでした（HTTP ${res.status}）。`);
       return;
