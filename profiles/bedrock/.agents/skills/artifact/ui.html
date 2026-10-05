@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Floe</title>
+<title>Artifacts</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a55c0'/%3E%3Cpath d='M11 6.5h7.5L23 11v13a1.5 1.5 0 0 1-1.5 1.5h-10.5A1.5 1.5 0 0 1 9.5 24V8A1.5 1.5 0 0 1 11 6.5Z' fill='%23fff'/%3E%3Cpath d='M18.5 6.5v3a1.5 1.5 0 0 0 1.5 1.5h3Z' fill='%232a55c0' opacity='.35'/%3E%3Cpath d='M16 13c.4 2.6 1.9 4.1 4.5 4.5-2.6.4-4.1 1.9-4.5 4.5-.4-2.6-1.9-4.1-4.5-4.5 2.6-.4 4.1-1.9 4.5-4.5Z' fill='%232a55c0'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700..800&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -11,7 +12,7 @@
   /* 道具の画面。検索とプロジェクトのチップを上部に固定し、ページは 1 枚のパネルに行で並べる */
   :root {
     --bg: #edf1f4; --panel: #fff; --hover: #f5f8fa; --fg: #0f1a22; --muted: #5a6975; --faint: #84929e;
-    --line: #dbe3e9; --accent: #2a55c0; --accent-soft: #e4ebfa;
+    --line: #dbe3e9; --accent: #2a55c0; --accent-soft: #e4ebfa; --on-accent: #fff;
     --good: #1f8a5b; --danger: #c0352b; --danger-soft: #fbe8e6;
     --display: "Bricolage Grotesque", system-ui, sans-serif;
     --body: system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
@@ -21,7 +22,7 @@
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0b1015; --panel: #121920; --hover: #18212a; --fg: #e3eaf0; --muted: #94a3af; --faint: #6c7b88;
-      --line: #222d37; --accent: #8fabff; --accent-soft: #1b2744;
+      --line: #222d37; --accent: #8fabff; --accent-soft: #1b2744; --on-accent: #0b1015;
       --good: #4cc38a; --danger: #f2a49d; --danger-soft: #3a1d1b;
       color-scheme: dark;
     }
@@ -130,10 +131,12 @@
   <header class="top">
     <div class="brand">
       <svg viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M4 19.5 8.5 12l7-3.5 9 2 4.5 6.5-3 6-9.5 2.5-8-1.5Z" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/>
-        <path d="M2 27c3 0 3-1.6 6-1.6s3 1.6 6 1.6 3-1.6 6-1.6 3 1.6 6 1.6 3-1.6 4-1.6" fill="none" stroke="var(--faint)" stroke-width="1.4" stroke-linecap="round"/>
+        <rect width="32" height="32" rx="8" fill="var(--accent)"/>
+        <path d="M11 6.5h7.5L23 11v13a1.5 1.5 0 0 1-1.5 1.5h-10.5A1.5 1.5 0 0 1 9.5 24V8A1.5 1.5 0 0 1 11 6.5Z" fill="var(--on-accent)"/>
+        <path d="M18.5 6.5v3a1.5 1.5 0 0 0 1.5 1.5h3Z" fill="var(--accent)" opacity=".35"/>
+        <path d="M16 13c.4 2.6 1.9 4.1 4.5 4.5-2.6.4-4.1 1.9-4.5 4.5-.4-2.6-1.9-4.1-4.5-4.5 2.6-.4 4.1-1.9 4.5-4.5Z" fill="var(--accent)"/>
       </svg>
-      <h1>Floe</h1>
+      <h1>Artifacts</h1>
     </div>
     <span class="server" id="server"></span>
   </header>
@@ -152,7 +155,7 @@
   <div class="panel">
     <ul id="list"></ul>
     <div class="state" id="empty" hidden>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M3 14.5 6 9l5-2.5 6.5 1.5L21 13l-2 4.5-7 2-6-1Z"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 0v5h5"/></svg>
       <strong>まだページがありません</strong>
       <p>エージェントに「ページにして」と頼むか、<code>artifacts.mjs publish &lt;file.html&gt;</code> で追加できます。</p>
     </div>

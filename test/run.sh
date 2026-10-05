@@ -1138,7 +1138,7 @@ RECORDER
     sh -c "ARTIFACTS_DIR='$ART_TMP/other' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/My Demo.html' 2>/dev/null"
   expect_false "artifact: a failed publish leaves nothing in the store" test -e "$ART_TMP/other/my-demo"
   expect_true "artifact: the management page is served" \
-    sh -c "curl -s '$ART_URL/' | grep -q '<title>Floe</title>'"
+    sh -c "curl -s '$ART_URL/' | grep -q '<title>Artifacts</title>'"
   assert_eq "artifact: a page URL without the trailing slash redirects, an unknown slug is 404" \
     "$(http_code "$ART_URL/a/my-demo") $(http_code "$ART_URL/a/no-such/")" "301 404"
   expect_true "artifact: the page is served in a sandbox" \
