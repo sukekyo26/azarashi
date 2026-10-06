@@ -108,8 +108,8 @@ function listArtifacts() {
     .map((slug) => {
       const meta = readMeta(slug);
       if (!isLink(meta)) return { slug, ...meta };
-      // リンクのタイトルと更新日時はファイルから取る。読めなければ登録時の値で残し、missing を付ける。
-      // 配信しないファイルは読まない（resolveFile と同じ判定）
+      // リンクのタイトルと更新日時はファイルから取る。読めなければ、タイトルは --title で固定した値か slug、
+      // 更新日時は登録日時にして、missing を付ける。配信しないファイルは読まない（resolveFile と同じ判定）
       const file = resolveFile(meta, slug, '');
       const html = file && readText(file);
       return {
