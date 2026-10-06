@@ -542,7 +542,7 @@ async function ensureServer() {
     }
   }
   if (p.state === 'other') fail(`port ${PORT} is used by another program; set ARTIFACTS_PORT to a free port`);
-  if (p.state === 'down') fail(`the server did not start; run "node ${SCRIPT} serve" to see the error`);
+  if (p.state === 'down') fail(`the server did not start; run "${process.execPath} ${SCRIPT} serve" to see the error`);
   if (p.root !== ROOT) fail(`the server on port ${PORT} serves ${p.root}; run "artifacts.mjs stop" and publish again`);
 }
 
