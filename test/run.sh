@@ -1059,6 +1059,12 @@ RECORDER
     "$(jq -r '[.description, .createdAt] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'a demo\t%s' "$ART_CREATED")"
   art publish "$ART_TMP/My Demo.html" --title 'Renamed' >/dev/null
   assert_eq "artifact: --title overrides the <title>" "$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" Renamed
+  assert_eq "artifact: a blank --title is rejected and the page is left as it was" \
+    "$(
+      art publish "$ART_TMP/My Demo.html" --title ' ' 2>&1
+      echo "rc=$?"
+    )|$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" \
+    "$(printf -- '--title is empty: give the page a name, or omit --title to take it from the <title> or first <h1>\nrc=1')|Renamed"
   sleep 0.3 # let a (wrong) opener from the republishes above reach the recorder
   assert_eq "artifact: republishing the same slug does not open another tab" "$(art_opened | wc -l | tr -d ' ')" 1
   art publish "$ART_TMP/untitled.html" >/dev/null

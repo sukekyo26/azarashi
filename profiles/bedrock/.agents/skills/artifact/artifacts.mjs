@@ -742,6 +742,10 @@ async function main() {
       link: { type: 'boolean' }, slug: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' },
     },
   });
+  // 空のタイトルは「付けない」と区別できず、一覧が空欄になるだけなので受け付けない
+  if (values.title !== undefined && !values.title.trim()) {
+    fail('--title is empty: give the page a name, or omit --title to take it from the <title> or first <h1>');
+  }
   const [cmd, ...args] = positionals;
   switch (cmd) {
     case 'publish': {
