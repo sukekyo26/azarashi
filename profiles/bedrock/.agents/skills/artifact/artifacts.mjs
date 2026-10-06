@@ -681,9 +681,11 @@ async function ensureServer() {
   let p = await probe();
   // スキルの更新や bun の出し入れの後も、起動したときのコードとランタイムのままのサーバーを使い続けない
   if (p.state === 'ours' && p.root === ROOT && (p.build !== BUILD || p.runtime !== process.execPath)) {
-    terminate(p.pid);
-    p = await waitWhile(p, (q) => q.state === 'ours');
-    if (p.state === 'ours') fail(`the outdated server (pid ${p.pid}) did not stop; run "artifacts.sh stop" and publish again`);
+    const old = p.pid;
+    terminate(old);
+    // 止めたサーバーだけを待つ。並行した別の publish が先に起動し直していれば、そのサーバーをそのまま使う
+    p = await waitWhile(p, (q) => q.state === 'ours' && q.pid === old);
+    if (p.state === 'ours' && p.pid === old) fail(`the outdated server (pid ${old}) did not stop; run "artifacts.sh stop" and publish again`);
   }
   if (p.state === 'down') {
     spawn(process.execPath, [SCRIPT, 'serve'], { detached: true, stdio: 'ignore' }).unref();
