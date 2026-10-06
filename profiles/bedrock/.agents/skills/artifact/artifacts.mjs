@@ -11,7 +11,7 @@ import {
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import {
-  basename, dirname, extname, join, resolve, sep,
+  basename, dirname, extname, isAbsolute, join, resolve, sep,
 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -121,8 +121,10 @@ function writeAtomic(path, data) {
   renameSync(tmp, path);
 }
 
+// index.html は名前を表さないので、ディレクトリ名から取る
 function slugFromFile(file) {
-  return basename(file, extname(file)).toLowerCase()
+  const name = /^index\.html?$/i.test(basename(file)) ? basename(dirname(resolve(file))) : basename(file, extname(file));
+  return name.toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').slice(0, 64).replace(/^-+|-+$/g, '');
 }
 
@@ -166,8 +168,18 @@ function projectName(dir) {
   }
 }
 
-async function publish(file, opts) {
-  if (!file) fail(USAGE);
+// リンクとして登録できるか。ディレクトリの配下も配信するので、公開範囲を HTML のあるディレクトリに絞る:
+// ホームやルートの直下は丸ごと公開になり、ドットで始まる要素（~/.ssh・.git 等）は秘密を置く場所なので拒否する
+function checkLinkPath(path) {
+  if (!/\.html?$/i.test(path)) fail(`${path} is not an .html file; only HTML files can be linked`);
+  if (path.split(sep).some((p) => p.startsWith('.'))) fail(`${path} is under a hidden (dot) directory; move it out to link it`);
+  if ([sep, homedir()].includes(dirname(path))) {
+    fail(`${path} would expose all of ${dirname(path)}; move it into a directory of its own and link it there`);
+  }
+}
+
+// 検証して保存する内容を作る（まだ書かない）。CLI の publish と管理画面の登録で共通
+function prepare(file, opts, cwd) {
   let html;
   try {
     html = readFileSync(file, 'utf8');
@@ -180,15 +192,8 @@ async function publish(file, opts) {
   if (prev && isLink(prev) !== Boolean(opts.link)) {
     fail(`"${slug}" is ${isLink(prev) ? 'a linked file' : 'a stored page'}; run "artifacts.mjs rm ${slug}" first or use another --slug`);
   }
-  const path = opts.link ? resolve(file) : undefined;
-  // リンクはディレクトリの配下も配信するので、ホームやルートを丸ごと公開しない
-  if (path && [sep, homedir()].includes(dirname(path))) {
-    fail(`${path} would expose all of ${dirname(path)}; move it into a directory of its own and link it there`);
-  }
-  // サーバーを確かめてから書く。失敗した publish が保存先にページを残さないように
-  await ensureServer();
-  const dir = join(ROOT, slug);
-  mkdirSync(dir, { recursive: true });
+  const path = opts.link ? resolve(cwd, file) : undefined;
+  if (path) checkLinkPath(path);
   const now = new Date().toISOString();
   const meta = {
     path,
@@ -196,13 +201,29 @@ async function publish(file, opts) {
     title: path ? opts.title : opts.title ?? (titleOf(html) || prev?.title || slug),
     description: opts.description ?? prev?.description ?? '',
     // ルート（/）では名前が空になる。空は記録せず「記録なし」に入れる（管理画面の「すべて」の値 '' と衝突するため）
-    project: projectName(path ? dirname(path) : process.cwd()) || undefined,
+    project: projectName(path ? dirname(path) : cwd) || undefined,
     createdAt: prev?.createdAt ?? now,
     updatedAt: now,
   };
-  if (!path) writeAtomic(join(dir, 'index.html'), wrapFragment(html, meta.title));
+  return {
+    slug, meta, page: path ? null : wrapFragment(html, meta.title), created: !prev,
+  };
+}
+
+function save({ slug, meta, page }) {
+  const dir = join(ROOT, slug);
+  mkdirSync(dir, { recursive: true });
+  if (page !== null) writeAtomic(join(dir, 'index.html'), page);
   writeAtomic(join(dir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
-  return { slug, created: !prev };
+}
+
+async function publish(file, opts) {
+  if (!file) fail(USAGE);
+  const entry = prepare(file, opts, process.cwd());
+  // サーバーを確かめてから書く。失敗した publish が保存先にページを残さないように
+  await ensureServer();
+  save(entry);
+  return entry;
 }
 
 function onPath(name) {
@@ -331,7 +352,39 @@ function watch(req, res, slug, rest, since) {
   }
 }
 
-function handle(req, res, ui) {
+// 管理画面からのリンク登録。他サイトや sandbox 内のページからは、Origin の確認と JSON 必須（CORS の preflight が要る）で拒否する。
+// LIMIT: 127.0.0.1 は同じマシンの全ユーザーに開いており、Origin を偽れば誰でも登録できる。共有マシンでは動かさない
+async function addLink(req, res) {
+  if (!ORIGINS.has(req.headers.origin)) return send(res, 403, 'forbidden origin');
+  if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return send(res, 415, 'send application/json');
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+    if (body.length > 65536) return send(res, 413, 'request body too large');
+  }
+  let input;
+  try {
+    input = JSON.parse(body);
+  } catch {
+    return send(res, 400, 'invalid JSON');
+  }
+  const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+  const path = text(input?.path);
+  if (!path || !isAbsolute(path)) return send(res, 400, 'enter the absolute path of an HTML file');
+  let entry;
+  try {
+    entry = prepare(path, { link: true, slug: text(input.slug), description: text(input.description) }, dirname(path));
+  } catch (e) {
+    if (e instanceof UsageError) return send(res, 400, e.message);
+    throw e;
+  }
+  // CLI と違って既存の slug は上書きしない。画面の入力ミスで別のページを置き換えないように
+  if (!entry.created) return send(res, 409, `"${entry.slug}" already exists; choose another slug`);
+  save(entry);
+  return send(res, 201, JSON.stringify({ slug: entry.slug }), { 'content-type': 'application/json' });
+}
+
+async function handle(req, res, ui) {
   if (!HOSTS.has(req.headers.host)) return send(res, 403, 'forbidden host');
   let pathname;
   let searchParams;
@@ -363,6 +416,7 @@ function handle(req, res, ui) {
     }
     return send(res, 200, page, { ...html, 'content-disposition': `attachment; filename="${m[1]}.html"` });
   }
+  if (req.method === 'POST' && pathname === '/api/artifacts') return addLink(req, res);
   if (req.method === 'DELETE' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)$/))) {
     // 他サイトのページや sandbox 内のページ（Origin: null）からの削除を拒否する
     if (!ORIGINS.has(req.headers.origin)) return send(res, 403, 'forbidden origin');
@@ -386,11 +440,7 @@ function serve() {
   mkdirSync(ROOT, { recursive: true });
   const ui = readFileSync(join(dirname(SCRIPT), 'ui.html'));
   const server = createServer((req, res) => {
-    try {
-      handle(req, res, ui);
-    } catch (e) {
-      send(res, 500, e.message);
-    }
+    handle(req, res, ui).catch((e) => send(res, 500, e.message));
   });
   server.on('error', (e) => {
     console.error(e.code === 'EADDRINUSE'

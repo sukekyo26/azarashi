@@ -1226,8 +1226,9 @@ RECORDER
       art publish "$ART_TMP/untitled.html" --slug untitled --link 2>/dev/null
       echo $?
     )" "1 1"
+  printf '<p>top</p>\n' >"$ART_TMP/top.html"
   expect_false "artifact: a file directly under \$HOME cannot be linked (its whole directory would be served)" \
-    sh -c "HOME='$ART_TMP' ARTIFACTS_DIR='$ART_TMP/store' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/outside.txt' --link 2>/dev/null"
+    sh -c "HOME='$ART_TMP' ARTIFACTS_DIR='$ART_TMP/store' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/top.html' --link 2>/dev/null"
   mv "$ART_TMP/site/index.html" "$ART_TMP/site/gone.html"
   assert_eq "artifact: a linked file that is gone is listed as missing, and its page and download are 404" \
     "$(curl -s "$ART_URL/api/artifacts" | jq -r '.[] | select(.slug == "site") | .missing') $(http_code "$ART_LINK/") $(http_code "$ART_URL/api/artifacts/site/download")" \
@@ -1235,6 +1236,22 @@ RECORDER
   mv "$ART_TMP/site/gone.html" "$ART_TMP/site/index.html"
   art rm site
   expect_true "artifact: rm of a linked file leaves the file itself" test -f "$ART_TMP/site/index.html"
+  # adding a link from the management page: POST /api/artifacts with JSON, from its own origin only
+  art_post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' "$@" "$ART_URL/api/artifacts"; }
+  ART_ORIGIN="Origin: http://127.0.0.1:$ART_PORT"
+  printf '<p>hidden</p>\n' >"$ART_TMP/site/.git/x.html"
+  assert_eq "artifact: adding a link from another origin, from a sandboxed page, or without JSON is refused" \
+    "$(art_post -H 'Origin: http://evil.example' -d "{\"path\":\"$ART_TMP/site/index.html\"}") $(art_post -H 'Origin: null' -d "{\"path\":\"$ART_TMP/site/index.html\"}") $(http_code -X POST -H "$ART_ORIGIN" -H 'content-type: text/plain' -d "{\"path\":\"$ART_TMP/site/index.html\"}" "$ART_URL/api/artifacts")" \
+    "403 403 415"
+  assert_eq "artifact: adding a relative, non-HTML or hidden-directory path, or bad JSON, is a client error" \
+    "$(art_post -H "$ART_ORIGIN" -d '{"path":"site/index.html"}') $(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/outside.txt\"}") $(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/.git/x.html\"}") $(art_post -H "$ART_ORIGIN" -d '{bad')" \
+    "400 400 400 400"
+  assert_eq "artifact: the management page adds a link, named after the directory of an index.html" \
+    "$(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/index.html\",\"slug\":\"\",\"description\":\"from ui\"}")|$(jq -r '[.path, .description] | @tsv' "$ART_TMP/store/site/meta.json")" \
+    "201|$(printf '%s\tfrom ui' "$ART_TMP/site/index.html")"
+  assert_eq "artifact: adding a link never replaces an existing slug" \
+    "$(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/sub/p.html\",\"slug\":\"site\"}")" 409
+  art rm site
   # in a headless browser (skipped without Chrome or Node's WebSocket)
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
