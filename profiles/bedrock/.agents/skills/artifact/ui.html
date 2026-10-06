@@ -144,7 +144,7 @@
   li, .chip.project { --glyph-bg: hsl(var(--h) var(--glyph-bg-sl)); --glyph-fg: hsl(var(--h) var(--glyph-fg-sl)); }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
   /* 行は subgrid で列を共有し、タグ・URL 名・時刻・操作の位置を行どうしでそろえる */
-  ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) repeat(4, auto); }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: auto auto minmax(0, 1fr) repeat(4, auto); }
   li {
     --h: 225; position: relative; grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; column-gap: 0.85rem;
     min-height: 3.1rem; padding: 0.45rem 0.6rem 0.45rem 0.85rem; transition: background-color 0.15s;
@@ -164,13 +164,18 @@
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--glyph-fg) 14%, transparent);
   }
   .glyph.none { color: var(--faint); background: var(--subtle); box-shadow: inset 0 0 0 1px var(--line); }
-  /* 選択のチェックボックスはアイコンと同じ位置に重ね、ホバー・選択中・ホバーの無い端末で見せる */
-  .pick { position: relative; z-index: 1; display: grid; }
-  .pick > * { grid-area: 1 / 1; }
-  .sel { width: 28px; height: 28px; margin: 0; opacity: 0; cursor: pointer; accent-color: var(--accent); transition: opacity 0.15s; }
-  li:hover .sel, .sel:checked, .sel:focus-visible, ul.selecting .sel { opacity: 1; }
-  li:hover .glyph, li:has(.sel:checked) .glyph, li:has(.sel:focus-visible) .glyph, ul.selecting .glyph { opacity: 0; }
-  @media (hover: none) { .sel { opacity: 1; } .glyph { opacity: 0; } }
+  /* チェックボックスは行のリンクの当たり判定より上に出す。label で押せる範囲を広げる */
+  .pick { position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 30px; margin-right: -0.35rem; cursor: pointer; }
+  .sel {
+    width: 16px; height: 16px; margin: 0; cursor: pointer; appearance: none; background: var(--panel);
+    border: 1.5px solid color-mix(in srgb, var(--faint) 80%, transparent); border-radius: 5px; transition: background-color 0.12s, border-color 0.12s;
+  }
+  .pick:hover .sel { border-color: var(--accent); }
+  .sel:checked {
+    border-color: transparent;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 12px no-repeat,
+      linear-gradient(135deg, var(--accent), var(--accent-2));
+  }
   li:has(.sel:checked) { background: color-mix(in srgb, var(--accent-soft) 70%, var(--panel)); }
   /* キーボードで選んだ行は行全体を囲む。タイトル自体の枠は出さない */
   a.title:focus-visible { outline: none; }
@@ -185,7 +190,7 @@
   a.title::after { content: ""; position: absolute; inset: 0; }
   li:hover a.title { color: var(--accent); }
   .desc { flex: 0 1 auto; color: var(--muted); font-size: 0.84rem; }
-  .path { flex: 0 1 auto; font: 0.74rem var(--mono); color: var(--faint); }
+  .body .path { flex: 0 1 auto; font: 0.74rem var(--mono); color: var(--faint); }
   .missing { color: var(--danger); }
   li:has(.missing) a.title { color: var(--muted); text-decoration: line-through; }
   .proj, .slug, li time { font: 0.72rem/1 var(--mono); color: var(--faint); white-space: nowrap; }
@@ -195,10 +200,7 @@
     border: 0; border-radius: 999px; padding: 0.22rem 0.55rem;
   }
   .tag:hover { box-shadow: inset 0 0 0 1px currentColor; }
-  /* 操作はホバーかフォーカスしたときだけ見せる。確認中の削除と、ホバーの無い端末では常に見せる */
-  .actions { position: relative; z-index: 1; display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
-  li:hover .actions, li:focus-within .actions, .actions:has(.armed) { opacity: 1; }
-  @media (hover: none) { .actions { opacity: 1; } }
+  .actions { position: relative; z-index: 1; display: flex; gap: 2px; }
   .icon-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; height: 30px; min-width: 30px; padding-inline: 0.4rem;
     color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 7px; text-decoration: none;
@@ -239,6 +241,8 @@
   @media (hover: none) { .keys { display: none; } }
 
   /* 選択中だけ下に浮かぶ操作バー */
+  /* 選択中は操作バーの分だけ下に余白を空け、最後の行に重ねない */
+  .shell:has(.bulk:not([hidden])) { padding-bottom: 6rem; }
   .bulk {
     position: fixed; left: 50%; bottom: 1.25rem; z-index: 20; translate: -50% 0; display: flex; align-items: center; gap: 0.4rem;
     max-width: calc(100% - 32px); padding: 0.4rem 0.4rem 0.4rem 1rem; color: var(--bg); background: var(--fg);
@@ -297,6 +301,7 @@
     .filters { flex-wrap: wrap; }
     .count { margin-left: 0; }
     .pick { grid-column: 1; grid-row: 1 / 3; }
+    .glyph { display: none; }
     .bulk { left: 16px; right: 16px; translate: none; flex-wrap: wrap; }
   }
   @media (prefers-reduced-motion: reduce) { *, *::before { transition: none !important; animation: none !important; } }
@@ -394,7 +399,7 @@
     </div>
   </nav>
   <p class="keys" aria-hidden="true">
-    <span><kbd>j</kbd><kbd>k</kbd>移動</span><span><kbd>Enter</kbd>開く</span><span><kbd>x</kbd>選択</span>
+    <span><kbd>↑</kbd><kbd>↓</kbd>移動</span><span><kbd>Enter</kbd>開く</span><span><kbd>x</kbd>選択</span>
     <span><kbd>←</kbd><kbd>→</kbd>ページ</span><span><kbd>/</kbd>検索</span>
   </p>
   <div class="bulk" id="bulk" role="region" aria-label="選択した項目の操作" hidden>
@@ -444,11 +449,22 @@
     <div class="add-head">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4"/></svg>
       <div>
-        <h2 id="edit-title">説明を編集</h2>
+        <h2 id="edit-title">編集</h2>
         <p class="lead" id="edit-target"></p>
       </div>
     </div>
-    <label class="field">説明
+    <label class="field">タイトル
+      <input class="text" id="edit-name" autocomplete="off">
+    </label>
+    <label class="field">URL 名
+      <input class="text path" id="edit-slug" required autocomplete="off" spellcheck="false" pattern="[a-z0-9]([a-z0-9\-]{0,62}[a-z0-9])?"
+        title="英小文字・数字・ハイフン">
+      <small>変えると URL（/a/〇〇/）が変わり、古い URL では開けなくなります</small>
+    </label>
+    <label class="field"><span>プロジェクト <small>空欄なら「記録なし」</small></span>
+      <input class="text" id="edit-project" autocomplete="off" spellcheck="false">
+    </label>
+    <label class="field"><span>説明 <small>省略可</small></span>
       <input class="text" id="edit-desc" autocomplete="off">
     </label>
     <p class="error" id="edit-error" hidden></p>
@@ -460,7 +476,8 @@
 </dialog>
 <template id="row">
   <li>
-    <span class="pick"><span class="glyph" aria-hidden="true"></span><input type="checkbox" class="sel"></span>
+    <label class="pick"><input type="checkbox" class="sel"></label>
+    <span class="glyph" aria-hidden="true"></span>
     <div class="body">
       <a class="title"></a>
       <span class="desc"></span>
@@ -473,7 +490,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 9h10v11H9zM5 15V4h10"/></svg>
         <span class="done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
       </button>
-      <button type="button" class="icon-btn edit" title="説明を編集">
+      <button type="button" class="icon-btn edit" title="編集">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4"/></svg>
       </button>
       <a class="icon-btn open" target="_blank" rel="noopener" title="ページだけを新しいタブで開く">
@@ -622,7 +639,6 @@
 
   function renderBulk() {
     $('bulk').hidden = selected.size === 0;
-    $('list').classList.toggle('selecting', selected.size > 0);
     $('bulk-count').textContent = `${selected.size} 件を選択中`;
     disarmBulk();
   }
@@ -753,7 +769,7 @@
       copy.addEventListener('click', () => copyPath(a.path, copy));
     }
     const edit = li.querySelector('.edit');
-    edit.setAttribute('aria-label', `${a.title} の説明を編集`);
+    edit.setAttribute('aria-label', `${a.title} を編集`);
     edit.addEventListener('click', () => openEdit(a));
     const open = li.querySelector('.open');
     open.href = `/a/${a.slug}/?raw`;
@@ -789,12 +805,15 @@
     }, 1500);
   }
 
-  let editing = '';
+  // 編集中の項目と、開いたときの値。変えた項目だけを送る（リンクのタイトルを触らなければファイルから取り続けるように）
+  let editing;
+  const EDIT_FIELDS = { title: 'edit-name', slug: 'edit-slug', project: 'edit-project', description: 'edit-desc' };
 
   function openEdit(a) {
-    editing = a.slug;
-    $('edit-target').textContent = a.title;
-    $('edit-desc').value = a.description ?? '';
+    editing = a;
+    $('edit-target').textContent = a.path ?? `/a/${a.slug}/`;
+    for (const [key, id] of Object.entries(EDIT_FIELDS)) $(id).value = a[key] ?? '';
+    $('edit-name').placeholder = a.path ? '空欄ならファイルの <title> を使う' : '空欄なら HTML の <title> を使う';
     $('edit-error').hidden = true;
     $('edit-dialog').showModal();
   }
@@ -804,10 +823,13 @@
     const btn = $('edit-submit');
     btn.disabled = true;
     try {
-      const res = await api(`/api/artifacts/${editing}`, {
+      const changes = Object.fromEntries(Object.entries(EDIT_FIELDS)
+        .filter(([key, id]) => $(id).value.trim() !== (editing[key] ?? ''))
+        .map(([key, id]) => [key, $(id).value]));
+      const res = await api(`/api/artifacts/${editing.slug}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ description: $('edit-desc').value }),
+        body: JSON.stringify(changes),
       });
       if (!res.ok) throw new Error(`${await res.text()}（HTTP ${res.status}）`);
       $('edit-dialog').close();
@@ -1002,8 +1024,8 @@
     };
     const KEYS = {
       '/': () => $('q').focus(),
-      j: () => moveRow(1),
-      k: () => moveRow(-1),
+      ArrowDown: () => moveRow(1),
+      ArrowUp: () => moveRow(-1),
       x: () => currentRow()?.querySelector('.sel').click(),
       ArrowLeft: () => !$('prev').disabled && goPage(page - 1),
       ArrowRight: () => !$('next').disabled && goPage(page + 1),

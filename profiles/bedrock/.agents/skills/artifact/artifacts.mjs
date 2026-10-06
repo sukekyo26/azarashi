@@ -446,15 +446,38 @@ async function addLink(req, res) {
   return send(res, entry.created ? 201 : 200, JSON.stringify({ slug: entry.slug }), { 'content-type': 'application/json' });
 }
 
-// 説明だけを書き換える。版（updatedAt）は変えないので、並び順も開いているタブの再読み込みも動かない
+// 管理画面からの編集。送られた項目（タイトル・説明・プロジェクト・URL 名）だけを書き換える。
+// 版（updatedAt）は変えないので、並び順も開いているタブの再読み込みも動かない
 async function editArtifact(req, res, slug) {
   const input = await readJson(req, res);
   if (input === undefined) return;
   const meta = readMeta(slug);
   if (!meta) return send(res, 404, 'not found');
-  if (typeof input.description !== 'string') return send(res, 400, '説明を文字列で送ってください');
-  writeMeta(slug, { ...meta, description: input.description.trim() });
-  return send(res, 204, '');
+  const has = (k) => Object.hasOwn(input, k);
+  if (['title', 'description', 'project', 'slug'].some((k) => has(k) && typeof input[k] !== 'string')) {
+    return send(res, 400, 'タイトル・説明・プロジェクト・URL 名は文字列で送ってください');
+  }
+  const next = { ...meta };
+  if (has('description')) next.description = input.description.trim();
+  // 空にしたタイトルは、リンクならファイルから取り直し、保存したページなら HTML の <title> か slug に戻す
+  if (has('title')) {
+    next.title = input.title.trim()
+      || (isLink(meta) ? undefined : titleOf(readText(join(ROOT, slug, 'index.html')) ?? '') || slug);
+  }
+  // 空にしたプロジェクトは記録しない（「記録なし」に入る）。/ は管理画面で「記録なし」を表す値なので使えない
+  if (has('project')) {
+    if (input.project.trim() === '/') return send(res, 400, 'プロジェクト名に / だけは使えません');
+    next.project = input.project.trim() || undefined;
+  }
+  const to = has('slug') ? input.slug.trim() : slug;
+  if (!SLUG_RE.test(to)) return send(res, 400, `URL 名「${to}」は使えません。英小文字・数字・ハイフンで入力してください`);
+  if (to !== slug && existsSync(join(ROOT, to))) {
+    return send(res, 409, `URL 名「${to}」は使われています。別の URL 名を入力してください`);
+  }
+  writeMeta(slug, next);
+  // URL 名の変更はディレクトリの名前を変えるだけ。古い URL を開いているタブは「見つかりません」になる
+  if (to !== slug) renameSync(join(ROOT, slug), join(ROOT, to));
+  return send(res, 200, JSON.stringify({ slug: to }), { 'content-type': 'application/json' });
 }
 
 async function handle(req, res, ui) {

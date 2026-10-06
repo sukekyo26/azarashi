@@ -1167,9 +1167,15 @@ RECORDER
   ART_BEFORE=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
   assert_eq "artifact: PATCH from another origin is refused; from the management page it trims and sets the description, keeping updatedAt" \
     "$(art_patch -H 'Origin: http://evil.example' -d '{"description":"x"}' "$ART_URL/api/artifacts/my-demo") $(art_patch -H "$ART_ORIGIN" -d '{"description":"  edited  "}' "$ART_URL/api/artifacts/my-demo")|$(jq -r --arg b "$ART_BEFORE" '[.description, (.updatedAt == $b)] | @tsv' "$ART_TMP/store/my-demo/meta.json")" \
-    "403 204|$(printf 'edited\ttrue')"
+    "403 200|$(printf 'edited\ttrue')"
   assert_eq "artifact: PATCH of an unknown slug is 404, of a non-string description 400" \
     "$(art_patch -H "$ART_ORIGIN" -d '{"description":"x"}' "$ART_URL/api/artifacts/no-such") $(art_patch -H "$ART_ORIGIN" -d '{"description":1}' "$ART_URL/api/artifacts/my-demo")" "404 400"
+  assert_eq "artifact: PATCH sets the title and project and moves the entry to a new URL name, refusing one in use or invalid" \
+    "$(curl -s -X PATCH -H 'content-type: application/json' -H "$ART_ORIGIN" -d '{"slug":"renamed","title":"T","project":"p"}' "$ART_URL/api/artifacts/my-demo")|$(jq -r '[.title, .project] | @tsv' "$ART_TMP/store/renamed/meta.json")|$(test -e "$ART_TMP/store/my-demo" && echo left || echo moved) $(art_patch -H "$ART_ORIGIN" -d '{"slug":"untitled"}' "$ART_URL/api/artifacts/renamed") $(art_patch -H "$ART_ORIGIN" -d '{"slug":"Bad Slug"}' "$ART_URL/api/artifacts/renamed")" \
+    "{\"slug\":\"renamed\"}|$(printf 'T\tp')|moved 409 400"
+  art_patch -H "$ART_ORIGIN" -d '{"slug":"my-demo","title":"","project":""}' "$ART_URL/api/artifacts/renamed" >/dev/null
+  assert_eq "artifact: clearing the title restores the page's own <title>, clearing the project drops it" \
+    "$(jq -r '[.title, has("project")] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'Demo Page\tfalse')"
   assert_eq "artifact: DELETE from a foreign origin is refused" \
     "$(http_code -X DELETE -H 'Origin: http://evil.example' "$ART_URL/api/artifacts/my-demo")" 403
   assert_eq "artifact: DELETE from a sandboxed page (Origin: null) is refused" \
@@ -1217,6 +1223,9 @@ RECORDER
   printf '<h1>Linked v3</h1>\n' >"$ART_TMP/site/index.html"
   wait $!
   expect_true "artifact: saving a linked file notifies its open pages" grep -q '^event: reload' "$ART_TMP/sse-link.out"
+  assert_eq "artifact: a link's title set from the management page is pinned, and clearing it follows the file again" \
+    "$(art_patch -H "$ART_ORIGIN" -d '{"title":"Pinned"}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)|$(art_patch -H "$ART_ORIGIN" -d '{"title":""}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)" \
+    "200|Pinned|200|Linked v3"
   curl -s -o "$ART_TMP/dl-link.html" "$ART_URL/api/artifacts/site/download"
   expect_true "artifact: download of a linked file returns the file as is" cmp -s "$ART_TMP/dl-link.html" "$ART_TMP/site/index.html"
   assert_eq "artifact: a slug cannot switch between a stored page and a linked file" \
@@ -1317,7 +1326,7 @@ RECORDER
       "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html /a/my-demo/?raw _blank|2 true true|true|1|untitled|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false|true|true|add-path false|true|10 1 / 3 false|10 2 / 3 false|2|20 1 / 2 false 20 true"
     assert_eq "artifact: the management page sorts, moves by keyboard, deletes in bulk, edits in a modal and copies paths" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" extras)" \
-      "Beta,Alpha,Gamma|Gamma,Beta,Alpha created|Alpha,Beta,Gamma|Beta|1 件を選択中|本当に 2 件を削除|DELETE /api/artifacts/a,DELETE /api/artifacts/b|true old|PATCH /api/artifacts/a {\"description\":\"new\"}|true|copy /tmp/x/l.html"
+      "Beta,Alpha,Gamma|Gamma,Beta,Alpha created|Alpha,Beta,Gamma|Beta|1 件を選択中|2 件を選択中|本当に 2 件を削除|DELETE /api/artifacts/a,DELETE /api/artifacts/b|true old|PATCH /api/artifacts/a {\"description\":\"new\"}|true|copy /tmp/x/l.html"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
     printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'

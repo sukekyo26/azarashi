@@ -161,14 +161,17 @@ async function extras({ send, evaluate }) {
   out.push(`${await titles()} ${await evaluate("new URLSearchParams(location.search).get('sort')")}`);
   await sortBy('title');
   out.push(await titles());
-  // j moves through the rows by focusing their titles, x selects the focused row
-  await key('j');
-  await key('j');
+  // ↓ moves through the rows by focusing their titles, x selects the focused row
+  await key('ArrowDown');
+  await key('ArrowDown');
   out.push(await evaluate('document.activeElement.textContent'));
   await key('x');
   out.push(await evaluate("document.getElementById('bulk-count').textContent"));
-  // with Alpha selected too, the first click arms and the second deletes both
-  await evaluate("document.querySelector('#list li .sel').click()");
+  // with Alpha selected too by a real mouse click (nothing may sit on top of the checkbox),
+  // the first click arms and the second deletes both
+  const { x, y } = JSON.parse(await evaluate("(() => { const r = document.querySelector('#list li .sel').getBoundingClientRect(); return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 }); })()"));
+  for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  out.push(await until(() => evaluate("document.querySelector('#list li .sel').checked && document.getElementById('bulk-count').textContent"), 'the mouse click to select'));
   await evaluate("document.getElementById('bulk-delete').click()");
   out.push(await evaluate("document.getElementById('bulk-delete').textContent"));
   await evaluate("document.getElementById('bulk-delete').click()");
