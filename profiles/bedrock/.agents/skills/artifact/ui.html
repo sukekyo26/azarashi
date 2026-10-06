@@ -1018,6 +1018,8 @@
   }
 
   function render() {
+    // 行を作り直すと、マウスが乗っていた行ごと消えて pointerleave が起きないので、ここでプレビューを閉じる
+    hidePreview();
     for (const b of document.querySelectorAll('.tabs button')) {
       b.setAttribute('aria-pressed', String(b.dataset.tab === tab));
       b.querySelector('.n').textContent = items.filter((a) => inTab(a, b.dataset.tab)).length;
