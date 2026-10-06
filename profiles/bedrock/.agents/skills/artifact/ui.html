@@ -7,190 +7,422 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a55c0'/%3E%3Cpath d='M11 6.5h7.5L23 11v13a1.5 1.5 0 0 1-1.5 1.5h-10.5A1.5 1.5 0 0 1 9.5 24V8A1.5 1.5 0 0 1 11 6.5Z' fill='%23fff'/%3E%3Cpath d='M18.5 6.5v3a1.5 1.5 0 0 0 1.5 1.5h3Z' fill='%232a55c0' opacity='.35'/%3E%3Cpath d='M16 13c.4 2.6 1.9 4.1 4.5 4.5-2.6.4-4.1 1.9-4.5 4.5-.4-2.6-1.9-4.1-4.5-4.5 2.6-.4 4.1-1.9 4.5-4.5Z' fill='%232a55c0'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700..800&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700..800&family=Zen+Kaku+Gothic+New:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<script>
+  // 保存したテーマを描画前に当て、読み込み時に OS の配色で一瞬光らないようにする
+  try {
+    const theme = localStorage.getItem('artifacts.theme');
+    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  } catch {
+    // 保存先を使えなければ OS に合わせる
+  }
+</script>
 <style>
-  /* 道具の画面。検索とプロジェクトのチップを上部に固定し、ページは 1 枚のパネルに行で並べる */
+  /* 管理画面（/）とページの外枠（/a/<slug>/）を兼ねる。共通の見出しバーの下に、一覧か iframe のどちらかを出す */
+  /* 色はライトとダークを light-dark() で並べて持つ。テーマは color-scheme で決まり、選んだテーマは data-theme で上書きする */
   :root {
-    --bg: #edf1f4; --panel: #fff; --hover: #f5f8fa; --fg: #0f1a22; --muted: #5a6975; --faint: #84929e;
-    --line: #dbe3e9; --accent: #2a55c0; --accent-soft: #e4ebfa; --on-accent: #fff;
-    --good: #1f8a5b; --danger: #c0352b; --danger-soft: #fbe8e6;
-    --display: "Bricolage Grotesque", system-ui, sans-serif;
-    --body: system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
-    --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
-    color-scheme: light;
+    --bg: light-dark(#f6f7f9, #17191f); --panel: light-dark(#fff, #20232b); --subtle: light-dark(#f0f2f5, #282b34);
+    --hover: light-dark(#f8f9fb, #272a33); --fg: light-dark(#0d1220, #eef0f4); --muted: light-dark(#5a6273, #b0b6c4);
+    --faint: light-dark(#8b93a3, #868ea0); --line: light-dark(#e5e8ee, #353945);
+    --accent: light-dark(#5753e0, #8e8cfb); --accent-2: light-dark(#a64df0, #c58afc); --accent-soft: light-dark(#eeedff, #2e2d58);
+    --on-accent: light-dark(#fff, #17191f); --good: light-dark(#16a36a, #3fcf8e); --star: light-dark(#e0a100, #f5c542);
+    --danger: light-dark(#d23b3b, #f48a8a); --danger-soft: light-dark(#fdecec, #4a2529);
+    --scrim: light-dark(rgb(13 18 32 / 0.4), rgb(0 0 0 / 0.6));
+    --shadow-sm: 0 1px 2px light-dark(rgb(16 24 40 / 0.06), rgb(0 0 0 / 0.3));
+    --shadow: 0 1px 2px light-dark(rgb(16 24 40 / 0.04), rgb(0 0 0 / 0.3)), 0 10px 30px -14px light-dark(rgb(16 24 40 / 0.16), rgb(0 0 0 / 0.5));
+    /* 本文とコードの書体は雛形（template.html）とそろえる。ロゴの文字だけ Bricolage Grotesque にする */
+    --body: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    --bar: 3.5rem;
+    color-scheme: light dark;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0b1015; --panel: #121920; --hover: #18212a; --fg: #e3eaf0; --muted: #94a3af; --faint: #6c7b88;
-      --line: #222d37; --accent: #8fabff; --accent-soft: #1b2744; --on-accent: #0b1015;
-      --good: #4cc38a; --danger: #f2a49d; --danger-soft: #3a1d1b;
-      color-scheme: dark;
-    }
-  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  body {
-    margin: 0; background: var(--bg); color: var(--fg);
-    font: 15px/1.6 var(--body); padding-inline: 16px; padding-block: 0 4rem;
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); -webkit-font-smoothing: antialiased; }
+  /* 上部にだけ淡い光を置く。外枠ではページの邪魔になるので出さない */
+  body::before {
+    content: ""; position: fixed; inset: 0 0 auto; height: 30rem; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(56rem 20rem at 30% -8rem, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+      radial-gradient(40rem 18rem at 80% -8rem, color-mix(in srgb, var(--accent-2) 11%, transparent), transparent 70%);
   }
-  .shell { max-width: 56rem; margin-inline: auto; display: grid; gap: 1rem; }
+  body.framed::before { display: none; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   button { font: inherit; color: inherit; cursor: pointer; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-  .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding-block: 2rem 0.25rem; }
-  .brand { display: flex; align-items: center; gap: 0.6rem; }
-  .brand h1 { margin: 0; font: 800 1.75rem/1 var(--display); letter-spacing: -0.03em; }
-  .brand svg { width: 30px; height: 30px; flex: none; }
-  .server { display: flex; align-items: center; gap: 0.45rem; font: 0.78rem/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-  .server::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 20%, transparent); }
-  .server.down::before { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 20%, transparent); }
-
-  .toolbar {
-    position: sticky; top: 0; z-index: 2; display: grid; gap: 0.65rem;
-    margin-inline: -16px; padding: 0.75rem 16px;
-    background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(10px);
+  .bar {
+    position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--panel) 72%, transparent); backdrop-filter: saturate(1.6) blur(14px);
   }
-  .tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--line); }
+  /* 一覧と外枠で同じ位置に出すため、幅は本文に合わせず画面いっぱいにする */
+  .bar-inner { padding: 0 16px; height: var(--bar); display: flex; align-items: center; gap: 0.75rem; }
+  .brand { display: flex; align-items: center; gap: 0.6rem; flex: none; color: var(--fg); text-decoration: none; font: 800 1.2rem/1 "Bricolage Grotesque", system-ui, sans-serif; letter-spacing: -0.03em; }
+  .brand svg { width: 26px; height: 26px; flex: none; filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--accent) 35%, transparent)); }
+  .bar-end { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; flex: none; }
+  .frame-actions { display: flex; gap: 0.15rem; }
+  .theme { display: inline-flex; gap: 1px; padding: 2px; background: var(--subtle); border: 1px solid var(--line); border-radius: 9px; }
+  .theme button { display: grid; place-items: center; width: 26px; height: 24px; padding: 0; color: var(--faint); background: none; border: 0; border-radius: 6px; }
+  .theme button:hover { color: var(--fg); }
+  .theme button[aria-pressed="true"] { color: var(--fg); background: var(--panel); box-shadow: var(--shadow-sm), 0 0 0 1px var(--line); }
+  .theme svg { width: 14px; height: 14px; }
+  .frame-nav { display: flex; align-items: center; gap: 0.15rem; padding-left: 0.6rem; margin-left: 0.15rem; border-left: 1px solid var(--line); }
+  .frame-nav a[aria-disabled="true"] { opacity: 0.35; pointer-events: none; }
+  .frame-pos { min-width: 3.5rem; text-align: center; font: 0.72rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
+  .server {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.7rem; font: 600 0.74rem/1 var(--body); color: var(--muted);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px; font-variant-numeric: tabular-nums;
+  }
+  .server::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--good); animation: pulse 2.4s ease-in-out infinite; }
+  .server:not(.down) { padding: 0.5rem; border: 0; background: none; }
+  .server.down { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+  .server.down::before { background: var(--danger); animation: none; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 45%, transparent); } 50% { box-shadow: 0 0 0 4px transparent; } }
+
+  /* 外枠: 見出しバーの下を iframe で埋める。本体の背景が無いページはブラウザ既定の白で見せる */
+  body.framed { height: 100dvh; display: flex; flex-direction: column; }
+  .frame { flex: 1; display: block; width: 100%; border: 0; background: #fff; }
+  .notfound { flex: 1; align-content: center; }
+
+  .shell { max-width: calc(96rem + 32px); margin-inline: auto; padding: 0.75rem 16px 4rem; display: grid; gap: 0.9rem; }
+  .toolbar {
+    position: sticky; top: var(--bar); z-index: 5; display: grid; gap: 0.7rem;
+    margin-inline: -16px; padding: 0.75rem 16px;
+    background: color-mix(in srgb, var(--bg) 80%, transparent); backdrop-filter: blur(12px);
+  }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+  .tabs { display: inline-flex; gap: 2px; padding: 3px; background: var(--subtle); border: 1px solid var(--line); border-radius: 10px; }
   .tabs button {
-    display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 0.9rem; margin-bottom: -1px;
-    background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 650;
+    display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.32rem 0.8rem; border: 0; border-radius: 7px;
+    background: none; color: var(--muted); font-size: 0.86rem; font-weight: 550; transition: background-color 0.15s, color 0.15s;
   }
   .tabs button:hover { color: var(--fg); }
-  .tabs button[aria-pressed="true"] { color: var(--fg); border-bottom-color: var(--accent); }
-  .tabs .n { font: 0.72rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
-
-  .add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 0.5rem; }
-  .add .path { grid-column: 1 / -1; }
-  .add input {
-    min-width: 0; padding: 0.55rem 0.8rem; font: inherit; color: var(--fg);
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  .tabs button[aria-pressed="true"] { color: var(--fg); background: var(--panel); box-shadow: var(--shadow-sm), 0 0 0 1px var(--line); }
+  .tabs .n {
+    min-width: 1.5rem; padding: 0.1rem 0.4rem; border-radius: 999px; text-align: center;
+    font: 500 0.68rem/1.3 var(--mono); color: var(--muted); background: var(--line); font-variant-numeric: tabular-nums;
   }
-  .add .path { font-family: var(--mono); font-size: 0.88rem; }
-  .add input::placeholder { color: var(--faint); }
-  .add input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-  .add button { padding: 0.55rem 1.2rem; font-weight: 700; color: var(--on-accent); background: var(--accent); border: 0; border-radius: 10px; }
-  .add button:disabled { opacity: 0.6; cursor: progress; }
-  .add .error { grid-column: 1 / -1; }
+  .tabs button[aria-pressed="true"] .n { color: var(--accent); background: var(--accent-soft); }
 
-  .search { position: relative; }
-  .search svg { position: absolute; left: 0.8rem; top: 50%; translate: 0 -50%; width: 16px; height: 16px; color: var(--faint); pointer-events: none; }
-  .search input {
-    width: 100%; padding: 0.6rem 2.6rem 0.6rem 2.3rem; font: inherit; color: var(--fg);
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; height: 36px; padding: 0 0.95rem;
+    font-size: 0.86rem; font-weight: 600; background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    box-shadow: var(--shadow-sm); transition: background-color 0.15s, border-color 0.15s, filter 0.15s;
   }
-  .search input::placeholder { color: var(--faint); }
-  .search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .btn:hover { border-color: var(--faint); }
+  .btn.primary {
+    color: #fff; border-color: transparent;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.15), 0 6px 16px -6px color-mix(in srgb, var(--accent) 60%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.2);
+  }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn:disabled { opacity: 0.6; cursor: progress; }
+  .btn svg { width: 15px; height: 15px; }
+
+  .search { position: relative; flex: 1 1 18rem; }
+  .search svg { position: absolute; left: 0.75rem; top: 50%; translate: 0 -50%; width: 15px; height: 15px; color: var(--faint); pointer-events: none; }
+  .text, .search input {
+    width: 100%; min-width: 0; height: 36px; padding: 0 0.75rem; font: inherit; font-weight: 400; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow-sm);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .search input { padding-inline: 2.2rem 2.5rem; }
+  input::placeholder { color: var(--faint); }
+  input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .search input::-webkit-search-cancel-button { display: none; }
   .search kbd {
-    position: absolute; right: 0.7rem; top: 50%; translate: 0 -50%; font: 0.72rem/1 var(--mono); color: var(--faint);
-    border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0.2rem 0.4rem;
+    position: absolute; right: 0.6rem; top: 50%; translate: 0 -50%; font: 0.7rem/1 var(--mono); color: var(--faint);
+    background: var(--subtle); border: 1px solid var(--line); border-radius: 5px; padding: 0.2rem 0.4rem;
   }
   .search input:focus + kbd { display: none; }
 
   .filters { display: flex; align-items: center; gap: 0.75rem; }
-  .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; min-width: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; min-width: 0; }
   .chip {
-    display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.28rem 0.75rem; font-size: 0.85rem;
+    display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.2rem 0.65rem; font-size: 0.8rem; color: var(--muted);
     background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
     transition: background-color 0.15s, border-color 0.15s, color 0.15s;
   }
-  .chip:hover { border-color: var(--faint); }
-  .chip .n { font: 0.72rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
-  .chip.none { border-style: dashed; color: var(--muted); }
+  .chip:hover { color: var(--fg); border-color: var(--faint); }
+  .chip.project::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--glyph-fg); }
+  .chip .n { font: 0.68rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
+  .chip.none { border-style: dashed; }
+  /* お気に入りはプロジェクトと掛け合わせる別の条件なので、チップと形を変えたオン／オフの切り替えにし、線で区切る */
+  .fav-toggle {
+    display: inline-flex; align-items: center; gap: 0.4rem; flex: none; padding: 0.22rem 0.7rem 0.22rem 0.55rem; font-size: 0.8rem; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .fav-toggle:hover { color: var(--fg); border-color: var(--faint); }
+  .fav-toggle svg { width: 14px; height: 14px; color: var(--faint); }
+  .fav-toggle .n { font: 0.68rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
+  .fav-toggle[aria-checked="true"] {
+    color: var(--fg); background: color-mix(in srgb, var(--star) 14%, var(--panel)); border-color: color-mix(in srgb, var(--star) 55%, transparent);
+  }
+  .fav-toggle[aria-checked="true"] svg { color: var(--star); fill: currentColor; }
+  .filters .divider { flex: none; width: 1px; height: 1.25rem; background: var(--line); }
   .chip[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
   .chip[aria-pressed="true"] .n { color: inherit; opacity: 0.65; }
-  .count { margin-left: auto; flex: none; font: 0.78rem/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .count { margin-left: auto; flex: none; font: 0.74rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
 
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-  ul { list-style: none; margin: 0; padding: 0; }
+  /* var(--h) は宣言した要素で解決されるので、色は --h を持つ要素の上で組み立てる */
+  li, .chip.project {
+    --glyph-bg: light-dark(hsl(var(--h) 85% 95%), hsl(var(--h) 30% 24%)); --glyph-fg: light-dark(hsl(var(--h) 55% 40%), hsl(var(--h) 80% 76%));
+  }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); }
+  /* 行は subgrid で列を共有し、タグ・URL 名・時刻・操作の位置を行どうしでそろえる */
+  ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: auto auto minmax(0, 1fr) repeat(4, auto); }
   li {
-    position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.2rem 1rem;
-    align-items: center; padding: 0.9rem 0.75rem 0.9rem 1.15rem; transition: background-color 0.15s;
+    --h: 225; position: relative; grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; column-gap: 0.85rem;
+    min-height: 3.1rem; padding: 0.45rem 0.6rem 0.45rem 0.85rem; transition: background-color 0.15s;
+    animation: rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 16ms);
   }
   li + li { border-top: 1px solid var(--line); }
   li:hover { background: var(--hover); }
-  .body { min-width: 0; display: grid; gap: 0.2rem; }
+  li::before {
+    content: ""; position: absolute; left: 0; top: 0.55rem; bottom: 0.55rem; width: 2px; border-radius: 0 2px 2px 0;
+    background: linear-gradient(var(--accent), var(--accent-2)); opacity: 0; transition: opacity 0.15s;
+  }
+  li:hover::before { opacity: 1; }
+  @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+  .glyph {
+    display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; flex: none;
+    font: 600 0.78rem/1 var(--mono); color: var(--glyph-fg); background: var(--glyph-bg);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--glyph-fg) 14%, transparent);
+  }
+  .glyph.none { color: var(--faint); background: var(--subtle); box-shadow: inset 0 0 0 1px var(--line); }
+  /* チェックボックスは行のリンクの当たり判定より上に出す。label で押せる範囲を広げる */
+  .pick { position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 30px; margin-right: -0.35rem; cursor: pointer; }
+  .sel {
+    width: 16px; height: 16px; margin: 0; cursor: pointer; appearance: none; background: var(--panel);
+    border: 1.5px solid color-mix(in srgb, var(--faint) 80%, transparent); border-radius: 5px; transition: background-color 0.12s, border-color 0.12s;
+  }
+  .pick:hover .sel { border-color: var(--accent); }
+  .sel:checked {
+    border-color: transparent;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 12px no-repeat,
+      linear-gradient(135deg, var(--accent), var(--accent-2));
+  }
+  li:has(.sel:checked) { background: color-mix(in srgb, var(--accent-soft) 70%, var(--panel)); }
+  /* キーボードで選んだ行は行全体を囲む。タイトル自体の枠は出さない */
+  a.title:focus-visible { outline: none; }
+  li:has(a.title:focus-visible) { box-shadow: inset 0 0 0 2px var(--accent); }
+  li:has(a.title:focus-visible)::before { opacity: 1; }
+  /* タイトルの下に説明（リンクはその後ろにパス）を置き、収まらない分は省略する */
+  .body { display: grid; gap: 0.05rem; min-width: 0; }
+  .body > a.title, .sub > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* 行全体をリンクの当たり判定にし、操作部品だけをその上に出す */
-  a.title { color: var(--fg); font-weight: 650; text-decoration: none; overflow-wrap: anywhere; }
+  a.title { justify-self: start; max-width: 100%; color: var(--fg); font-weight: 600; text-decoration: none; scroll-margin-block: 10rem 5rem; }
   a.title::after { content: ""; position: absolute; inset: 0; }
   li:hover a.title { color: var(--accent); }
-  .desc { color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
-  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.6rem; font: 0.74rem/1.5 var(--mono); color: var(--faint); }
-  .meta > * { min-width: 0; overflow-wrap: anywhere; }
-  .tag {
-    position: relative; z-index: 1; font: inherit; color: var(--accent); background: var(--accent-soft);
-    border: 0; border-radius: 5px; padding: 0.05rem 0.45rem;
-  }
-  .tag:hover { text-decoration: underline; }
+  .sub { display: flex; align-items: baseline; gap: 0.65rem; min-width: 0; }
+  .desc { flex: 0 1 auto; color: var(--muted); font-size: 0.76rem; }
+  .sub .path { flex: 0 1 auto; font: 0.72rem var(--mono); color: var(--faint); }
   .missing { color: var(--danger); }
   li:has(.missing) a.title { color: var(--muted); text-decoration: line-through; }
-  .actions { position: relative; z-index: 1; display: flex; gap: 0.15rem; }
+  .proj, .slug, li time { font: 0.72rem/1 var(--mono); color: var(--faint); white-space: nowrap; }
+  li time { text-align: right; font-variant-numeric: tabular-nums; }
+  .tag {
+    position: relative; z-index: 1; font: inherit; color: var(--glyph-fg); background: var(--glyph-bg);
+    border: 0; border-radius: 999px; padding: 0.22rem 0.55rem;
+  }
+  .tag:hover { box-shadow: inset 0 0 0 1px currentColor; }
+  .actions { position: relative; z-index: 1; display: flex; gap: 2px; }
   .icon-btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; height: 34px; min-width: 34px; padding-inline: 0.5rem;
-    color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 8px; text-decoration: none;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; height: 30px; min-width: 30px; padding-inline: 0.4rem;
+    color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 7px; text-decoration: none;
     transition: background-color 0.15s, color 0.15s;
   }
-  .icon-btn svg { width: 17px; height: 17px; }
-  .icon-btn:hover { background: var(--bg); color: var(--fg); }
+  .icon-btn svg { width: 16px; height: 16px; }
+  .icon-btn:hover { background: var(--subtle); color: var(--fg); }
+  .icon-btn:disabled { opacity: 0.35; cursor: default; background: transparent; color: var(--muted); }
   .delete:hover { color: var(--danger); }
+  .star:hover { color: var(--star); }
+  .star[aria-pressed="true"] { color: var(--star); }
+  .star[aria-pressed="true"] svg { fill: currentColor; }
+  .copy .done, .copy.copied > svg { display: none; }
+  .copy.copied .done { display: block; color: var(--good); }
   .delete .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .delete.armed { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); font-size: 0.82rem; font-weight: 700; }
+  .delete.armed { color: var(--danger); background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 50%, transparent); font-size: 0.78rem; font-weight: 650; }
   .delete.armed .label { position: static; width: auto; height: auto; clip-path: none; }
 
-  .state { display: grid; justify-items: center; gap: 0.5rem; padding: 3rem 1.5rem; text-align: center; color: var(--muted); }
-  .state svg { width: 44px; height: 44px; color: var(--faint); }
-  .state p { margin: 0; max-width: 32rem; }
-  .state strong { color: var(--fg); font-size: 1rem; }
-  .state code { font-family: var(--mono); font-size: 0.82em; background: var(--bg); padding: 0.1rem 0.35rem; border-radius: 4px; overflow-wrap: anywhere; }
-  .link-btn { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-  .error { margin: 0; padding: 0.7rem 1rem; border-radius: 10px; color: var(--danger); background: var(--danger-soft); font-size: 0.9rem; }
+  .pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1rem; font-size: 0.8rem; color: var(--muted); }
+  .sizes { display: inline-flex; align-items: center; gap: 0.55rem; }
+  .seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--subtle); border: 1px solid var(--line); border-radius: 9px; }
+  .seg button { padding: 0.18rem 0.6rem; font: 0.74rem/1.5 var(--mono); color: var(--muted); background: none; border: 0; border-radius: 6px; }
+  .seg button:hover { color: var(--fg); }
+  .seg button[aria-pressed="true"] { color: var(--fg); background: var(--panel); box-shadow: var(--shadow-sm), 0 0 0 1px var(--line); }
+  .pages { display: inline-flex; align-items: center; gap: 0.45rem; font: 0.74rem/1 var(--mono); font-variant-numeric: tabular-nums; }
+  .pages .icon-btn { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow-sm); }
+  .pages .range { color: var(--faint); margin-right: 0.35rem; }
 
-  /* 狭い幅ではチップの下に件数を回す */
-  @media (max-width: 30rem) { .filters { flex-wrap: wrap; } .count { margin-left: 0; } .add { grid-template-columns: minmax(0, 1fr); } }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  .sort select {
+    height: 30px; padding: 0 1.8rem 0 0.65rem; font: inherit; font-size: 0.8rem; color: var(--muted); cursor: pointer;
+    background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b93a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E") no-repeat right 0.5rem center / 14px;
+    border: 1px solid var(--line); border-radius: 8px; appearance: none;
+  }
+  .sort select:hover { color: var(--fg); border-color: var(--faint); }
+
+  .keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem 1rem; margin: 0; font-size: 0.74rem; color: var(--faint); }
+  .keys kbd {
+    display: inline-block; min-width: 1.4rem; margin-right: 0.2rem; padding: 0.1rem 0.35rem; text-align: center;
+    font: 0.68rem/1.4 var(--mono); color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px;
+  }
+  @media (hover: none) { .keys { display: none; } }
+
+  /* 選択中だけ下に浮かぶ操作バー */
+  .toasts { position: fixed; right: 16px; bottom: 1.25rem; z-index: 40; display: grid; gap: 0.5rem; justify-items: end; pointer-events: none; }
+  .toast {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.95rem; font-size: 0.84rem; font-weight: 550;
+    color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 11px; box-shadow: var(--shadow);
+    animation: toast 3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  }
+  .toast svg { width: 16px; height: 16px; flex: none; color: var(--good); }
+  @keyframes toast { 0% { opacity: 0; transform: translateY(8px); } 8%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  /* 行のホバーで出す縮小プレビュー。1280×800 で描いて 0.28 倍に縮める */
+  .preview {
+    position: fixed; z-index: 30; width: 360px; height: 225px; overflow: hidden; pointer-events: none;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 24px 60px -16px rgb(0 0 0 / 0.4);
+    animation: pop 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .preview iframe { width: 1280px; height: 800px; border: 0; transform: scale(0.28125); transform-origin: 0 0; }
+  /* 選択中は操作バーの分だけ下に余白を空け、最後の行に重ねない */
+  .shell:has(.bulk:not([hidden])) { padding-bottom: 6rem; }
+  .bulk {
+    position: fixed; left: 50%; bottom: 1.25rem; z-index: 20; translate: -50% 0; display: flex; align-items: center; gap: 0.4rem;
+    max-width: calc(100% - 32px); padding: 0.4rem 0.4rem 0.4rem 1rem; color: var(--bg); background: var(--fg);
+    border-radius: 14px; box-shadow: 0 18px 40px -12px rgb(0 0 0 / 0.45); animation: pop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .bulk-count { margin-right: 0.5rem; font-size: 0.84rem; font-weight: 600; white-space: nowrap; }
+  .bulk .btn { height: 32px; color: inherit; background: transparent; border-color: color-mix(in srgb, var(--bg) 25%, transparent); box-shadow: none; }
+  .bulk .btn:hover { background: color-mix(in srgb, var(--bg) 12%, transparent); }
+  .bulk .btn.danger { color: #fff; background: var(--danger); border-color: transparent; }
+  .bulk .btn.danger.armed { outline: 2px solid color-mix(in srgb, var(--danger) 50%, transparent); outline-offset: 2px; }
+
+  .state { display: grid; justify-items: center; gap: 0.5rem; padding: 3.5rem 1.5rem; text-align: center; color: var(--muted); }
+  .state svg {
+    width: 52px; height: 52px; padding: 12px; margin-bottom: 0.25rem; color: var(--accent);
+    background: var(--accent-soft); border-radius: 14px;
+  }
+  .state p { margin: 0; max-width: 34rem; }
+  .state strong { color: var(--fg); font-size: 0.98rem; }
+  .state a { color: var(--accent); }
+  .state code { font-family: var(--mono); font-size: 0.8em; background: var(--subtle); padding: 0.1rem 0.35rem; border-radius: 4px; overflow-wrap: anywhere; }
+  .link-btn { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .error { margin: 0; padding: 0.65rem 0.9rem; border-radius: 10px; color: var(--danger); background: var(--danger-soft); font-size: 0.86rem; }
+
+  dialog {
+    width: min(32rem, calc(100% - 32px)); padding: 0; color: var(--fg); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.45);
+  }
+  dialog[open] { animation: pop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  dialog::backdrop { background: var(--scrim); backdrop-filter: blur(3px); }
+  dialog[open]::backdrop { animation: fade 0.2s ease-out; }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+  @keyframes fade { from { opacity: 0; } }
+  .add { display: grid; gap: 1rem; padding: 1.4rem 1.5rem 1.25rem; }
+  .add-head { display: flex; align-items: center; gap: 0.8rem; }
+  .add-head svg {
+    width: 38px; height: 38px; padding: 9px; flex: none; color: #fff; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  }
+  .add h2 { margin: 0; font-size: 1.05rem; line-height: 1.3; letter-spacing: -0.01em; }
+  .add .lead { margin: 0.1rem 0 0; color: var(--muted); font-size: 0.82rem; }
+  .field { display: grid; gap: 0.35rem; font-size: 0.82rem; font-weight: 600; }
+  .field small { font-weight: 400; color: var(--faint); }
+  .field .path { font-family: var(--mono); font-size: 0.82rem; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; padding-top: 1rem; margin-top: 0.25rem; border-top: 1px solid var(--line); }
+
+  @media (max-width: 64rem) { li .slug { display: none; } }
+  /* 狭い幅では説明・パスとメタ情報を 2 行目に回す */
+  @media (max-width: 40rem) {
+    .framed .server { font-size: 0; gap: 0; padding: 0.45rem; }
+    ul { display: block; }
+    li { grid-template-columns: auto auto minmax(0, 1fr) auto; row-gap: 0.3rem; column-gap: 0.6rem; }
+    .body { grid-column: 2 / 4; grid-row: 1; }
+    .proj { grid-column: 2; grid-row: 2; }
+    li time { grid-column: 3; grid-row: 2; text-align: left; }
+    .actions { grid-column: 4; grid-row: 1 / 3; }
+    .filters { flex-wrap: wrap; }
+    .count { margin-left: 0; }
+    .pick { grid-column: 1; grid-row: 1 / 3; }
+    .glyph { display: none; }
+    .bulk { left: 16px; right: 16px; translate: none; flex-wrap: wrap; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before { transition: none !important; animation: none !important; } }
 </style>
 </head>
 <body>
-<div class="shell">
-  <header class="top">
-    <div class="brand">
+<header class="bar">
+  <div class="bar-inner">
+    <a class="brand" href="/" title="一覧へ">
       <svg viewBox="0 0 32 32" aria-hidden="true">
-        <rect width="32" height="32" rx="8" fill="var(--accent)"/>
-        <path d="M11 6.5h7.5L23 11v13a1.5 1.5 0 0 1-1.5 1.5h-10.5A1.5 1.5 0 0 1 9.5 24V8A1.5 1.5 0 0 1 11 6.5Z" fill="var(--on-accent)"/>
+        <defs><linearGradient id="brand-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="var(--accent-2)"/></linearGradient></defs>
+        <rect width="32" height="32" rx="9" fill="url(#brand-g)"/>
+        <path d="M11 6.5h7.5L23 11v13a1.5 1.5 0 0 1-1.5 1.5h-10.5A1.5 1.5 0 0 1 9.5 24V8A1.5 1.5 0 0 1 11 6.5Z" fill="#fff"/>
         <path d="M18.5 6.5v3a1.5 1.5 0 0 0 1.5 1.5h3Z" fill="var(--accent)" opacity=".35"/>
-        <path d="M16 13c.4 2.6 1.9 4.1 4.5 4.5-2.6.4-4.1 1.9-4.5 4.5-.4-2.6-1.9-4.1-4.5-4.5 2.6-.4 4.1-1.9 4.5-4.5Z" fill="var(--accent)"/>
+        <path d="M16 13c.4 2.6 1.9 4.1 4.5 4.5-2.6.4-4.1 1.9-4.5 4.5-.4-2.6-1.9-4.1-4.5-4.5 2.6-.4 4.1-1.9 4.5-4.5Z" fill="url(#brand-g)"/>
       </svg>
-      <h1>Artifacts</h1>
+      Artifacts
+    </a>
+    <nav class="frame-nav" aria-label="前後のページ" hidden>
+      <a class="icon-btn" id="frame-prev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></a>
+      <span class="frame-pos" id="frame-pos"></span>
+      <a class="icon-btn" id="frame-next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+    </nav>
+    <div class="bar-end">
+      <span class="frame-actions" hidden>
+        <a class="icon-btn" id="frame-download" title="ダウンロード" aria-label="ダウンロード">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+        </a>
+        <a class="icon-btn" id="frame-open" href="?raw" target="_blank" rel="noopener" title="ページだけを新しいタブで開く" aria-label="ページだけを新しいタブで開く">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6m0-6-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+        </a>
+      </span>
+      <div class="theme" role="group" aria-label="テーマ">
+        <button type="button" data-theme-choice="light" title="ライト" aria-label="ライト"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4V2m0 20v-2m8-8h2M2 12h2m13.7-5.7 1.4-1.4M4.9 19.1l1.4-1.4m11.4 0 1.4 1.4M4.9 4.9l1.4 1.4M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg></button>
+        <button type="button" data-theme-choice="dark" title="ダーク" aria-label="ダーク"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/></svg></button>
+        <button type="button" data-theme-choice="system" title="OS に合わせる" aria-label="OS に合わせる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H4zM9 20h6m-3-4v4"/></svg></button>
+      </div>
+      <span class="server" id="server" role="status"></span>
     </div>
-    <span class="server" id="server"></span>
-  </header>
+  </div>
+</header>
+<main class="shell" id="manage" hidden>
+  <h1 class="sr-only">Artifacts</h1>
   <div class="toolbar">
-    <!-- 一覧を切り替えるボタン。WAI-ARIA の tabs（矢印キー移動・tabpanel）は実装しないので、チップと同じ aria-pressed にする -->
-    <div class="tabs" role="group" aria-label="種類">
-      <button type="button" data-tab="pages">アーティファクト<span class="n"></span></button>
-      <button type="button" data-tab="links">リンク<span class="n"></span></button>
+    <div class="controls">
+      <!-- 一覧を切り替えるボタン。WAI-ARIA の tabs（矢印キー移動・tabpanel）は実装しないので、チップと同じ aria-pressed にする -->
+      <div class="tabs" role="group" aria-label="種類">
+        <button type="button" data-tab="pages">アーティファクト<span class="n"></span></button>
+        <button type="button" data-tab="links">リンク<span class="n"></span></button>
+      </div>
+      <label class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="q" placeholder="タイトル・説明・URL 名・パスを検索" aria-label="検索" autocomplete="off">
+        <kbd aria-hidden="true">/</kbd>
+      </label>
+      <button type="button" class="btn primary" id="add-open" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        リンクを追加
+      </button>
     </div>
-    <label class="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input type="search" id="q" placeholder="タイトル・説明・URL 名・パスを検索" aria-label="検索" autocomplete="off">
-      <kbd aria-hidden="true">/</kbd>
-    </label>
     <div class="filters">
+      <button type="button" class="fav-toggle" id="fav" role="switch" aria-checked="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>お気に入りのみ<span class="n"></span></button>
+      <span class="divider" aria-hidden="true"></span>
       <div class="chips" id="chips" role="group" aria-label="プロジェクト"></div>
       <span class="count" id="count"></span>
+      <label class="sort"><span class="sr-only">並び順</span>
+        <select id="sort">
+          <option value="updated">更新が新しい順</option>
+          <option value="created">作成が新しい順</option>
+          <option value="title">タイトル順</option>
+        </select>
+      </label>
     </div>
   </div>
   <p class="error" id="error" hidden></p>
-  <form class="add" id="add" hidden>
-    <input class="path" id="add-path" required autocomplete="off" spellcheck="false"
-      placeholder="HTML ファイルの絶対パス（例: /home/you/project/coverage/index.html）" aria-label="HTML ファイルの絶対パス">
-    <input id="add-slug" autocomplete="off" spellcheck="false" pattern="[a-z0-9]([a-z0-9\-]{0,62}[a-z0-9])?"
-      title="ページの URL（/a/〇〇/）に使う名前。英小文字・数字・ハイフン。空欄ならファイル名（index.html はフォルダ名）から付ける"
-      placeholder="URL 名（空欄なら自動）" aria-label="URL 名">
-    <input id="add-desc" autocomplete="off" placeholder="説明（省略可）" aria-label="説明">
-    <button type="submit">追加</button>
-    <p class="error" id="add-error" hidden></p>
-  </form>
   <div class="panel">
     <ul id="list"></ul>
     <div class="state" id="empty" hidden>
@@ -201,22 +433,132 @@
     <div class="state" id="empty-links" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
       <strong>まだリンクがありません</strong>
-      <p>上の欄に HTML ファイルの絶対パスを入れると、コピーせずその場所のまま表示できます。<code>~/.agents/skills/artifact/artifacts.sh publish &lt;file.html&gt; --link</code> でも追加できます。</p>
+      <p>「リンクを追加」から HTML ファイルの絶対パスを登録すると、コピーせずその場所のまま表示できます。<code>~/.agents/skills/artifact/artifacts.sh publish &lt;file.html&gt; --link</code> でも追加できます。</p>
     </div>
     <div class="state" id="nomatch" hidden>
       <strong>条件に合うページがありません</strong>
       <p><button type="button" class="link-btn" id="clear">絞り込みを解除</button></p>
     </div>
   </div>
+  <nav class="pager" id="pager" aria-label="ページ送り" hidden>
+    <div class="sizes">
+      <span id="sizes-label">表示件数</span>
+      <div class="seg" id="sizes" role="group" aria-labelledby="sizes-label"></div>
+    </div>
+    <div class="pages">
+      <span class="range" id="range"></span>
+      <button type="button" class="icon-btn" id="prev" aria-label="前のページ">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
+      </button>
+      <span id="pageno"></span>
+      <button type="button" class="icon-btn" id="next" aria-label="次のページ">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+    </div>
+  </nav>
+  <p class="keys" aria-hidden="true">
+    <span><kbd>↑</kbd><kbd>↓</kbd>移動</span><span><kbd>Enter</kbd>開く</span><span><kbd>x</kbd>選択</span><span><kbd>f</kbd>お気に入り</span>
+    <span><kbd>←</kbd><kbd>→</kbd>ページ</span><span><kbd>/</kbd>検索</span>
+  </p>
+  <div class="bulk" id="bulk" role="region" aria-label="選択した項目の操作" hidden>
+    <span class="bulk-count" id="bulk-count" aria-live="polite"></span>
+    <button type="button" class="btn" id="bulk-page">このページをすべて選択</button>
+    <button type="button" class="btn" id="bulk-clear">選択を解除</button>
+    <button type="button" class="btn danger" id="bulk-delete"></button>
+  </div>
+</main>
+<iframe class="frame" id="frame" hidden></iframe>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<div class="preview" id="preview" aria-hidden="true" hidden><iframe tabindex="-1" title="プレビュー"></iframe></div>
+<div class="state notfound" id="notfound" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 0v5h5"/></svg>
+  <strong>ページが見つかりません</strong>
+  <p id="notfound-detail"></p>
+  <p><a href="/">一覧へ戻る</a></p>
 </div>
+<dialog id="add-dialog" aria-labelledby="add-title">
+  <form class="add" id="add">
+    <div class="add-head">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
+      <div>
+        <h2 id="add-title">リンクを追加</h2>
+        <p class="lead">HTML ファイルをコピーせず、その場所のまま表示します。</p>
+      </div>
+    </div>
+    <label class="field">HTML ファイルの絶対パス
+      <input class="text path" id="add-path" required autofocus autocomplete="off" spellcheck="false"
+        placeholder="/home/you/project/coverage/index.html">
+    </label>
+    <label class="field"><span>URL 名 <small>省略可</small></span>
+      <input class="text" id="add-slug" autocomplete="off" spellcheck="false" pattern="[a-z0-9]([a-z0-9\-]{0,62}[a-z0-9])?"
+        title="英小文字・数字・ハイフン" placeholder="空欄ならファイル名（index.html はフォルダ名）から付ける">
+      <small>ページの URL（/a/〇〇/）に使う名前。英小文字・数字・ハイフン</small>
+    </label>
+    <label class="field"><span>説明 <small>省略可</small></span>
+      <input class="text" id="add-desc" autocomplete="off">
+    </label>
+    <p class="error" id="add-error" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" id="add-cancel" data-close>キャンセル</button>
+      <button type="submit" class="btn primary" id="add-submit">追加</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="edit-dialog" aria-labelledby="edit-title">
+  <form class="add" id="edit">
+    <div class="add-head">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4"/></svg>
+      <div>
+        <h2 id="edit-title">編集</h2>
+        <p class="lead" id="edit-target"></p>
+      </div>
+    </div>
+    <label class="field">タイトル
+      <input class="text" id="edit-name" autocomplete="off">
+    </label>
+    <label class="field">URL 名
+      <input class="text path" id="edit-slug" required autocomplete="off" spellcheck="false" pattern="[a-z0-9]([a-z0-9\-]{0,62}[a-z0-9])?"
+        title="英小文字・数字・ハイフン">
+      <small>変えると URL（/a/〇〇/）が変わり、古い URL では開けなくなります</small>
+    </label>
+    <label class="field"><span>プロジェクト <small>空欄なら「記録なし」</small></span>
+      <input class="text" id="edit-project" autocomplete="off" spellcheck="false">
+    </label>
+    <label class="field"><span>説明 <small>省略可</small></span>
+      <input class="text" id="edit-desc" autocomplete="off">
+    </label>
+    <p class="error" id="edit-error" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="submit" class="btn primary" id="edit-submit">保存</button>
+    </div>
+  </form>
+</dialog>
 <template id="row">
   <li>
+    <label class="pick"><input type="checkbox" class="sel"></label>
+    <span class="glyph" aria-hidden="true"></span>
     <div class="body">
-      <a class="title" target="_blank" rel="noopener"></a>
-      <span class="desc"></span>
-      <span class="meta"><span class="slug"></span><time></time></span>
+      <a class="title"></a>
+      <span class="sub"><span class="desc"></span></span>
     </div>
+    <span class="proj"></span>
+    <span class="slug"></span>
+    <time></time>
     <div class="actions">
+      <button type="button" class="icon-btn star">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>
+      </button>
+      <button type="button" class="icon-btn copy" title="パスをコピー" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 9h10v11H9zM5 15V4h10"/></svg>
+        <span class="done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+      </button>
+      <button type="button" class="icon-btn edit" title="編集">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4"/></svg>
+      </button>
+      <a class="icon-btn open" target="_blank" rel="noopener" title="ページだけを新しいタブで開く">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6m0-6-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+      </a>
       <a class="icon-btn download" title="ダウンロード">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
       </a>
@@ -230,13 +572,47 @@
 <script>
   const $ = (id) => document.getElementById(id);
   let items = [];
-  // 選んだプロジェクトは URL に持ち、再読み込みやリンクで同じ絞り込みを開けるようにする
-  let project = new URLSearchParams(location.search).get('project') ?? '';
-  // 保存したページ（pages）と、絶対パスで登録したリンク（links）をタブで分ける。タブも URL に持つ
-  let tab = new URLSearchParams(location.search).get('tab') === 'links' ? 'links' : 'pages';
+  // /a/<slug>/ ならページの外枠として動く（サーバーが同じ HTML を返す）
+  const framed = location.pathname.match(/^\/a\/([^/]+)\/$/)?.[1];
+  // 保存したページ（pages）と、絶対パスで登録したリンク（links）をタブで分ける
   const inTab = (a, t = tab) => Boolean(a.path) === (t === 'links');
   // 生成元を記録する前のページ。project はディレクトリ名で / を含まないので衝突しない
   const NONE = '/';
+  const SIZES = [10, 20, 50, 100];
+  const SIZE_KEY = 'artifacts.pageSize';
+  let size = SIZES[0];
+  // 並び順。updated はサーバーの並び（更新が新しい順）のまま使う
+  const SORTS = {
+    updated: null,
+    created: (x, y) => (y.createdAt ?? '').localeCompare(x.createdAt ?? ''),
+    title: (x, y) => x.title.localeCompare(y.title, 'ja'),
+  };
+  // 一覧の状態（タブ・プロジェクト・検索語・並び順・ページ番号）は URL に持ち、再読み込みで同じ一覧を開く。
+  // 同じ内容をタブ内にも残し、ページ表示中の前後移動と「一覧へ戻る」に使う
+  const LIST_KEY = 'artifacts.list';
+  function readState(search) {
+    const p = new URLSearchParams(search);
+    return {
+      tab: p.get('tab') === 'links' ? 'links' : 'pages',
+      project: p.get('project') ?? '',
+      q: p.get('q') ?? '',
+      sort: Object.hasOwn(SORTS, p.get('sort')) ? p.get('sort') : 'updated',
+      page: Math.max(1, Number.parseInt(p.get('page'), 10) || 1),
+      fav: p.get('fav') === '1',
+    };
+  }
+  let { tab, project, sort, page, fav } = readState(location.search);
+  // 選択した slug。絞り込みやタブを変えたら解除する（見えない項目を消さないように）。ページをまたいだ選択は残す
+  const selected = new Set();
+  // LIMIT: 一覧の変化と接続の回復は 3 秒ごとの取り直しで拾う。件数が数百を超えて重くなったら SSE で変化だけを通知する
+  const POLL_MS = 3000;
+  // 表示件数は閲覧者の好みとしてブラウザに残す。保存できない環境では既定値で動く
+  try {
+    const saved = Number(localStorage.getItem(SIZE_KEY));
+    if (SIZES.includes(saved)) size = saved;
+  } catch {
+    // 保存先を使えない
+  }
 
   const fmt = (iso) => new Date(iso).toLocaleString('ja-JP', { dateStyle: 'medium', timeStyle: 'short' });
   const rtf = new Intl.RelativeTimeFormat('ja', { numeric: 'auto' });
@@ -253,8 +629,12 @@
     $('error').hidden = !msg;
   }
 
+  // つながっている間は点だけを出し、切れたときだけ文で知らせる。アドレスはアドレスバーと同じなので出さない
   function setServer(ok) {
-    $('server').textContent = ok ? location.host : `${location.host} に接続できません`;
+    const label = ok ? `サーバー（${location.host}）に接続中` : `サーバー（${location.host}）に接続できません`;
+    $('server').textContent = ok ? '' : 'サーバーに接続できません';
+    $('server').title = label;
+    $('server').setAttribute('aria-label', label);
     $('server').classList.toggle('down', !ok);
   }
 
@@ -270,28 +650,135 @@
     }
   }
 
-  function setParam(name, value) {
+  // 既定値（pages タブ・すべて・空の検索・1 ページ目）は URL から省く
+  function syncUrl() {
     const url = new URL(location.href);
-    if (value) url.searchParams.set(name, value);
-    else url.searchParams.delete(name);
+    const state = {
+      tab: tab === 'links' ? tab : '', fav: fav ? '1' : '', project, q: $('q').value.trim(), sort: sort === 'updated' ? '' : sort,
+      page: page > 1 ? String(page) : '',
+    };
+    for (const [name, value] of Object.entries(state)) {
+      if (value) url.searchParams.set(name, value);
+      else url.searchParams.delete(name);
+    }
     history.replaceState(null, '', url);
+    try {
+      sessionStorage.setItem(LIST_KEY, url.search);
+    } catch {
+      // 保存できなければ、ページ表示中の前後移動は全件の更新順になる
+    }
+  }
+
+  // 一覧に出す項目を、タブ・プロジェクト・検索語・並び順に従って並べる。一覧とページ表示中の前後移動で共通
+  function arrange(state) {
+    const q = state.q.trim().toLowerCase();
+    const shown = items.filter((a) => inTab(a, state.tab) && (!state.fav || a.favorite)
+      && (!state.project || (a.project ?? NONE) === state.project)
+      && (!q || [a.title, a.description, a.slug, a.project, a.path].join(' ').toLowerCase().includes(q)));
+    return SORTS[state.sort] ? shown.sort(SORTS[state.sort]) : shown;
+  }
+
+  function toast(msg) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+    t.append(msg);
+    $('toasts').append(t);
+    setTimeout(() => t.remove(), 3000);
+  }
+
+  // 絞り込みを変えたら 1 ページ目から見せる
+  function refilter() {
+    page = 1;
+    selected.clear();
     render();
   }
 
   function setProject(value) {
     project = value;
-    setParam('project', project);
+    refilter();
   }
 
   function setTab(value) {
     tab = value;
-    setParam('tab', tab === 'links' ? tab : '');
+    refilter();
   }
+
+  function setSize(value) {
+    size = value;
+    try {
+      localStorage.setItem(SIZE_KEY, String(size));
+    } catch {
+      // 保存できなくても、この表示には効く
+    }
+    refilter();
+  }
+
+  function goPage(n) {
+    page = n;
+    render();
+    scrollTo(0, 0);
+  }
+
+  // リンクを消しても元のファイルは残るので、「削除」ではなく「登録解除」と書く
+  const verb = (a) => (a.path ? '登録解除' : '削除');
+  const tabVerb = () => (tab === 'links' ? '登録解除' : '削除');
+
+  // 2 回押して実行するボタン。1 回目で確認状態にして true を返し、フォーカスが外れたら戻す
+  function arm(btn, armedLabel) {
+    if (btn.classList.contains('armed')) return false;
+    btn.classList.add('armed');
+    (btn.querySelector('.label') ?? btn).textContent = armedLabel;
+    return true;
+  }
+
+  function disarmBulk() {
+    $('bulk-delete').classList.remove('armed');
+    $('bulk-delete').textContent = tabVerb();
+  }
+
+  function renderBulk() {
+    $('bulk').hidden = selected.size === 0;
+    $('bulk-count').textContent = `${selected.size} 件を選択中`;
+    disarmBulk();
+  }
+
+  // 失敗したときの理由を返す。もう無い（404）なら消せたものとして扱う
+  async function deleteOne(slug) {
+    try {
+      const res = await api(`/api/artifacts/${slug}`, { method: 'DELETE' });
+      return res.ok || res.status === 404 ? '' : `HTTP ${res.status}`;
+    } catch (e) {
+      return e.message;
+    }
+  }
+
+  async function removeSelected() {
+    const btn = $('bulk-delete');
+    if (arm(btn, `本当に ${selected.size} 件を${tabVerb()}`)) return;
+    const slugs = [...selected];
+    const reasons = await Promise.all(slugs.map(deleteOne));
+    slugs.forEach((slug, i) => { if (!reasons[i]) selected.delete(slug); });
+    const failed = reasons.filter(Boolean);
+    if (failed.length < slugs.length) toast(`${slugs.length - failed.length} 件を${tabVerb()}しました`);
+    showError(failed.length ? `${failed.length} 件を${tabVerb()}できませんでした（${failed[0]}）。選択したまま残しています。` : '');
+    await load();
+    renderBulk();
+  }
+
+  // 相対時刻（「3 分前」など）は一覧を描き直さなくても進める
+  function refreshTimes() {
+    for (const t of document.querySelectorAll('#list time')) t.textContent = ago(t.dateTime);
+  }
+
+  // プロジェクトの色相。行のアイコン・タグ・チップで同じ色にする
+  const hue = (name) => [...name].reduce((h, c) => (h * 31 + c.codePointAt(0)) % 360, 7);
 
   function chip(label, value, n, extra = '') {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = `chip ${extra}`;
+    if (extra === 'project') b.style.setProperty('--h', hue(value));
     b.setAttribute('aria-pressed', String(value === project));
     b.append(label);
     const count = document.createElement('span');
@@ -308,18 +795,56 @@
     // 最後の 1 件を消しても選択が勝手に「すべて」へ戻らないよう、0 件でも選択肢に残す
     if (project && !counts.has(project)) counts.set(project, 0);
     const names = [...counts.keys()].filter((k) => k !== NONE).sort((x, y) => x.localeCompare(y));
-    const chips = [chip('すべて', '', list.length), ...names.map((name) => chip(name, name, counts.get(name)))];
+    const chips = [chip('全プロジェクト', '', list.length), ...names.map((name) => chip(name, name, counts.get(name), 'project'))];
     if (counts.has(NONE)) chips.push(chip('記録なし', NONE, counts.get(NONE), 'none'));
     $('chips').replaceChildren(...chips);
+    $('fav').setAttribute('aria-checked', String(fav));
+    $('fav').querySelector('.n').textContent = list.filter((a) => a.favorite).length;
   }
 
-  function row(a) {
+  // 最小の表示件数に収まるなら、件数を切り替えても変わらないのでページ送りごと隠す
+  function renderPager(total, pages, start) {
+    $('pager').hidden = total <= SIZES[0];
+    $('sizes').replaceChildren(...SIZES.map((n) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = n;
+      b.setAttribute('aria-pressed', String(n === size));
+      b.addEventListener('click', () => setSize(n));
+      return b;
+    }));
+    $('range').textContent = `${start + 1}–${Math.min(start + size, total)} / ${total}`;
+    $('pageno').textContent = `${page} / ${pages}`;
+    $('prev').disabled = page <= 1;
+    $('next').disabled = page >= pages;
+  }
+
+  function row(a, i) {
     const li = $('row').content.firstElementChild.cloneNode(true);
+    li.style.setProperty('--i', i);
+    li.dataset.slug = a.slug;
+    const sel = li.querySelector('.sel');
+    sel.checked = selected.has(a.slug);
+    sel.setAttribute('aria-label', `${a.title} を選択`);
+    sel.addEventListener('change', () => {
+      if (sel.checked) selected.add(a.slug);
+      else selected.delete(a.slug);
+      renderBulk();
+    });
+    const glyph = li.querySelector('.glyph');
+    glyph.textContent = [...(a.project ?? a.title)][0]?.toUpperCase() ?? '';
+    if (a.project) li.style.setProperty('--h', hue(a.project));
+    else glyph.classList.add('none');
     const link = li.querySelector('.title');
     link.href = `/a/${a.slug}/`;
     link.textContent = a.title;
+    link.title = a.title;
     li.querySelector('.desc').textContent = a.description;
+    li.querySelector('.desc').title = a.description;
     li.querySelector('.desc').hidden = !a.description;
+    li.querySelector('.sub').hidden = !a.description && !a.path;
+    li.addEventListener('pointerenter', (e) => schedulePreview(e, a, li));
+    li.addEventListener('pointerleave', hidePreview);
     if (a.project) {
       const tag = document.createElement('button');
       tag.type = 'button';
@@ -327,27 +852,48 @@
       tag.textContent = a.project;
       tag.title = `${a.project} で絞り込む`;
       tag.addEventListener('click', () => setProject(a.project));
-      li.querySelector('.meta').prepend(tag);
+      li.querySelector('.proj').append(tag);
     }
     li.querySelector('.slug').textContent = `/a/${a.slug}/`;
     li.querySelector('.slug').title = `URL 名: ${a.slug}`;
+    // 作成順で並べたときは作成日時を出す
+    const when = sort === 'created' && a.createdAt ? a.createdAt : a.updatedAt;
     const time = li.querySelector('time');
-    time.dateTime = a.updatedAt;
-    time.textContent = ago(a.updatedAt);
-    time.title = `更新 ${fmt(a.updatedAt)}`;
+    time.dateTime = when;
+    time.textContent = ago(when);
+    time.title = [a.createdAt && `${a.path ? '登録' : '作成'} ${fmt(a.createdAt)}`, `更新 ${fmt(a.updatedAt)}`].filter(Boolean).join('\n');
     // リンクは登録した場所のファイルを表示する。消えていれば開けないことを示す
     if (a.path) {
       const path = document.createElement('span');
       path.className = a.missing ? 'path missing' : 'path';
       path.textContent = a.missing ? `${a.path}（ファイルが見つかりません）` : a.path;
-      li.querySelector('.meta').append(path);
+      path.title = a.path;
+      li.querySelector('.sub').append(path);
+      const copy = li.querySelector('.copy');
+      copy.hidden = false;
+      copy.setAttribute('aria-label', `${a.title} のパスをコピー`);
+      copy.addEventListener('click', () => copyPath(a.path, copy));
     }
+    const star = li.querySelector('.star');
+    star.setAttribute('aria-pressed', String(Boolean(a.favorite)));
+    star.title = a.favorite ? 'お気に入りから外す' : 'お気に入りに追加';
+    star.setAttribute('aria-label', `${a.title} を${star.title}`);
+    star.addEventListener('click', () => toggleFavorite(a));
+    const edit = li.querySelector('.edit');
+    edit.setAttribute('aria-label', `${a.title} を編集`);
+    edit.addEventListener('click', () => openEdit(a));
+    const open = li.querySelector('.open');
+    open.href = `/a/${a.slug}/?raw`;
+    open.setAttribute('aria-label', `${a.title} だけを新しいタブで開く`);
     const dl = li.querySelector('.download');
     dl.href = `/api/artifacts/${a.slug}/download`;
     dl.download = `${a.slug}.html`;
     dl.setAttribute('aria-label', `${a.title} をダウンロード`);
     if (a.missing) {
       link.removeAttribute('href');
+      // href が無いとフォーカスできず、↑↓ の移動がこの行の手前で止まる。スクリプトからは移れるようにする
+      link.tabIndex = -1;
+      open.hidden = true;
       dl.hidden = true;
     }
     const del = li.querySelector('.delete');
@@ -357,26 +903,188 @@
     return li;
   }
 
+  // 行にしばらくマウスを止めたときだけ縮小プレビューを出す（通りがかりで出さない）。タッチでは出さない（タップは開く操作なので）
+  const PREVIEW_DELAY_MS = 2000;
+  let previewTimer;
+
+  function schedulePreview(e, a, li) {
+    if (e.pointerType !== 'mouse' || a.missing) return;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => showPreview(a, li), PREVIEW_DELAY_MS);
+  }
+
+  function showPreview(a, li) {
+    const box = $('preview');
+    box.querySelector('iframe').src = `/a/${a.slug}/?raw`;
+    box.hidden = false;
+    const row = li.getBoundingClientRect();
+    const { width, height } = box.getBoundingClientRect();
+    // 行の下に出し、画面に収まらなければ上に出す
+    const top = row.bottom + height + 8 <= innerHeight ? row.bottom + 6 : row.top - height - 6;
+    box.style.left = `${Math.max(16, Math.min(li.querySelector('.title').getBoundingClientRect().left, innerWidth - width - 16))}px`;
+    box.style.top = `${top}px`;
+  }
+
+  // 隠すときは空のページに替え、プレビューが開いた再読み込みの購読を閉じる
+  function hidePreview() {
+    clearTimeout(previewTimer);
+    if ($('preview').hidden) return;
+    $('preview').hidden = true;
+    $('preview').querySelector('iframe').src = 'about:blank';
+  }
+
+  async function toggleFavorite(a) {
+    try {
+      const res = await api(`/api/artifacts/${a.slug}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ favorite: !a.favorite }),
+      });
+      if (!res.ok) throw new Error(`${await res.text()}（HTTP ${res.status}）`);
+    } catch (e) {
+      showError(`お気に入りを変更できませんでした（${e.message}）。`);
+      return;
+    }
+    toast(a.favorite ? `「${a.title}」をお気に入りから外しました` : `「${a.title}」をお気に入りに追加しました`);
+    await load();
+  }
+
+  const THEME_KEY = 'artifacts.theme';
+
+  function setTheme(choice) {
+    if (choice === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = choice;
+    try {
+      if (choice === 'system') localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, choice);
+    } catch {
+      // 保存できなくても、この表示には効く
+    }
+    for (const b of document.querySelectorAll('[data-theme-choice]')) b.setAttribute('aria-pressed', String(b.dataset.themeChoice === choice));
+  }
+
+  async function copyPath(path, btn) {
+    try {
+      await navigator.clipboard.writeText(path);
+    } catch (e) {
+      showError(`パスをコピーできませんでした（${e.message}）。`);
+      return;
+    }
+    btn.classList.add('copied');
+    btn.title = 'コピーしました';
+    toast('パスをコピーしました');
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.title = 'パスをコピー';
+    }, 1500);
+  }
+
+  // 編集中の項目と、開いたときの値。変えた項目だけを送る（リンクのタイトルを触らなければファイルから取り続けるように）
+  let editing;
+  const EDIT_FIELDS = { title: 'edit-name', slug: 'edit-slug', project: 'edit-project', description: 'edit-desc' };
+
+  function openEdit(a) {
+    editing = a;
+    $('edit-target').textContent = a.path ?? `/a/${a.slug}/`;
+    for (const [key, id] of Object.entries(EDIT_FIELDS)) $(id).value = a[key] ?? '';
+    $('edit-name').placeholder = a.path ? '空欄ならファイルの <title> を使う' : '空欄なら HTML の <title> を使う';
+    $('edit-error').hidden = true;
+    $('edit-dialog').showModal();
+  }
+
+  async function saveEdit(e) {
+    e.preventDefault();
+    const btn = $('edit-submit');
+    btn.disabled = true;
+    try {
+      const changes = Object.fromEntries(Object.entries(EDIT_FIELDS)
+        .filter(([key, id]) => $(id).value.trim() !== (editing[key] ?? ''))
+        .map(([key, id]) => [key, $(id).value]));
+      const res = await api(`/api/artifacts/${editing.slug}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(changes),
+      });
+      if (!res.ok) throw new Error(`${await res.text()}（HTTP ${res.status}）`);
+      $('edit-dialog').close();
+      toast('保存しました');
+      await load();
+    } catch (err) {
+      $('edit-error').textContent = `保存できませんでした: ${err.message}`;
+      $('edit-error').hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   function render() {
-    const q = $('q').value.trim().toLowerCase();
+    // 行を作り直すと、マウスが乗っていた行ごと消えて pointerleave が起きないので、ここでプレビューを閉じる
+    hidePreview();
     for (const b of document.querySelectorAll('.tabs button')) {
       b.setAttribute('aria-pressed', String(b.dataset.tab === tab));
       b.querySelector('.n').textContent = items.filter((a) => inTab(a, b.dataset.tab)).length;
     }
-    $('add').hidden = tab !== 'links';
+    $('add-open').hidden = tab !== 'links';
     const list = items.filter((a) => inTab(a));
     renderChips(list);
-    const shown = list.filter((a) => (!project || (a.project ?? NONE) === project)
-      && (!q || [a.title, a.description, a.slug, a.project, a.path].join(' ').toLowerCase().includes(q)));
+    const shown = arrange({ tab, fav, project, q: $('q').value, sort });
+    $('sort').value = sort;
+    // 別の場所で消えた項目は選択から外す
+    for (const slug of selected) if (!list.some((a) => a.slug === slug)) selected.delete(slug);
     $('count').textContent = shown.length === list.length ? `${list.length} 件` : `${shown.length} / ${list.length} 件`;
     $('empty').hidden = tab !== 'pages' || list.length > 0;
     $('empty-links').hidden = tab !== 'links' || list.length > 0;
     $('nomatch').hidden = list.length === 0 || shown.length > 0;
-    $('list').replaceChildren(...shown.map(row));
+    // 削除で最後のページが空になったら、残っている最後のページに戻す
+    const pages = Math.max(1, Math.ceil(shown.length / size));
+    page = Math.min(page, pages);
+    const start = (page - 1) * size;
+    $('list').replaceChildren(...shown.slice(start, start + size).map(row));
+    renderPager(shown.length, pages, start);
+    renderBulk();
+    syncUrl();
   }
 
-  // リンクを消しても元のファイルは残るので、「削除」ではなく「登録解除」と書く
-  const verb = (a) => (a.path ? '登録解除' : '削除');
+  // 開く前の一覧（タブ内に残した状態）の並びで前後へ移る。その一覧に無ければ、同じ種類の全件を更新順で使う
+  function renderNeighbors(a) {
+    let saved = '';
+    try {
+      saved = sessionStorage.getItem(LIST_KEY) ?? '';
+    } catch {
+      // 保存先を使えない
+    }
+    const openable = (state) => arrange(state).filter((x) => !x.missing);
+    let order = openable(readState(saved));
+    if (!order.some((x) => x.slug === a.slug)) order = openable({ ...readState(''), tab: a.path ? 'links' : 'pages' });
+    const at = order.findIndex((x) => x.slug === a.slug);
+    for (const [id, x, label] of [['frame-prev', order[at - 1], '前'], ['frame-next', order[at + 1], '次']]) {
+      const link = $(id);
+      if (x) link.href = `/a/${x.slug}/`;
+      else link.removeAttribute('href');
+      link.setAttribute('aria-disabled', String(!x));
+      link.title = x ? `${label}: ${x.title}` : `${label}のページはありません`;
+      link.setAttribute('aria-label', link.title);
+    }
+    $('frame-pos').textContent = `${at + 1} / ${order.length}`;
+    document.querySelector('.brand').href = `/${saved}`;
+  }
+
+  function renderFrame() {
+    const a = items.find((x) => x.slug === framed);
+    const found = Boolean(a && !a.missing);
+    document.title = `${a?.title ?? framed} · Artifacts`;
+    document.querySelector('.frame-actions').hidden = !found;
+    $('notfound').hidden = found;
+    $('notfound-detail').textContent = a?.missing
+      ? `${a.path} が見つかりません。移動していれば、新しい場所で登録し直してください。`
+      : '削除されたか、URL が間違っています。';
+    $('frame').hidden = !found;
+    $('frame').title = a?.title ?? framed;
+    document.querySelector('.frame-nav').hidden = !found;
+    if (found) renderNeighbors(a);
+    // 見つかってから読み込む（無いページの 404 を一瞬見せない）。一度読んだら src を変えず、iframe 内の移動を保つ
+    if (found && !$('frame').hasAttribute('src')) $('frame').src = '?raw';
+  }
 
   function disarm(a, btn) {
     btn.classList.remove('armed');
@@ -387,43 +1095,52 @@
 
   // 1 回目のクリックで確認状態にし、2 回目で削除する
   async function remove(a, btn) {
-    if (!btn.classList.contains('armed')) {
-      btn.classList.add('armed');
-      btn.querySelector('.label').textContent = `本当に${verb(a)}`;
+    if (arm(btn, `本当に${verb(a)}`)) {
       btn.setAttribute('aria-label', `${a.title} を本当に${verb(a)}`);
       return;
     }
-    let res;
-    try {
-      res = await api(`/api/artifacts/${a.slug}`, { method: 'DELETE' });
-    } catch (e) {
-      showError(`「${a.title}」を${verb(a)}できませんでした（${e.message}）。サーバーが止まっていれば ~/.agents/skills/artifact/artifacts.sh serve で起動してください。`);
+    const reason = await deleteOne(a.slug);
+    if (reason) {
+      showError(`「${a.title}」を${verb(a)}できませんでした（${reason}）。サーバーが止まっていれば ~/.agents/skills/artifact/artifacts.sh serve で起動してください。`);
       return;
     }
-    if (!res.ok && res.status !== 404) {
-      showError(`「${a.title}」を${verb(a)}できませんでした（HTTP ${res.status}）。`);
-      return;
-    }
+    selected.delete(a.slug);
     showError('');
-    items = items.filter((x) => x.slug !== a.slug);
-    render();
+    toast(`「${a.title}」を${verb(a)}しました`);
+    // 取り直して描いた内容を記録する。手元で消すだけだと、次の取り直しで描き直しが起き、別の行の確認状態が解ける
+    await load();
   }
 
+  // 最後に描いた一覧の応答。変わっていなければ描き直さず、確認状態の削除ボタンやフォーカスを保つ
+  let drawn = '';
+  let loadFailed = false;
+
   async function load() {
+    let text;
     try {
       const res = await api('/api/artifacts');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      items = await res.json();
-      showError('');
-      render();
+      text = await res.text();
+      if (text !== drawn) items = JSON.parse(text);
     } catch (e) {
+      loadFailed = true;
       showError(`一覧を読み込めませんでした（${e.message}）。サーバーが止まっていれば ~/.agents/skills/artifact/artifacts.sh serve で起動してください。`);
+      return;
     }
+    // 消すのは読み込みの失敗だけ。削除の失敗などは次の操作まで残す
+    if (loadFailed) {
+      loadFailed = false;
+      showError('');
+    }
+    if (text === drawn) return;
+    drawn = text;
+    if (framed) renderFrame();
+    else render();
   }
 
   async function add(e) {
     e.preventDefault();
-    const btn = $('add').querySelector('button');
+    const btn = $('add-submit');
     const error = $('add-error');
     btn.disabled = true;
     try {
@@ -434,8 +1151,11 @@
       });
       // サーバーは理由を 1 行のテキストで返す
       if (!res.ok) throw new Error(`${await res.text()}（HTTP ${res.status}）`);
-      error.hidden = true;
+      const { slug } = await res.json();
       $('add').reset();
+      $('add-dialog').close();
+      toast(`リンクを追加しました（/a/${slug}/）`);
+      page = 1;
       await load();
     } catch (err) {
       error.textContent = `追加できませんでした: ${err.message}`;
@@ -445,26 +1165,99 @@
     }
   }
 
-  $('add').addEventListener('submit', add);
-  for (const b of document.querySelectorAll('.tabs button')) b.addEventListener('click', () => setTab(b.dataset.tab));
-  $('q').addEventListener('input', render);
-  $('q').addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    $('q').value = '';
-    $('q').blur();
-    render();
-  });
-  $('clear').addEventListener('click', () => {
-    $('q').value = '';
-    setProject('');
-  });
-  // 入力中でなければ / で検索欄へ移る
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, [contenteditable]')) return;
-    e.preventDefault();
-    $('q').focus();
-  });
+  if (framed) {
+    document.body.classList.add('framed');
+    $('frame-download').href = `/api/artifacts/${framed}/download`;
+    $('frame-download').download = `${framed}.html`;
+    // 外枠にフォーカスがあるときだけ効く（iframe の中のキー操作はページのもの）
+    document.addEventListener('keydown', (e) => {
+      const link = { ArrowLeft: $('frame-prev'), ArrowRight: $('frame-next') }[e.key];
+      if (!link?.href || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      location.href = link.href;
+    });
+  } else {
+    $('manage').hidden = false;
+    $('q').value = readState(location.search).q;
+    $('add').addEventListener('submit', add);
+    $('add-open').addEventListener('click', () => {
+      $('add-error').hidden = true;
+      $('add-dialog').showModal();
+    });
+    $('edit').addEventListener('submit', saveEdit);
+    for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', () => b.closest('dialog').close());
+    // 背景（dialog 自身）のクリックで閉じる。中身は form が埋めるので、枠内のクリックはここに来ない
+    for (const d of document.querySelectorAll('dialog')) {
+      d.addEventListener('click', (e) => {
+        if (e.target === d) d.close();
+      });
+    }
+    $('fav').addEventListener('click', () => {
+      fav = !fav;
+      refilter();
+    });
+    $('sort').addEventListener('change', () => {
+      sort = $('sort').value;
+      refilter();
+    });
+    $('bulk-page').addEventListener('click', () => {
+      for (const sel of $('list').querySelectorAll('.sel')) sel.checked = true;
+      for (const li of $('list').children) selected.add(li.dataset.slug);
+      renderBulk();
+    });
+    $('bulk-clear').addEventListener('click', () => {
+      selected.clear();
+      for (const sel of $('list').querySelectorAll('.sel')) sel.checked = false;
+      renderBulk();
+    });
+    $('bulk-delete').addEventListener('click', removeSelected);
+    $('bulk-delete').addEventListener('blur', disarmBulk);
+    addEventListener('scroll', hidePreview, { passive: true });
+    setInterval(refreshTimes, 60000);
+    $('prev').addEventListener('click', () => goPage(page - 1));
+    $('next').addEventListener('click', () => goPage(page + 1));
+    for (const b of document.querySelectorAll('.tabs button')) b.addEventListener('click', () => setTab(b.dataset.tab));
+    $('q').addEventListener('input', refilter);
+    $('q').addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      $('q').value = '';
+      $('q').blur();
+      refilter();
+    });
+    $('clear').addEventListener('click', () => {
+      $('q').value = '';
+      setProject('');
+    });
+    // 文字入力中やモーダルを開いている間は効かせない。行の移動はタイトルのリンクにフォーカスを移すので、Enter はそのまま開く
+    const currentRow = () => [...$('list').children].find((li) => li.contains(document.activeElement));
+    const moveRow = (step) => {
+      const rows = [...$('list').children];
+      if (rows.length === 0) return;
+      const at = rows.indexOf(currentRow());
+      const next = at === -1 ? (step > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, at + step));
+      rows[next].querySelector('.title').focus();
+    };
+    const KEYS = {
+      '/': () => $('q').focus(),
+      ArrowDown: () => moveRow(1),
+      ArrowUp: () => moveRow(-1),
+      x: () => currentRow()?.querySelector('.sel').click(),
+      f: () => currentRow()?.querySelector('.star').click(),
+      ArrowLeft: () => !$('prev').disabled && goPage(page - 1),
+      ArrowRight: () => !$('next').disabled && goPage(page + 1),
+    };
+    document.addEventListener('keydown', (e) => {
+      const action = KEYS[e.key];
+      if (!action || e.ctrlKey || e.metaKey || e.altKey
+        || e.target.closest('input:not([type="checkbox"]), textarea, select, [contenteditable], dialog')) return;
+      e.preventDefault();
+      action();
+    });
+  }
+  for (const b of document.querySelectorAll('[data-theme-choice]')) b.addEventListener('click', () => setTheme(b.dataset.themeChoice));
+  setTheme(document.documentElement.dataset.theme ?? 'system');
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+  setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
   load();
 </script>
 </body>

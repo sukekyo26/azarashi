@@ -2,7 +2,8 @@
 // test/artifact-ui.mjs <chrome> <base-url> <scenario> [artifacts.mjs] — artifact skill の画面を
 // ヘッドレス Chrome で操作し、観測結果を | 区切りの 1 行で出す（run.sh が期待値と比べる）。
 //   manage: 管理画面。前提はストアに my-demo（Demo Page、新しい方）と untitled の 2 件だけがあること
-//   reload: ライブリロード。artifacts.mjs で live を公開し直す（ARTIFACTS_DIR / ARTIFACTS_PORT を引き継ぐ）
+//   extras: 並び替え・キーボード操作・まとめて削除・説明の編集・パスのコピー（一覧は差し替えるのでストアの中身は問わない）
+//   reload: ライブリロードと、ページの外枠。artifacts.mjs で live を公開し直す（ARTIFACTS_DIR / ARTIFACTS_PORT を引き継ぐ）
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,8 +11,8 @@ import { join } from 'node:path';
 
 const [chrome, base, scenario, art] = process.argv.slice(2);
 // Chrome を起動する前に確かめ、引数の取り違えを型エラーではなく使い方で知らせる
-if (!chrome || !base || !['manage', 'reload'].includes(scenario) || (scenario === 'reload' && !art)) {
-  console.error('usage: artifact-ui.mjs <chrome> <base-url> manage | reload <artifacts.mjs>');
+if (!chrome || !base || !['manage', 'extras', 'reload'].includes(scenario) || (scenario === 'reload' && !art)) {
+  console.error('usage: artifact-ui.mjs <chrome> <base-url> manage | extras | reload <artifacts.mjs>');
   process.exit(2);
 }
 const profile = mkdtempSync(join(tmpdir(), 'artifact-ui-'));
@@ -53,19 +54,23 @@ async function manage({ send, evaluate }) {
   const out = [];
   await send('Page.navigate', { url: `${base}/` });
   out.push(await until(titles, 'the list to render'));
-  out.push(await evaluate("(() => { const d = document.querySelector('#list li .download'); return `${d.getAttribute('href')} ${d.getAttribute('download')}`; })()"));
-  // a row's project tag filters by it and keeps the choice in the URL; the "すべて" chip clears it
+  out.push(await evaluate("(() => { const d = document.querySelector('#list li .download'); const o = document.querySelector('#list li .open'); return `${d.getAttribute('href')} ${d.getAttribute('download')} ${o.getAttribute('href')} ${o.target}`; })()"));
+  // a row's project tag filters by it and keeps the choice in the URL; the "全プロジェクト" chip clears it
   out.push(await evaluate(`(() => {
     const tag = document.querySelector('#list li .tag');
     tag.click();
-    const pressed = document.querySelector('.chip[aria-pressed="true"]').firstChild.textContent;
+    const pressed = document.querySelector('#chips .chip[aria-pressed="true"]').firstChild.textContent;
     return [document.querySelectorAll('#list li').length, pressed === tag.textContent,
       new URLSearchParams(location.search).get('project') === tag.textContent].join(' ');
   })()`));
-  await evaluate("document.querySelector('.chip').click()");
-  out.push(await evaluate("location.search === '' && document.querySelector('.chip').getAttribute('aria-pressed')"));
+  await evaluate("document.querySelector('#chips .chip').click()");
+  out.push(await evaluate("location.search === '' && document.querySelector('#chips .chip').getAttribute('aria-pressed')"));
   await filter('untitled');
   out.push(await rows());
+  // the search is kept in the URL and restored from it
+  out.push(await evaluate("new URLSearchParams(location.search).get('q')"));
+  await send('Page.navigate', { url: `${base}/?q=untitled` });
+  out.push(await until(() => evaluate("document.getElementById('q').value === 'untitled' && document.querySelectorAll('#list li').length"), 'the search restored from the URL'));
   await filter('');
   out.push(await clickDelete('untitled'));
   out.push(await rows());
@@ -86,6 +91,140 @@ async function manage({ send, evaluate }) {
   await clickDelete('Demo Page');
   out.push(await until(() => evaluate("!document.getElementById('empty').hidden"), 'the empty state'));
   out.push(await down());
+  // polling notices a lost server and turns the indicator back up once it answers again
+  await evaluate("window.fetch = () => Promise.reject(new TypeError('Failed to fetch'))");
+  out.push(await until(down, 'the indicator to go down'));
+  await evaluate('window.fetch = window.realFetch');
+  out.push(await until(async () => !(await down()), 'the indicator to come back up'));
+  // the add form opens in a modal from the links tab only, focused on the path, and cancel closes it
+  await evaluate("document.querySelector('.tabs [data-tab=links]').click()");
+  out.push(await evaluate(`(() => {
+    document.getElementById('add-open').click();
+    const shown = document.getElementById('add-dialog').open && document.activeElement.id;
+    document.getElementById('add-cancel').click();
+    return [shown, document.getElementById('add-dialog').open].join(' ');
+  })()`));
+  await evaluate("document.querySelector('.tabs [data-tab=pages]').click()");
+  out.push(await evaluate("document.getElementById('add-open').hidden"));
+  // paging over 25 rows (a stubbed list, so that polling keeps returning it): 10 a page by default,
+  // then the next page (kept in the URL), then 20 a page (remembered in the browser, back to page 1)
+  const pager = () => evaluate("[document.querySelectorAll('#list li').length, document.getElementById('pageno').textContent, document.getElementById('next').disabled].join(' ')");
+  await evaluate(`(() => {
+    const list = JSON.stringify(Array.from({ length: 25 }, (_, i) => ({ slug: \`p\${i}\`, title: \`P\${i}\`, description: '', updatedAt: '2026-01-01T00:00:00.000Z' })));
+    window.fetch = (url, init) => (url === '/api/artifacts' ? Promise.resolve(new Response(list)) : window.realFetch(url, init));
+    return load();
+  })()`);
+  out.push(await pager());
+  await evaluate("document.getElementById('next').click()");
+  out.push(await pager());
+  out.push(await evaluate("new URLSearchParams(location.search).get('page')"));
+  await evaluate("[...document.querySelectorAll('#sizes button')].find((b) => b.textContent === '20').click()");
+  out.push(`${await pager()} ${await evaluate("localStorage.getItem('artifacts.pageSize')")} ${await evaluate("location.search === ''")}`);
+  return out;
+}
+
+// 並び替え・キーボード操作・まとめて削除・モーダルでの説明の編集・パスのコピー。
+// 一覧と書き込みは差し替えた fetch で受け、送られた要求を calls に記録する
+async function extras({ send, evaluate }) {
+  await send('Page.navigate', { url: `${base}/` });
+  const ready = () => until(() => evaluate("document.readyState === 'complete' && typeof load === 'function'").catch(() => false), 'the page');
+  await ready();
+  const stub = `(() => {
+    window.calls = [];
+    const at = (d) => \`2026-01-0\${d}T00:00:00.000Z\`;
+    const list = JSON.stringify([
+      { slug: 'b', title: 'Beta', description: '', createdAt: at(3), updatedAt: at(9) },
+      { slug: 'a', title: 'Alpha', description: 'old', createdAt: at(1), updatedAt: at(8) },
+      { slug: 'c', title: 'Gamma', description: '', createdAt: at(5), updatedAt: at(7), favorite: true },
+      { slug: 'l', title: 'Linked', description: '', path: '/tmp/x/l.html', createdAt: at(1), updatedAt: at(1) },
+      { slug: 'm', title: 'Missing', description: '', path: '/tmp/x/m.html', missing: true, createdAt: at(1), updatedAt: at(1) },
+    ]);
+    window.fetch = (url, init = {}) => {
+      if (!init.method) return Promise.resolve(new Response(list));
+      calls.push([init.method, url, init.body].filter(Boolean).join(' '));
+      return Promise.resolve(new Response(null, { status: 204 }));
+    };
+    navigator.clipboard.writeText = (text) => {
+      calls.push(\`copy \${text}\`);
+      return Promise.resolve();
+    };
+    return load();
+  })()`;
+  await evaluate(stub);
+  const titles = () => evaluate("[...document.querySelectorAll('#list .title')].map((a) => a.textContent).join(',')");
+  const sortBy = (v) => evaluate(`(() => {
+    const s = document.getElementById('sort');
+    s.value = '${v}';
+    s.dispatchEvent(new Event('change'));
+  })()`);
+  const key = (k) => evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '${k}', bubbles: true }))`);
+  const out = [];
+  out.push(await titles());
+  await sortBy('created');
+  out.push(`${await titles()} ${await evaluate("new URLSearchParams(location.search).get('sort')")}`);
+  await sortBy('title');
+  out.push(await titles());
+  // the ★ chip narrows to favourites (kept in the URL); a row's star sends the change
+  await evaluate("document.getElementById('fav').click()");
+  out.push(`${await titles()} ${await evaluate("new URLSearchParams(location.search).get('fav')")}`);
+  await evaluate("document.getElementById('fav').click()");
+  await evaluate("document.querySelector('#list li .star').click()");
+  out.push(await until(() => evaluate("calls.splice(0).join(',')"), 'the favourite'));
+  // the time's tooltip has both the creation and the update
+  out.push(await evaluate("document.querySelector('#list li time').title.split('\\n').map((l) => l.split(' ')[0]).join(' ')"));
+  // ↓ moves through the rows by focusing their titles, x selects the focused row
+  await key('ArrowDown');
+  await key('ArrowDown');
+  out.push(await evaluate('document.activeElement.textContent'));
+  await key('x');
+  out.push(await evaluate("document.getElementById('bulk-count').textContent"));
+  // with Alpha selected too by a real mouse click (nothing may sit on top of the checkbox),
+  // the first click arms and the second deletes both
+  const { x, y } = JSON.parse(await evaluate("(() => { const r = document.querySelector('#list li .sel').getBoundingClientRect(); return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 }); })()"));
+  for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  out.push(await until(() => evaluate("document.querySelector('#list li .sel').checked && document.getElementById('bulk-count').textContent"), 'the mouse click to select'));
+  await evaluate("document.getElementById('bulk-delete').click()");
+  out.push(await evaluate("document.getElementById('bulk-delete').textContent"));
+  await evaluate("document.getElementById('bulk-delete').click()");
+  await until(() => evaluate("document.getElementById('bulk').hidden"), 'the selection to clear');
+  out.push(await evaluate("calls.splice(0).sort().join(',')"));
+  // resting the mouse on a row shows a small preview of the page alone; leaving the row hides it
+  const center = (sel) => evaluate(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 }); })()`).then(JSON.parse);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...(await center('#list li .title')) });
+  out.push(await until(() => evaluate("!document.getElementById('preview').hidden && document.querySelector('#preview iframe').getAttribute('src')"), 'the preview'));
+  // redrawing the list (a delete, paging, a change elsewhere) removes the hovered row, so the preview closes too
+  out.push(await evaluate("render(); document.getElementById('preview').hidden"));
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+  out.push(await until(() => evaluate("document.getElementById('preview').hidden"), 'the preview to hide'));
+  // the pencil opens a modal with the current description; saving sends the new one
+  await evaluate("document.querySelector('#list li .edit').click()");
+  out.push(await evaluate("[document.getElementById('edit-dialog').open, document.getElementById('edit-desc').value].join(' ')"));
+  await evaluate("document.getElementById('edit-desc').value = 'new'; document.getElementById('edit').requestSubmit()");
+  await until(() => evaluate("!document.getElementById('edit-dialog').open"), 'the edit modal to close');
+  out.push(await evaluate("calls.splice(0).join(',')"));
+  out.push(await evaluate("document.getElementById('toasts').textContent.includes('保存しました')"));
+  // only linked files have a copy button for their path
+  out.push(await evaluate("document.querySelector('#list li .copy').hidden"));
+  await evaluate("document.querySelector('.tabs [data-tab=links]').click()");
+  await evaluate("document.querySelector('#list li .copy').click()");
+  out.push(await until(() => evaluate("calls.join(',')"), 'the copy'));
+  out.push(await evaluate("document.getElementById('toasts').textContent.includes('パスをコピーしました')"));
+  // a link whose file is gone has no href, but ↓ still reaches it
+  await evaluate('document.activeElement.blur()');
+  await key('ArrowDown');
+  await key('ArrowDown');
+  out.push(await evaluate('document.activeElement.textContent'));
+  // the theme switch overrides the OS setting and is remembered; "OS に合わせる" drops the override
+  await evaluate("document.querySelector('[data-theme-choice=dark]').click()");
+  out.push(await evaluate("[document.documentElement.dataset.theme, getComputedStyle(document.body).backgroundColor, localStorage.getItem('artifacts.theme')].join(' ')"));
+  await evaluate("document.querySelector('[data-theme-choice=system]').click()");
+  out.push(await evaluate("String(document.documentElement.dataset.theme)"));
+  // a page opened from the list steps to its neighbours in that list's order, and the logo returns to that list
+  await evaluate("sessionStorage.setItem('artifacts.list', '?sort=title')");
+  await send('Page.navigate', { url: `${base}/a/b/` });
+  await ready();
+  await evaluate(stub);
+  out.push(await until(() => evaluate("document.getElementById('frame-pos').textContent && ['frame-prev', 'frame-next'].map((id) => document.getElementById(id).getAttribute('href')).concat(document.getElementById('frame-pos').textContent, document.querySelector('.brand').getAttribute('href')).join(' ')"), 'the neighbours'));
   return out;
 }
 
@@ -101,10 +240,17 @@ async function reload({ send, evaluate }) {
   try {
     const out = [];
     publish('1');
-    await send('Page.navigate', { url: `${base}/a/live/` });
+    await send('Page.navigate', { url: `${base}/a/live/?raw` });
     out.push(await until(shown('1'), 'the first version') && '1');
     publish('2');
     out.push(await until(shown('2'), 'the page to reload') && '2');
+    // the page URL itself is the frame: the tab is named after the page and the iframe loads ?raw
+    await send('Page.navigate', { url: `${base}/a/live/` });
+    out.push(await until(() => evaluate("document.title.startsWith('Live') && document.title"), 'the frame title'));
+    out.push(await evaluate("new URL(document.getElementById('frame').src).search === '?raw'"));
+    // an unknown page shows the way back instead of the frame
+    await send('Page.navigate', { url: `${base}/a/no-such/` });
+    out.push(await until(() => evaluate("!document.getElementById('notfound').hidden && document.getElementById('frame').hidden && !document.getElementById('frame').hasAttribute('src')"), 'the not-found state'));
     return out;
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -152,7 +298,7 @@ try {
     return result.result.value;
   };
 
-  const scenarios = { manage, reload };
+  const scenarios = { manage, extras, reload };
   console.log((await scenarios[scenario]({ send, evaluate })).join('|'));
 } catch (e) {
   console.error(`artifact-ui: ${e.message}`);

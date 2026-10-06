@@ -273,11 +273,15 @@ function prepare(file, opts, cwd) {
   };
 }
 
+function writeMeta(slug, meta) {
+  writeAtomic(join(ROOT, slug, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
+}
+
 function save({ slug, meta, page }) {
   const dir = join(ROOT, slug);
   mkdirSync(dir, { recursive: true });
   if (page !== null) writeAtomic(join(dir, 'index.html'), page);
-  writeAtomic(join(dir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
+  writeMeta(slug, meta);
 }
 
 async function publish(file, opts) {
@@ -314,24 +318,6 @@ function openBrowser(url) {
 function remove(slug) {
   if (!SLUG_RE.test(slug) || !readMeta(slug)) fail(`no artifact "${slug}" (see: artifacts.mjs list)`);
   rmSync(join(ROOT, slug), { recursive: true, force: true });
-}
-
-// 管理画面へ戻るリンク。保存した HTML は変えず、配信時に <body> の直後へ差し込む。
-// <body> を省いた文書では </head> か doctype の直後に入れる（doctype より前に置くと quirks mode になる）。
-// 既定の見た目は詳細度 0 の :where() で付け、ページ側（雛形を含む）の CSS が上書きできるようにする。
-const HOME_LINK = '<style>:where(.artifact-home){display:block;margin:0 0 1rem;font:0.85rem/1.6 system-ui,sans-serif}'
-  + ':where(.artifact-home a){color:inherit;opacity:.7;text-decoration:none}'
-  + ':where(.artifact-home a:hover){opacity:1;text-decoration:underline}</style>'
-  + '<nav class="artifact-home"><a href="/">← Home</a></nav>';
-
-function withHomeLink(page) {
-  // 配信後の HTML をブラウザで保存して公開し直したページなど、既に持っていれば足さない
-  // 属性の順序・引用符・空白や他のクラスが違っても、class に artifact-home を持つ <nav> なら既にあるとみなす
-  if (/<nav\b[^>]*\sclass\s*=\s*["']?(?:[^"'>]*\s)?artifact-home(?=[\s"'>])/i.test(page)) return page;
-  const anchor = page.match(/<body\b[^>]*>/i) ?? page.match(/<\/head\s*>/i) ?? page.match(/<!doctype\b[^>]*>/i);
-  if (!anchor) return HOME_LINK + page;
-  const at = anchor.index + anchor[0].length;
-  return page.slice(0, at) + HOME_LINK + page.slice(at);
 }
 
 // リンクのディレクトリから資材として返すファイルの型。登録ファイル自身は拡張子によらず HTML として返す
@@ -377,7 +363,7 @@ function servePage(res, slug, rest) {
   let page = body.toString('utf8');
   // 保存したページは公開時に包んである。リンクはファイルが変わり続けるので配信時に包む
   if (isLink(meta)) page = wrapFragment(page, (!rest && meta.title) || titleOf(page) || slug);
-  return send(res, 200, withReloader(withHomeLink(page), slug, rest, version), headers);
+  return send(res, 200, withReloader(page, slug, rest, version), headers);
 }
 
 function send(res, status, body, headers = {}) {
@@ -415,24 +401,39 @@ function watch(req, res, slug, rest, since) {
   }
 }
 
-// 管理画面からのリンク登録。他サイトや sandbox 内のページからは、Origin の確認と JSON 必須（CORS の preflight が要る）で拒否する。
-// LIMIT: 127.0.0.1 は同じマシンの全ユーザーに開いており、Origin を偽れば誰でも登録できる。共有マシンでは動かさない
-async function addLink(req, res) {
-  if (!ORIGINS.has(req.headers.origin)) return send(res, 403, 'forbidden origin');
-  if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return send(res, 415, 'send application/json');
+// 管理画面からの書き込み（リンクの登録・説明の編集）の本文を読む。他サイトや sandbox 内のページからは、
+// Origin の確認と JSON 必須（CORS の preflight が要る）で拒否する。拒否したら応答を返して undefined を返す。
+// LIMIT: 127.0.0.1 は同じマシンの全ユーザーに開いており、Origin を偽れば誰でも書き込める。共有マシンでは動かさない
+async function readJson(req, res) {
+  const reject = (status, msg) => {
+    send(res, status, msg);
+    return undefined;
+  };
+  if (!ORIGINS.has(req.headers.origin)) return reject(403, 'forbidden origin');
+  if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return reject(415, 'send application/json');
   let body = '';
   for await (const chunk of req) {
     body += chunk;
-    if (body.length > 65536) return send(res, 413, 'request body too large');
+    if (body.length > 65536) return reject(413, 'request body too large');
   }
   let input;
   try {
     input = JSON.parse(body);
   } catch {
-    return send(res, 400, '送られた内容を読めませんでした（JSON ではありません）');
+    return reject(400, '送られた内容を読めませんでした（JSON ではありません）');
   }
+  // オブジェクト以外（数値・文字列・配列・null）は送り間違い。何も変えない成功にせず断る
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return reject(400, '送られた内容を読めませんでした（JSON のオブジェクトで送ってください）');
+  }
+  return input;
+}
+
+async function addLink(req, res) {
+  const input = await readJson(req, res);
+  if (input === undefined) return;
   const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
-  const path = text(input?.path);
+  const path = text(input.path);
   if (!path || !isAbsolute(path)) return send(res, 400, 'HTML ファイルの絶対パス（/ で始まるパス）を入力してください');
   let entry;
   try {
@@ -449,6 +450,43 @@ async function addLink(req, res) {
   }
   save(entry);
   return send(res, entry.created ? 201 : 200, JSON.stringify({ slug: entry.slug }), { 'content-type': 'application/json' });
+}
+
+// 管理画面からの編集。送られた項目（タイトル・説明・プロジェクト・URL 名・お気に入り）だけを書き換える。
+// 版（updatedAt）は変えないので、並び順も開いているタブの再読み込みも動かない
+async function editArtifact(req, res, slug) {
+  const input = await readJson(req, res);
+  if (input === undefined) return;
+  const meta = readMeta(slug);
+  if (!meta) return send(res, 404, 'not found');
+  const has = (k) => Object.hasOwn(input, k);
+  if (['title', 'description', 'project', 'slug'].some((k) => has(k) && typeof input[k] !== 'string')) {
+    return send(res, 400, 'タイトル・説明・プロジェクト・URL 名は文字列で送ってください');
+  }
+  if (has('favorite') && typeof input.favorite !== 'boolean') return send(res, 400, 'お気に入りは true か false で送ってください');
+  const next = { ...meta };
+  if (has('description')) next.description = input.description.trim();
+  // 外したときは記録から消す
+  if (has('favorite')) next.favorite = input.favorite || undefined;
+  // 空にしたタイトルは、リンクならファイルから取り直し、保存したページなら HTML の <title> か slug に戻す
+  if (has('title')) {
+    next.title = input.title.trim()
+      || (isLink(meta) ? undefined : titleOf(readText(join(ROOT, slug, 'index.html')) ?? '') || slug);
+  }
+  // 空にしたプロジェクトは記録しない（「記録なし」に入る）。/ は管理画面で「記録なし」を表す値なので使えない
+  if (has('project')) {
+    if (input.project.trim() === '/') return send(res, 400, 'プロジェクト名に / だけは使えません');
+    next.project = input.project.trim() || undefined;
+  }
+  const to = has('slug') ? input.slug.trim() : slug;
+  if (!SLUG_RE.test(to)) return send(res, 400, `URL 名「${to}」は使えません。英小文字・数字・ハイフンで入力してください`);
+  if (to !== slug && existsSync(join(ROOT, to))) {
+    return send(res, 409, `URL 名「${to}」は使われています。別の URL 名を入力してください`);
+  }
+  writeMeta(slug, next);
+  // URL 名の変更はディレクトリの名前を変えるだけ。古い URL を開いているタブは「見つかりません」になる
+  if (to !== slug) renameSync(join(ROOT, slug), join(ROOT, to));
+  return send(res, 200, JSON.stringify({ slug: to }), { 'content-type': 'application/json' });
 }
 
 async function handle(req, res, ui) {
@@ -484,6 +522,9 @@ async function handle(req, res, ui) {
     return send(res, 200, page, { ...html, 'content-disposition': `attachment; filename="${m[1]}.html"` });
   }
   if (req.method === 'POST' && pathname === '/api/artifacts') return addLink(req, res);
+  if (req.method === 'PATCH' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)$/)) && SLUG_RE.test(m[1])) {
+    return editArtifact(req, res, m[1]);
+  }
   if (req.method === 'DELETE' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)$/))) {
     // 他サイトのページや sandbox 内のページ（Origin: null）からの削除を拒否する
     if (!ORIGINS.has(req.headers.origin)) return send(res, 403, 'forbidden origin');
@@ -498,6 +539,12 @@ async function handle(req, res, ui) {
   }
   if (req.method === 'GET' && (m = pathname.match(/^\/a\/([^/]+)(?:(\/)(.*))?$/)) && SLUG_RE.test(m[1])) {
     if (!m[2]) return send(res, 301, '', { location: `/a/${m[1]}/` });
+    // ページの URL は管理画面と同じ見出しの外枠を返し、本体は外枠の iframe が ?raw で読む。ページの HTML には何も足さない。
+    // 無いページも外枠を 404 で返し、画面で「見つかりません」と一覧への戻り口を出す
+    if (!m[3] && !searchParams.has('raw')) {
+      const meta = readMeta(m[1]);
+      return send(res, meta && resolveFile(meta, m[1], '') ? 200 : 404, ui, html);
+    }
     return servePage(res, m[1], m[3]);
   }
   return send(res, 404, 'not found');
