@@ -254,7 +254,8 @@ async function reload({ send, evaluate }) {
     writeFileSync(join(dir, 'perm.html'), "<title>Perm</title><script>const policy = document.permissionsPolicy ?? document.featurePolicy; setInterval(() => parent.postMessage(policy ? ['clipboard-write', 'fullscreen'].map((f) => policy.allowsFeature(f)).join() : 'no policy API', '*'), 100)</script>");
     execFileSync(process.execPath, [art, 'publish', join(dir, 'perm.html'), '--slug', 'perm'], { stdio: 'ignore' });
     await send('Page.navigate', { url: `${base}/a/perm/` });
-    out.push(await until(() => evaluate("new Promise((r) => { addEventListener('message', (e) => r(e.data), { once: true }); setTimeout(() => r(null), 500); })"), 'the page permissions'));
+    // one listener per document keeps the last report; until() polls it at its usual pace
+    out.push(await until(() => evaluate("(window.listening ||= (addEventListener('message', (e) => { window.reported = e.data; }), true)) && window.reported"), 'the page permissions'));
     execFileSync(process.execPath, [art, 'rm', 'perm'], { stdio: 'ignore' });
     // an unknown page shows the way back instead of the frame
     await send('Page.navigate', { url: `${base}/a/no-such/` });
