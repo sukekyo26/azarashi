@@ -1089,40 +1089,16 @@ RECORDER
     sh -c "head -1 '$ART_TMP/store/untitled/index.html' | grep -qi '^<!doctype html>' &&
       grep -q 'content=\"local-artifacts template\"' '$ART_TMP/store/untitled/index.html' &&
       grep -q '<p>untitled</p>' '$ART_TMP/store/untitled/index.html'"
-  # every served page gets one Home link right after <body>;
-  # it is added when serving, so the stored file is untouched
-  assert_eq "artifact: a templated page gets exactly one Home link, right after <body>" \
-    "$(curl -s "$ART_URL/a/untitled/" | grep -cF '<body><style>:where(.artifact-home)')|$(curl -s "$ART_URL/a/untitled/" | grep -oF 'class="artifact-home"' | wc -l | tr -d ' ')" "1|1"
-  printf '<!doctype html><html><body class="x"><p>b</p></body></html>\n' >"$ART_TMP/with-body.html"
-  art publish "$ART_TMP/with-body.html" >/dev/null
-  expect_true "artifact: a whole document gets the Home link right after its own <body>" \
-    sh -c "curl -s '$ART_URL/a/with-body/' | grep -qF '<body class=\"x\"><style>:where(.artifact-home)'"
-  art rm with-body
-  # without a <body> tag: after </head>, else after the doctype (before it would mean quirks mode)
-  printf '<!doctype html><html><head><title>h</title></head><p>h</p>\n' >"$ART_TMP/no-body-head.html"
-  printf '<!doctype html><title>d</title><p>d</p>\n' >"$ART_TMP/no-body-doctype.html"
-  art publish "$ART_TMP/no-body-head.html" >/dev/null
-  art publish "$ART_TMP/no-body-doctype.html" >/dev/null
-  expect_true "artifact: a document without <body> gets the Home link after </head>" \
-    sh -c "curl -s '$ART_URL/a/no-body-head/' | grep -qF '</head><style>:where(.artifact-home)'"
-  expect_true "artifact: a document with only a doctype keeps it first, the Home link right after" \
-    sh -c "curl -s '$ART_URL/a/no-body-doctype/' | grep -qF '<!doctype html><style>:where(.artifact-home)'"
-  art rm no-body-head no-body-doctype
-  expect_true "artifact: a document without a <body> tag gets the Home link first" \
-    sh -c "curl -s '$ART_URL/a/my-demo/' | head -c 30 | grep -qF '<style>:where(.artifact-home)'"
-  expect_false "artifact: the Home link is not written into the stored page" \
-    grep -qF 'class="artifact-home"' "$ART_TMP/store/my-demo/index.html" "$ART_TMP/store/untitled/index.html"
-  # a served page saved from the browser and published again keeps a single Home link
-  curl -s "$ART_URL/a/my-demo/" >"$ART_TMP/resaved.html"
-  art publish "$ART_TMP/resaved.html" >/dev/null
-  assert_eq "artifact: a page that already has the Home link does not get a second one" \
-    "$(curl -s "$ART_URL/a/resaved/" | grep -oF 'class="artifact-home"' | wc -l | tr -d ' ')" 1
-  # ... even after reformatting (attribute order, quotes, extra classes)
-  printf "<!doctype html><body><nav id=\"h\"  class='top artifact-home'><a href=\"/\">Home</a></nav><p>r</p></body>\n" >"$ART_TMP/reformatted.html"
-  art publish "$ART_TMP/reformatted.html" >/dev/null
-  assert_eq "artifact: a reformatted Home nav still counts as the Home link" \
-    "$(curl -s "$ART_URL/a/reformatted/" | grep -o 'artifact-home' | wc -l | tr -d ' ')" 1
-  art rm resaved reformatted
+  # the page URL returns the management page as a frame with a header; the page itself comes from ?raw,
+  # unchanged except for the live-reload script appended at the end
+  expect_true "artifact: the page URL returns the frame, not sandboxed so that it can call the API" \
+    sh -c "curl -s '$ART_URL/a/untitled/' | grep -q '<title>Artifacts</title>' &&
+      ! curl -s -D - -o /dev/null '$ART_URL/a/untitled/' | grep -qi '^content-security-policy'"
+  curl -s "$ART_URL/a/untitled/?raw" >"$ART_TMP/raw.html"
+  expect_true "artifact: ?raw serves the stored page as is, followed only by the reload script" \
+    node -e 'const fs = require("node:fs"); const [raw, stored] = process.argv.slice(1).map((f) => fs.readFileSync(f, "utf8"));
+      process.exit(raw.startsWith(stored) && raw.slice(stored.length).startsWith("\n<script>{const es = new EventSource(") ? 0 : 1)' \
+    "$ART_TMP/raw.html" "$ART_TMP/store/untitled/index.html"
   expect_false "artifact: a page with its own <title> is stored as is" \
     grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
   printf '  <h1>A &amp; <em>B</em></h1>\n<p>keeps %s</p>\n\n' "\$& and \$1" >"$ART_TMP/frag.html"
@@ -1154,7 +1130,7 @@ RECORDER
   assert_eq "artifact: a page URL without the trailing slash redirects, an unknown slug is 404" \
     "$(http_code "$ART_URL/a/my-demo") $(http_code "$ART_URL/a/no-such/")" "301 404"
   expect_true "artifact: the page is served in a sandbox" \
-    sh -c "curl -s -D - -o /dev/null '$ART_URL/a/my-demo/' | grep -qi '^content-security-policy: sandbox'"
+    sh -c "curl -s -D - -o /dev/null '$ART_URL/a/my-demo/?raw' | grep -qi '^content-security-policy: sandbox'"
   # download: the stored file as is, as an attachment named after the slug
   curl -s -D "$ART_TMP/dl.headers" -o "$ART_TMP/dl.html" "$ART_URL/api/artifacts/my-demo/download"
   expect_true "artifact: download returns the stored page unchanged" cmp -s "$ART_TMP/dl.html" "$ART_TMP/store/my-demo/index.html"
@@ -1170,7 +1146,7 @@ RECORDER
   ART_NOW=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
   ART_SINCE=$(node -p 'encodeURIComponent(process.argv[1])' "$ART_NOW")
   expect_true "artifact: a served page subscribes to reloads with its own version" \
-    sh -c "curl -s '$ART_URL/a/my-demo/' | grep -qF 'new EventSource(\"/api/events/my-demo?since=$ART_SINCE\")'"
+    sh -c "curl -s '$ART_URL/a/my-demo/?raw' | grep -qF 'new EventSource(\"/api/events/my-demo?since=$ART_SINCE\")'"
   ART_SSE=$(curl -s -D - -N --max-time 3 "$ART_URL/api/events/my-demo?since=stale")
   assert_eq "artifact: a stale version gets a bare reload event, with CORS only for the sandboxed page (null)" \
     "$(printf '%s' "$ART_SSE" | grep -ciE '^(access-control-allow-origin: null|event: reload|data: changed)')" 3
@@ -1209,11 +1185,11 @@ RECORDER
     "$(art list | grep -F "$ART_TMP/site" | cut -f2-)" "$(printf 'site\tLinked v1\t%s' "$ART_TMP/site/index.html")"
   printf '<h1>Linked v2</h1>\n' >"$ART_TMP/site/index.html"
   expect_true "artifact: a linked file is read on every request and wrapped in the template when body-only" \
-    sh -c "curl -s '$ART_LINK/' | grep -q 'local-artifacts template' && curl -s '$ART_LINK/' | grep -qF '<title>Linked v2</title>'"
+    sh -c "curl -s '$ART_LINK/?raw' | grep -q 'local-artifacts template' && curl -s '$ART_LINK/?raw' | grep -qF '<title>Linked v2</title>'"
   assert_eq "artifact: a linked file's relative references are served with their type, sandboxed and nosniff" \
     "$(curl -s -D - -o /dev/null "$ART_LINK/s.css" | grep -ciE '^(content-type: text/css|content-security-policy: sandbox|x-content-type-options: nosniff)')" 3
-  expect_true "artifact: an HTML page under a linked directory gets the Home link and watches its own file" \
-    sh -c "curl -s '$ART_LINK/sub/p.html' | grep -qF '<style>:where(.artifact-home)' &&
+  expect_true "artifact: an HTML page under a linked directory is served without the frame and watches its own file" \
+    sh -c "curl -s '$ART_LINK/sub/p.html' | grep -qF '<title>Sub</title>' &&
       curl -s '$ART_LINK/sub/p.html' | grep -qF 'new EventSource(\"/api/events/site/sub/p.html?since='"
   # an encoded slash must not hide a dot element inside one segment (sub%2F.git)
   assert_eq "artifact: dot paths (also behind an encoded slash), .., escaping symlinks, directories and a stored page's subpaths are 404" \
@@ -1224,7 +1200,7 @@ RECORDER
   mkfifo "$ART_TMP/site/pipe.txt" "$ART_TMP/site/pipe.html"
   assert_eq "artifact: a FIFO under a linked directory is 404 and does not block the server" \
     "$(http_code -m 3 "$ART_LINK/pipe.txt") $(http_code -m 3 "$ART_URL/api/health")" "404 200"
-  ART_MTIME=$(curl -s "$ART_LINK/" | grep -o 'since=[^"]*' | cut -d= -f2)
+  ART_MTIME=$(curl -s "$ART_LINK/?raw" | grep -o 'since=[^"]*' | cut -d= -f2)
   curl -s -N --max-time 4 "$ART_URL/api/events/site?since=$ART_MTIME" >"$ART_TMP/sse-link.out" &
   sleep 0.3
   printf '<h1>Linked v3</h1>\n' >"$ART_TMP/site/index.html"
@@ -1315,17 +1291,19 @@ RECORDER
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
     # the page shows version 1, then version 2 once republished, without a manual reload
-    assert_eq "artifact: an open page reloads itself when republished" \
-      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2"
+    assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in the frame" \
+      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true"
     art rm live
     # newest-first list | first row's download link | rows, pressed chip and URL after clicking a project tag |
     # "すべて" chip clears the URL and is pressed | filtered rows | first click only arms | row still there |
     # rows after the second click | store after it | error shown when DELETE cannot
     # reach the server | row kept | server indicator down | empty state once all are gone | indicator up again
+    # | add modal open with the path focused, closed by cancel | add button hidden on the pages tab |
+    # 25 rows paged: default 20 a page, page 2, then 10 a page remembered
     art publish "$ART_TMP/My Demo.html" >/dev/null
-    assert_eq "artifact: the management page lists, filters by text and project, and deletes with a confirming second click" \
+    assert_eq "artifact: the management page lists, filters, deletes with a confirming second click, adds links in a modal and pages" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" manage)" \
-      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html|2 true true|true|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false"
+      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html|2 true true|true|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false|add-path false|true|20 1 / 2 false|5 2 / 2 true|10 1 / 3 false 10"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
     printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'

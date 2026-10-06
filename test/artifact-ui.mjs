@@ -2,7 +2,7 @@
 // test/artifact-ui.mjs <chrome> <base-url> <scenario> [artifacts.mjs] — artifact skill の画面を
 // ヘッドレス Chrome で操作し、観測結果を | 区切りの 1 行で出す（run.sh が期待値と比べる）。
 //   manage: 管理画面。前提はストアに my-demo（Demo Page、新しい方）と untitled の 2 件だけがあること
-//   reload: ライブリロード。artifacts.mjs で live を公開し直す（ARTIFACTS_DIR / ARTIFACTS_PORT を引き継ぐ）
+//   reload: ライブリロードと、ページの外枠。artifacts.mjs で live を公開し直す（ARTIFACTS_DIR / ARTIFACTS_PORT を引き継ぐ）
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -86,6 +86,24 @@ async function manage({ send, evaluate }) {
   await clickDelete('Demo Page');
   out.push(await until(() => evaluate("!document.getElementById('empty').hidden"), 'the empty state'));
   out.push(await down());
+  // the add form opens in a modal from the links tab only, focused on the path, and cancel closes it
+  await evaluate("document.querySelector('.tabs [data-tab=links]').click()");
+  out.push(await evaluate(`(() => {
+    document.getElementById('add-open').click();
+    const shown = document.getElementById('add-dialog').open && document.activeElement.id;
+    document.getElementById('add-cancel').click();
+    return [shown, document.getElementById('add-dialog').open].join(' ');
+  })()`));
+  await evaluate("document.querySelector('.tabs [data-tab=pages]').click()");
+  out.push(await evaluate("document.getElementById('add-open').hidden"));
+  // paging over 25 rows: 20 a page by default, then the next page, then 10 a page (remembered in the browser)
+  const pager = () => evaluate("[document.querySelectorAll('#list li').length, document.getElementById('pageno').textContent, document.getElementById('next').disabled].join(' ')");
+  await evaluate("items = Array.from({ length: 25 }, (_, i) => ({ slug: `p${i}`, title: `P${i}`, description: '', updatedAt: new Date().toISOString() })); render()");
+  out.push(await pager());
+  await evaluate("document.getElementById('next').click()");
+  out.push(await pager());
+  await evaluate("[...document.querySelectorAll('#sizes button')].find((b) => b.textContent === '10').click()");
+  out.push(`${await pager()} ${await evaluate("localStorage.getItem('artifacts.pageSize')")}`);
   return out;
 }
 
@@ -101,10 +119,14 @@ async function reload({ send, evaluate }) {
   try {
     const out = [];
     publish('1');
-    await send('Page.navigate', { url: `${base}/a/live/` });
+    await send('Page.navigate', { url: `${base}/a/live/?raw` });
     out.push(await until(shown('1'), 'the first version') && '1');
     publish('2');
     out.push(await until(shown('2'), 'the page to reload') && '2');
+    // the page URL itself is the frame: the header shows the page's title and the iframe loads ?raw
+    await send('Page.navigate', { url: `${base}/a/live/` });
+    out.push(await until(() => evaluate("document.getElementById('page-title').textContent === 'Live' && document.title"), 'the frame header'));
+    out.push(await evaluate("new URL(document.getElementById('frame').src).search === '?raw'"));
     return out;
   } finally {
     rmSync(dir, { recursive: true, force: true });

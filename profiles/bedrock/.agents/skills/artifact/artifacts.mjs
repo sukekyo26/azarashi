@@ -316,24 +316,6 @@ function remove(slug) {
   rmSync(join(ROOT, slug), { recursive: true, force: true });
 }
 
-// 管理画面へ戻るリンク。保存した HTML は変えず、配信時に <body> の直後へ差し込む。
-// <body> を省いた文書では </head> か doctype の直後に入れる（doctype より前に置くと quirks mode になる）。
-// 既定の見た目は詳細度 0 の :where() で付け、ページ側（雛形を含む）の CSS が上書きできるようにする。
-const HOME_LINK = '<style>:where(.artifact-home){display:block;margin:0 0 1rem;font:0.85rem/1.6 system-ui,sans-serif}'
-  + ':where(.artifact-home a){color:inherit;opacity:.7;text-decoration:none}'
-  + ':where(.artifact-home a:hover){opacity:1;text-decoration:underline}</style>'
-  + '<nav class="artifact-home"><a href="/">← Home</a></nav>';
-
-function withHomeLink(page) {
-  // 配信後の HTML をブラウザで保存して公開し直したページなど、既に持っていれば足さない
-  // 属性の順序・引用符・空白や他のクラスが違っても、class に artifact-home を持つ <nav> なら既にあるとみなす
-  if (/<nav\b[^>]*\sclass\s*=\s*["']?(?:[^"'>]*\s)?artifact-home(?=[\s"'>])/i.test(page)) return page;
-  const anchor = page.match(/<body\b[^>]*>/i) ?? page.match(/<\/head\s*>/i) ?? page.match(/<!doctype\b[^>]*>/i);
-  if (!anchor) return HOME_LINK + page;
-  const at = anchor.index + anchor[0].length;
-  return page.slice(0, at) + HOME_LINK + page.slice(at);
-}
-
 // リンクのディレクトリから資材として返すファイルの型。登録ファイル自身は拡張子によらず HTML として返す
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -377,7 +359,7 @@ function servePage(res, slug, rest) {
   let page = body.toString('utf8');
   // 保存したページは公開時に包んである。リンクはファイルが変わり続けるので配信時に包む
   if (isLink(meta)) page = wrapFragment(page, (!rest && meta.title) || titleOf(page) || slug);
-  return send(res, 200, withReloader(withHomeLink(page), slug, rest, version), headers);
+  return send(res, 200, withReloader(page, slug, rest, version), headers);
 }
 
 function send(res, status, body, headers = {}) {
@@ -498,6 +480,11 @@ async function handle(req, res, ui) {
   }
   if (req.method === 'GET' && (m = pathname.match(/^\/a\/([^/]+)(?:(\/)(.*))?$/)) && SLUG_RE.test(m[1])) {
     if (!m[2]) return send(res, 301, '', { location: `/a/${m[1]}/` });
+    // ページの URL は管理画面と同じ見出しの外枠を返し、本体は外枠の iframe が ?raw で読む。ページの HTML には何も足さない
+    if (!m[3] && !searchParams.has('raw')) {
+      const meta = readMeta(m[1]);
+      return meta && resolveFile(meta, m[1], '') ? send(res, 200, ui, html) : send(res, 404, 'not found');
+    }
     return servePage(res, m[1], m[3]);
   }
   return send(res, 404, 'not found');
