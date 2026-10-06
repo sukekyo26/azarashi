@@ -467,7 +467,8 @@
     <button type="button" class="btn danger" id="bulk-delete"></button>
   </div>
 </main>
-<iframe class="frame" id="frame" hidden></iframe>
+<!-- ページ内のコピーや全画面のボタンを動かす。ページは sandbox で opaque origin になり、既定の 'src' に一致しないので * にする -->
+<iframe class="frame" id="frame" allow="clipboard-write *; fullscreen *" hidden></iframe>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 <div class="preview" id="preview" aria-hidden="true" hidden><iframe tabindex="-1" title="プレビュー"></iframe></div>
 <div class="state notfound" id="notfound" hidden>
