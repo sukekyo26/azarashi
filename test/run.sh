@@ -1170,6 +1170,9 @@ RECORDER
     "403 200|$(printf 'edited\ttrue')"
   assert_eq "artifact: PATCH of an unknown slug is 404, of a non-string description 400" \
     "$(art_patch -H "$ART_ORIGIN" -d '{"description":"x"}' "$ART_URL/api/artifacts/no-such") $(art_patch -H "$ART_ORIGIN" -d '{"description":1}' "$ART_URL/api/artifacts/my-demo")" "404 400"
+  assert_eq "artifact: a JSON body that is not an object is refused, for PATCH and for adding a link" \
+    "$(art_patch -H "$ART_ORIGIN" -d 'true' "$ART_URL/api/artifacts/my-demo") $(art_patch -H "$ART_ORIGIN" -d '["x"]' "$ART_URL/api/artifacts/my-demo") $(art_patch -H "$ART_ORIGIN" -d 'null' "$ART_URL/api/artifacts/my-demo") $(curl -s -X POST -H 'content-type: application/json' -H "$ART_ORIGIN" -d '"x"' "$ART_URL/api/artifacts")" \
+    "400 400 400 送られた内容を読めませんでした（JSON のオブジェクトで送ってください）"
   assert_eq "artifact: PATCH sets the title and project and moves the entry to a new URL name, refusing one in use or invalid" \
     "$(curl -s -X PATCH -H 'content-type: application/json' -H "$ART_ORIGIN" -d '{"slug":"renamed","title":"T","project":"p"}' "$ART_URL/api/artifacts/my-demo")|$(jq -r '[.title, .project] | @tsv' "$ART_TMP/store/renamed/meta.json")|$(test -e "$ART_TMP/store/my-demo" && echo left || echo moved) $(art_patch -H "$ART_ORIGIN" -d '{"slug":"untitled"}' "$ART_URL/api/artifacts/renamed") $(art_patch -H "$ART_ORIGIN" -d '{"slug":"Bad Slug"}' "$ART_URL/api/artifacts/renamed")" \
     "{\"slug\":\"renamed\"}|$(printf 'T\tp')|moved 409 400"

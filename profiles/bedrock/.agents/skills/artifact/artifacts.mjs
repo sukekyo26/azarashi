@@ -416,11 +416,17 @@ async function readJson(req, res) {
     body += chunk;
     if (body.length > 65536) return reject(413, 'request body too large');
   }
+  let input;
   try {
-    return JSON.parse(body) ?? {};
+    input = JSON.parse(body);
   } catch {
     return reject(400, '送られた内容を読めませんでした（JSON ではありません）');
   }
+  // オブジェクト以外（数値・文字列・配列・null）は送り間違い。何も変えない成功にせず断る
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return reject(400, '送られた内容を読めませんでした（JSON のオブジェクトで送ってください）');
+  }
+  return input;
 }
 
 async function addLink(req, res) {
