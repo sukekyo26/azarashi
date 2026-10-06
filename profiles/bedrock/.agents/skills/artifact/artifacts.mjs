@@ -290,13 +290,18 @@ function prepare(file, opts, cwd) {
     );
   }
   const now = new Date().toISOString();
+  // 管理画面で付けたお気に入りと、画面で編集したタイトル・プロジェクトは公開し直しても保つ。タイトルは --title が優先する
+  const keepTitle = !opts.title && prev?.titleEdited;
   const meta = {
     path,
-    // リンクのタイトルは毎回ファイルから取るので、--title で固定したときだけ記録する
-    title: path ? opts.title : opts.title ?? (titleOf(html) || prev?.title || slug),
+    // リンクのタイトルは毎回ファイルから取るので、--title か画面で固定したときだけ記録する
+    title: opts.title ?? (path || keepTitle ? prev?.title : titleOf(html) || prev?.title || slug),
+    titleEdited: keepTitle || undefined,
     description: opts.description ?? prev?.description ?? '',
     // ルート（/）では名前が空になる。空は記録せず「記録なし」に入れる（管理画面の「すべて」の値 '' と衝突するため）
-    project: projectName(path ? dirname(path) : cwd) || undefined,
+    project: prev?.projectEdited ? prev.project : projectName(path ? dirname(path) : cwd) || undefined,
+    projectEdited: prev?.projectEdited,
+    favorite: prev?.favorite,
     createdAt: prev?.createdAt ?? now,
     updatedAt: now,
   };
@@ -547,15 +552,18 @@ async function editArtifact(req, res, slug) {
   if (has('description')) next.description = input.description.trim();
   // 外したときは記録から消す
   if (has('favorite')) next.favorite = input.favorite || undefined;
-  // 空にしたタイトルは、リンクならファイルから取り直し、保存したページなら HTML の <title> か slug に戻す
+  // 空にしたタイトルは、リンクならファイルから取り直し、保存したページなら HTML の <title> か slug に戻す。
+  // 編集した印（titleEdited・projectEdited）があれば公開し直しても保ち、空にしたら印を外して自動に戻す
   if (has('title')) {
     next.title = input.title.trim()
       || (isLink(meta) ? undefined : titleOf(readText(join(ROOT, slug, 'index.html')) ?? '') || slug);
+    next.titleEdited = Boolean(input.title.trim()) || undefined;
   }
   // 空にしたプロジェクトは記録しない（「記録なし」に入る）。/ は管理画面で「記録なし」を表す値なので使えない
   if (has('project')) {
     if (input.project.trim() === '/') return send(res, 400, 'プロジェクト名に / だけは使えません');
     next.project = input.project.trim() || undefined;
+    next.projectEdited = Boolean(next.project) || undefined;
   }
   const to = has('slug') ? input.slug.trim() : slug;
   if (!SLUG_RE.test(to)) return send(res, 400, `URL 名「${to}」は使えません。英小文字・数字・ハイフンで入力してください`);
