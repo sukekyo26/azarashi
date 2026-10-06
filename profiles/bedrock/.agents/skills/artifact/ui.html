@@ -63,10 +63,11 @@
   .frame-nav a[aria-disabled="true"] { opacity: 0.35; pointer-events: none; }
   .frame-pos { min-width: 3.5rem; text-align: center; font: 0.72rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
   .server {
-    display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.7rem; font: 0.72rem/1 var(--mono); color: var(--muted);
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.7rem; font: 600 0.74rem/1 var(--body); color: var(--muted);
     background: var(--panel); border: 1px solid var(--line); border-radius: 999px; font-variant-numeric: tabular-nums;
   }
   .server::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--good); animation: pulse 2.4s ease-in-out infinite; }
+  .server:not(.down) { padding: 0.5rem; border: 0; background: none; }
   .server.down { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
   .server.down::before { background: var(--danger); animation: none; }
   @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 45%, transparent); } 50% { box-shadow: 0 0 0 4px transparent; } }
@@ -352,7 +353,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6m0-6-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
         </a>
       </span>
-      <span class="server" id="server"></span>
+      <span class="server" id="server" role="status"></span>
     </div>
   </div>
 </header>
@@ -590,8 +591,12 @@
     $('error').hidden = !msg;
   }
 
+  // つながっている間は点だけを出し、切れたときだけ文で知らせる。アドレスはアドレスバーと同じなので出さない
   function setServer(ok) {
-    $('server').textContent = ok ? location.host : `${location.host} に接続できません`;
+    const label = ok ? `サーバー（${location.host}）に接続中` : `サーバー（${location.host}）に接続できません`;
+    $('server').textContent = ok ? '' : 'サーバーに接続できません';
+    $('server').title = label;
+    $('server').setAttribute('aria-label', label);
     $('server').classList.toggle('down', !ok);
   }
 
