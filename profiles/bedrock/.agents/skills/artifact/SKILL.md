@@ -95,10 +95,10 @@ description: 'Artifacts 機能が使えない環境で、表・図・比較・�
 
 | 操作 | 方法 |
 |:----|:----|
-| 一覧 | 管理画面（「アーティファクト」と「リンク」のタブに分かれ、生成元のプロジェクトで絞り込める）、または `artifacts.sh list`（更新日時・slug・タイトル・リンク先のパスをタブ区切りで出す。保存したページのパスは空） |
-| 削除 | 管理画面の削除ボタン、または `artifacts.sh rm <slug>...`。リンクは登録を外すだけで、元のファイルは消さない |
+| 一覧 | 管理画面（「アーティファクト」と「リンク」のタブに分かれ、生成元のプロジェクトで絞り込める）、または `~/.agents/skills/artifact/artifacts.sh list`（更新日時・slug・タイトル・リンク先のパスをタブ区切りで出す。保存したページのパスは空） |
+| 削除 | 管理画面の削除ボタン、または `~/.agents/skills/artifact/artifacts.sh rm <slug>...`。リンクは登録を外すだけで、元のファイルは消さない |
 | ダウンロード | 管理画面のダウンロードボタン。保存したままの HTML（リンクはファイルのまま）を `<slug>.html` として保存する |
-| サーバー停止 | `artifacts.sh stop`。次の `publish` で再び起動する |
+| サーバー停止 | `~/.agents/skills/artifact/artifacts.sh stop`。次の `publish` で再び起動する |
 | スキル更新後の反映 | `stop` してから `publish` する（動いているサーバーは古いコードのまま）。bun を入れた・外したときも同じで、動いているサーバーは起動したときのランタイムのまま |
 
 - 保存先は `~/.local/share/artifacts/<slug>/`（`ARTIFACTS_DIR` で変更）。リンクはここに `meta.json` だけを置く。ポートは `ARTIFACTS_PORT` で変更できる。
