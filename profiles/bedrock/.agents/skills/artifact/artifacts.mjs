@@ -36,8 +36,8 @@ const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-forms allow-modals al
 
 const USAGE = `usage: artifacts.sh <command>
   publish <file.html> [--link] [--slug s] [--title t] [--description d] [--force]
-                 store the page (same slug overwrites) and print its URL;
-                 a slug published from another project is refused unless --force;
+                 store the page and print its URL; the same slug from the same project overwrites it,
+                 and a slug published from another project is refused unless --force;
                  body-only HTML (no doctype/html/head/body/title) is wrapped in template.html;
                  a new slug is also opened in the browser ($BROWSER, wslview, xdg-open);
                  --link registers the file in place instead of copying it: it is read on every request,
@@ -294,7 +294,8 @@ function prepare(file, opts, cwd) {
   // ルート（/）では名前が空になる。空は記録せず「記録なし」に入れる（管理画面の「すべて」の値 '' と衝突するため）
   const from = projectName(path ? dirname(path) : cwd) || undefined;
   // 保存したページは、別のプロジェクトから同じ slug で公開されても黙って上書きしない（test-report のような slug は重なりやすい）。
-  // 持ち主は公開した場所のプロジェクトで、画面で変えられる表示用の project とは別に記録する。記録の無い古いページは project で見る
+  // 持ち主は公開した場所のプロジェクトで、画面で変えられる表示用の project とは別に記録する。記録の無い古いページは project で見るが、
+  // 画面で編集された project は公開した場所を表さないので持ち主にしない
   const owner = path ? undefined : prev?.publishedFrom ?? (prev?.projectEdited ? undefined : prev?.project);
   const replacing = Boolean(owner) && owner !== from;
   if (replacing && !opts.force) {
