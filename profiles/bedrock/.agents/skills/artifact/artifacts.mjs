@@ -33,7 +33,7 @@ const ORIGINS = new Set([...HOSTS].map((h) => `http://${h}`));
 // ページは opaque origin で動かし、ページのスクリプトから管理 API を叩けないようにする
 const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-forms allow-modals allow-downloads';
 
-const USAGE = `usage: artifacts.mjs <command>
+const USAGE = `usage: artifacts.sh <command>
   publish <file.html> [--link] [--slug s] [--title t] [--description d]
                  store the page (same slug overwrites) and print its URL;
                  body-only HTML (no doctype/html/head/body/title) is wrapped in template.html;
@@ -261,7 +261,7 @@ function prepare(file, opts, cwd) {
   const prev = readMeta(slug);
   if (prev && isLink(prev) !== Boolean(opts.link)) {
     fail(
-      `"${slug}" is ${isLink(prev) ? 'a linked file' : 'a stored page'}; run "artifacts.mjs rm ${slug}" first or use another --slug`,
+      `"${slug}" is ${isLink(prev) ? 'a linked file' : 'a stored page'}; run "artifacts.sh rm ${slug}" first or use another --slug`,
       `URL 名「${slug}」は${isLink(prev) ? 'リンク' : 'アーティファクト'}で使われています。別の URL 名を入力してください`,
     );
   }
@@ -324,7 +324,7 @@ function openBrowser(url) {
 }
 
 function remove(slug) {
-  if (!SLUG_RE.test(slug) || !readMeta(slug)) fail(`no artifact "${slug}" (see: artifacts.mjs list)`);
+  if (!SLUG_RE.test(slug) || !readMeta(slug)) fail(`no artifact "${slug}" (see: artifacts.sh list)`);
   rmSync(join(ROOT, slug), { recursive: true, force: true });
 }
 
@@ -609,7 +609,7 @@ async function ensureServer() {
   if (p.state === 'ours' && p.root === ROOT && (p.build !== BUILD || p.runtime !== process.execPath)) {
     terminate(p.pid);
     p = await waitWhile(p, (q) => q.state === 'ours');
-    if (p.state === 'ours') fail(`the outdated server (pid ${p.pid}) did not stop; run "artifacts.mjs stop" and publish again`);
+    if (p.state === 'ours') fail(`the outdated server (pid ${p.pid}) did not stop; run "artifacts.sh stop" and publish again`);
   }
   if (p.state === 'down') {
     spawn(process.execPath, [SCRIPT, 'serve'], { detached: true, stdio: 'ignore' }).unref();
@@ -617,7 +617,7 @@ async function ensureServer() {
   }
   if (p.state === 'other') fail(`port ${PORT} is used by another program; set ARTIFACTS_PORT to a free port`);
   if (p.state === 'down') fail(`the server did not start; run '${process.execPath}' '${SCRIPT}' serve to see the error`);
-  if (p.root !== ROOT) fail(`the server on port ${PORT} serves ${p.root}; run "artifacts.mjs stop" and publish again`);
+  if (p.root !== ROOT) fail(`the server on port ${PORT} serves ${p.root}; run "artifacts.sh stop" and publish again`);
 }
 
 async function stop() {
