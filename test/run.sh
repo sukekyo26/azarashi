@@ -1444,6 +1444,24 @@ STUB
   art_copy publish "$ART_TMP/restart.html" >/dev/null
   assert_eq "artifact: publish restarts a server running other code, and keeps one running the same code" \
     "$([ "$_art_p0" != "$_art_p1" ] && echo restarted)|$([ "$_art_p1" = "$(art_pid)" ] && echo kept)" "restarted|kept"
+  # two publishes race to replace the copy's server: a preload makes the stop of the old server also run a whole
+  # concurrent publish, which starts the new server before this one looks again; this one must use it, not wait on it
+  # CommonJS so that node loads it with --require (--import needs node 18.18+) and bun with --preload
+  cat >"$ART_TMP/race.cjs" <<'EOF'
+const { execFileSync } = require('node:child_process');
+const kill = process.kill.bind(process);
+process.kill = (pid, sig) => {
+  const sent = kill(pid, sig);
+  execFileSync(process.execPath, [process.env.ART_RACE_SCRIPT, 'publish', process.env.ART_RACE_PAGE], { stdio: 'ignore' });
+  return sent;
+};
+EOF
+  case "$ART_RUNTIME" in *bun) _art_preload=--preload ;; *) _art_preload=--require ;; esac
+  _art_p0=$(art_pid)
+  assert_eq "artifact: a publish racing another one to restart the server uses the server the other one started" \
+    "$(ART_RACE_SCRIPT="$ART" ART_RACE_PAGE="$ART_TMP/restart.html" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" \
+      "$ART_RUNTIME" "$_art_preload" "$ART_TMP/race.cjs" "$ART" publish "$ART_TMP/restart.html" 2>&1)|$([ "$_art_p0" != "$(art_pid)" ] && echo replaced)" \
+    "$ART_URL/a/restart/|replaced"
   art rm restart >/dev/null
   art stop >/dev/null
   _art_up=1
