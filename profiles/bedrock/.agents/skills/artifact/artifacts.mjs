@@ -535,8 +535,9 @@ async function ensureServer() {
   let p = await probe();
   if (p.state === 'down') {
     spawn(process.execPath, [SCRIPT, 'serve'], { detached: true, stdio: 'ignore' }).unref();
-    for (let i = 0; i < 30 && p.state === 'down'; i++) {
-      await new Promise((r) => setTimeout(r, 100));
+    // 起動は 100 ms かからないので、細かく確かめて待ちすぎない（上限は 20 ms × 150 回 = 3 秒）
+    for (let i = 0; i < 150 && p.state === 'down'; i++) {
+      await new Promise((r) => setTimeout(r, 20));
       p = await probe();
     }
   }
