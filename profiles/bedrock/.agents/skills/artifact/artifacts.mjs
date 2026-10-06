@@ -76,12 +76,14 @@ const isLink = (meta) => typeof meta?.path === 'string';
 // 保存したページは index.html だけ。リンクは登録ファイルと、相対参照の資材としてそのディレクトリの配下を返す。
 // ディレクトリの外（.. や外を指す symlink）と、ドットで始まる要素（.git・.env 等）は返さない
 function resolveFile(meta, slug, rest) {
-  if (!rest) return isLink(meta) ? meta.path : join(ROOT, slug, 'index.html');
-  if (!isLink(meta)) return null;
+  if (!isLink(meta)) return rest ? null : join(ROOT, slug, 'index.html');
   try {
+    // 登録時に実体のパスへ解決してある。途中が symlink に差し替わって実体が変わっていれば、登録時の検査が効かないので返さない
+    if (realpathSync(meta.path) !== meta.path) return null;
+    if (!rest) return meta.path;
     const parts = rest.split('/').map(decodeURIComponent);
     if (parts.some((p) => p === '' || p.startsWith('.'))) return null;
-    const base = realpathSync(dirname(meta.path));
+    const base = dirname(meta.path);
     const file = realpathSync(join(base, ...parts));
     return file.startsWith(base + sep) ? file : null;
   } catch {
@@ -106,13 +108,15 @@ function listArtifacts() {
     .map((slug) => {
       const meta = readMeta(slug);
       if (!isLink(meta)) return { slug, ...meta };
-      // リンクのタイトルと更新日時はファイルから取る。読めなければ登録時の値で残し、missing を付ける
-      const html = readText(meta.path);
+      // リンクのタイトルと更新日時はファイルから取る。読めなければ登録時の値で残し、missing を付ける。
+      // 配信しないファイルは読まない（resolveFile と同じ判定）
+      const file = resolveFile(meta, slug, '');
+      const html = file && readText(file);
       return {
         slug,
         ...meta,
         title: meta.title ?? (titleOf(html ?? '') || slug),
-        updatedAt: (html !== null && versionOf(meta, meta.path)) || meta.updatedAt,
+        updatedAt: (html !== null && versionOf(meta, file)) || meta.updatedAt,
         missing: html === null,
       };
     })
@@ -211,15 +215,29 @@ function freeSlug(base, path) {
 
 // 検証して保存する内容を作る（まだ書かない）。CLI の publish と管理画面の登録で共通
 function prepare(file, opts, cwd) {
-  const path = opts.link ? resolve(cwd, file) : undefined;
-  if (path) checkLinkPath(path);
+  const cannotRead = (e) => fail(
+    `cannot read ${file}: ${e.message}`,
+    `${file} を読めません（${e.code ?? e.message}）。パスとファイルがあるかを確かめてください`,
+  );
+  let path;
+  if (opts.link) {
+    // symlink を解決した実体のパスで検査して保存する。リンク名のまま検査すると、
+    // 隠しディレクトリなどを指す symlink（ファイルでもディレクトリでも）で制限を抜けられる
+    try {
+      path = realpathSync(resolve(cwd, file));
+    } catch (e) {
+      cannotRead(e);
+    }
+    checkLinkPath(path);
+  }
   let html;
   try {
     html = readFileSync(path ?? file, 'utf8');
   } catch (e) {
-    fail(`cannot read ${file}: ${e.message}`, `${file} を読めません（${e.code ?? e.message}）。パスとファイルがあるかを確かめてください`);
+    cannotRead(e);
   }
-  const slug = opts.slug ?? (path ? freeSlug(slugFromFile(path), path) : slugFromFile(file));
+  // 名前は symlink の先ではなく、指定されたファイル名から付ける
+  const slug = opts.slug ?? (path ? freeSlug(slugFromFile(file), path) : slugFromFile(file));
   if (!SLUG_RE.test(slug)) {
     fail(
       `invalid slug "${slug}": use lowercase letters, digits and hyphens via --slug`,

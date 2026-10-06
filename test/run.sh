@@ -1011,7 +1011,8 @@ expect_false "repo-setup: an unknown argument fails" \
 
 if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   ART="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/artifacts.mjs"
-  ART_TMP=$(mktemp -d)
+  # the real path: linked files are stored by it, so a symlinked temp dir (macOS /var) must not differ
+  ART_TMP=$(cd "$(mktemp -d)" && pwd -P)
   # a port the OS reports free right now, rather than a guess that a busy host may already use
   ART_PORT=$(node -e 'const s = require("node:net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); });')
   ART_URL="http://127.0.0.1:$ART_PORT"
@@ -1273,6 +1274,30 @@ RECORDER
     ) $(HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" publish "$ART_TMP/proj/.agents/doc.html" --link)" \
     "1 $ART_URL/a/doc/"
   art rm doc
+  # symlinks are resolved before the checks, so neither a file link nor a directory link reaches into it
+  printf 'hidden' >"$ART_TMP/.secret/data.txt"
+  mkdir -p "$ART_TMP/pub" "$ART_TMP/real"
+  ln -s "$ART_TMP/.secret/data.txt" "$ART_TMP/pub/alias.html"
+  ln -s "$ART_TMP/.secret" "$ART_TMP/pub/dir"
+  assert_eq "artifact: a symlink to a file or a directory in a hidden directory of \$HOME cannot be linked" \
+    "$(
+      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" publish "$ART_TMP/pub/alias.html" --link >/dev/null 2>&1
+      echo $?
+    ) $(
+      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" publish "$ART_TMP/pub/dir/x.html" --link >/dev/null 2>&1
+      echo $?
+    )" "1 1"
+  printf '<h1>R</h1>\n' >"$ART_TMP/real/page.html"
+  ln -s "$ART_TMP/real/page.html" "$ART_TMP/pub/shown.html"
+  assert_eq "artifact: a symlinked file is stored by its real path and named after the link" \
+    "$(art publish "$ART_TMP/pub/shown.html" --link)|$(jq -r .path "$ART_TMP/store/shown/meta.json")" "$ART_URL/a/shown/|$ART_TMP/real/page.html"
+  # replaced by a symlink after registration: the registration-time checks no longer hold
+  rm "$ART_TMP/real/page.html"
+  ln -s "$ART_TMP/.secret/data.txt" "$ART_TMP/real/page.html"
+  assert_eq "artifact: a linked file later replaced by a symlink is not served, downloaded or read for the list" \
+    "$(http_code "$ART_URL/a/shown/") $(http_code "$ART_URL/api/artifacts/shown/download") $(curl -s "$ART_URL/api/artifacts" | jq -r '.[] | select(.slug == "shown") | [.missing, .title] | @tsv')" \
+    "404 404 $(printf 'true\tshown')"
+  art rm shown
   # in a headless browser (skipped without Chrome or Node's WebSocket)
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
