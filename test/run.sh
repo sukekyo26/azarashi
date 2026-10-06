@@ -1326,6 +1326,30 @@ RECORDER
   art rm untitled
   assert_eq "artifact: rm deletes the page" "$(art list)" ""
   expect_false "artifact: rm of an unknown slug fails" sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' rm untitled 2>/dev/null"
+  # artifacts.sh runs artifacts.mjs with bun when bun is on PATH, else with node; the stand-ins record which one ran
+  ART_NODE=$(command -v node)
+  mkdir -p "$ART_TMP/rt-both" "$ART_TMP/rt-node"
+  for _rt in bun node; do
+    cat >"$ART_TMP/rt-both/$_rt" <<STUB
+#!/bin/sh
+echo $_rt >>"$ART_TMP/runtime"
+exec "$ART_NODE" "\$@"
+STUB
+    chmod +x "$ART_TMP/rt-both/$_rt"
+  done
+  cp "$ART_TMP/rt-both/node" "$ART_TMP/rt-node/node"
+  # /usr/bin:/bin only supplies dirname; a real bun there would make the node-only case meaningless
+  if env PATH=/usr/bin:/bin sh -c 'command -v bun' >/dev/null 2>&1; then
+    printf '  skip - artifact launcher test (bun is installed in /usr/bin or /bin)\n'
+  else
+    assert_eq "artifact: artifacts.sh prefers bun on PATH and falls back to node" \
+      "$(
+        for _d in rt-both rt-node; do
+          ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" PATH="$ART_TMP/$_d:/usr/bin:/bin" "$(dirname "$ART")/artifacts.sh" list
+        done
+        paste -sd' ' "$ART_TMP/runtime"
+      )" "bun node"
+  fi
   art stop >/dev/null
   _art_up=1
   for _i in 1 2 3 4 5 6 7 8 9 10; do
