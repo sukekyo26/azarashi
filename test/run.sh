@@ -1103,7 +1103,7 @@ RECORDER
   curl -s "$ART_URL/a/untitled/?raw" >"$ART_TMP/raw.html"
   expect_true "artifact: ?raw serves the stored page as is, followed only by the reload script" \
     node -e 'const fs = require("node:fs"); const [raw, stored] = process.argv.slice(1).map((f) => fs.readFileSync(f, "utf8"));
-      process.exit(raw.startsWith(stored) && raw.slice(stored.length).startsWith("\n<script>{const es = new EventSource(") ? 0 : 1)' \
+      process.exit(raw.startsWith(stored) && raw.slice(stored.length).startsWith("\n<script>{const es = new window.EventSource(") ? 0 : 1)' \
     "$ART_TMP/raw.html" "$ART_TMP/store/untitled/index.html"
   expect_false "artifact: a page with its own <title> is stored as is" \
     grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
@@ -1160,7 +1160,7 @@ RECORDER
   ART_NOW=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
   ART_SINCE=$(node -p 'encodeURIComponent(process.argv[1])' "$ART_NOW")
   expect_true "artifact: a served page subscribes to reloads with its own version" \
-    sh -c "curl -s '$ART_URL/a/my-demo/?raw' | grep -qF 'new EventSource(\"/api/events/my-demo?since=$ART_SINCE\")'"
+    sh -c "curl -s '$ART_URL/a/my-demo/?raw' | grep -qF 'new window.EventSource(\"/api/events/my-demo?since=$ART_SINCE\")'"
   ART_SSE=$(curl -s -D - -N --max-time 3 "$ART_URL/api/events/my-demo?since=stale")
   assert_eq "artifact: a stale version gets a bare reload event, with CORS only for the sandboxed page (null)" \
     "$(printf '%s' "$ART_SSE" | grep -ciE '^(access-control-allow-origin: null|event: reload|data: changed)')" 3
@@ -1252,7 +1252,7 @@ RECORDER
     "$(curl -s -D - -o /dev/null "$ART_LINK/s.css" | grep -ciE '^(content-type: text/css|content-security-policy: sandbox|x-content-type-options: nosniff)')" 3
   expect_true "artifact: an HTML page under a linked directory is served without the frame and watches its own file" \
     sh -c "curl -s '$ART_LINK/sub/p.html' | grep -qF '<title>Sub</title>' &&
-      curl -s '$ART_LINK/sub/p.html' | grep -qF 'new EventSource(\"/api/events/site/sub/p.html?since='"
+      curl -s '$ART_LINK/sub/p.html' | grep -qF 'new window.EventSource(\"/api/events/site/sub/p.html?since='"
   # an encoded slash must not hide a dot element inside one segment (sub%2F.git)
   assert_eq "artifact: dot paths (also behind an encoded slash), .., escaping symlinks, directories and a stored page's subpaths are 404" \
     "$(for p in site/.git/config site/sub%2F.git/config site/sub%2f.git%2fconfig site/%2e%2e/outside.txt site/..%2Foutside.txt site/escape.txt site/sub/ site/sub untitled/index.html; do
@@ -1290,7 +1290,7 @@ RECORDER
   curl -s -o "$ART_TMP/raw-doc.html" "$ART_URL/a/doc-link/?raw"
   expect_true "artifact: a large linked document is streamed byte for byte with the reloader appended" \
     node -e 'const fs = require("node:fs"); const raw = fs.readFileSync(process.argv[1]), doc = fs.readFileSync(process.argv[2]);
-      process.exit(raw.subarray(0, doc.length).equals(doc) && raw.subarray(doc.length).toString().startsWith("\n<script>{const es = new EventSource(") ? 0 : 1)' \
+      process.exit(raw.subarray(0, doc.length).equals(doc) && raw.subarray(doc.length).toString().startsWith("\n<script>{const es = new window.EventSource(") ? 0 : 1)' \
     "$ART_TMP/raw-doc.html" "$ART_TMP/doc/index.html"
   # a client hanging up mid-stream must not leave the file open (bun emits no res 'close' then); needs /proc
   _art_pid=$(curl -s "$ART_URL/api/health" | jq -r .pid)
@@ -1412,8 +1412,8 @@ RECORDER
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
     # the page shows version 1, then version 2 once republished, without a manual reload
-    assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in a frame that allows clipboard writes and fullscreen" \
-      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true,true|true"
+    assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in a frame that allows clipboard writes and fullscreen and sends links to other sites to new tabs out of the sandbox" \
+      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true,true|own own none|true"
     art rm live
     # newest-first list | first row's download link and its new-tab link to the page alone | rows, pressed chip and URL after clicking a project tag |
     # "全プロジェクト" chip clears the URL and is pressed | filtered rows | search in the URL | restored from it | first click only arms | row still there |

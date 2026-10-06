@@ -32,7 +32,8 @@ const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
 const ORIGINS = new Set([...HOSTS].map((h) => `http://${h}`));
 // ページは opaque origin で動かし、ページのスクリプトから管理 API を叩けないようにする
-const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-forms allow-modals allow-downloads';
+// allow-popups-to-escape-sandbox: ページから新しいタブで開いた別のサイトには sandbox を引き継がせない（opener は持たないので管理 API には届かない）
+const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-downloads';
 
 const USAGE = `usage: artifacts.sh <command>
   publish <file.html> [--link] [--slug s] [--title t] [--description d] [--force]
@@ -406,7 +407,7 @@ function servePage(res, slug, rest) {
   // 資材も sandbox で返す。直接開いた SVG や HTML が 127.0.0.1 の origin で動き、管理 API を叩けないように
   const headers = { 'content-type': type, 'content-security-policy': PAGE_CSP, 'x-content-type-options': 'nosniff' };
   if (type !== TYPES['.html']) return stream(res, fd, headers);
-  return sendPage(res, fd, meta, slug, rest, headers, reloaderScript(slug, rest, version));
+  return sendPage(res, fd, meta, slug, rest, headers, servedScript(slug, rest, version));
 }
 
 function openOrNull(file) {
@@ -468,14 +469,26 @@ function send(res, status, body, headers = {}) {
   res.end(body);
 }
 
-// 公開し直したら（リンクはファイルを保存したら）開いているタブを再読み込みさせるスクリプトを、配信時にだけ末尾へ足す。
-// 読み込んだ版を since に埋め込むので、接続前に変わっても取りこぼさない。
-function reloaderScript(slug, rest, version) {
+// 外枠の中では、別のサイトへのリンクを新しいタブで開く。多くのサイトは iframe に入れられるのを拒むので、
+// 外枠の中で開くと何も表示されない。_top・_parent も sandbox が上の階層への移動を禁じていて開けない。
+// sandbox の中では location.origin が "null" なので、比べるのは host。
+// ページは open・URL・self などを同名のトップレベル宣言で覆えるので、覆えない window・top・location 以外は window から引く
+const LEAVE_FRAME = "if (top !== window) window.addEventListener('click', (e) => {"
+  + "const a = e.target.closest?.('a[href]');"
+  + "if (!a || e.defaultPrevented || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;"
+  + "if (!['', '_self', '_parent', '_top'].includes(a.target)) return;"
+  + "const u = new window.URL(a.href, location.href);"
+  + "if (!/^https?:$/.test(u.protocol) || u.host === location.host) return;"
+  + "e.preventDefault(); window.open(u.href, '_blank', 'noopener');});";
+
+// 配信時にだけ末尾へ足すスクリプト。公開し直したら（リンクはファイルを保存したら）開いているタブを再読み込みさせ、
+// 外枠の中では外部リンクを新しいタブで開く。読み込んだ版を since に埋め込むので、接続前に変わっても取りこぼさない。
+function servedScript(slug, rest, version) {
   // rest には ' が残り得るので、文字列リテラルは JSON.stringify で作る
   const url = JSON.stringify(`/api/events/${slug}${rest ? `/${rest}` : ''}?since=${encodeURIComponent(version)}`);
   // 合図を受けたら購読を閉じてから読み直す。読み直しが遅いと、再接続で合図がもう一度届くため
-  return `\n<script>{const es = new EventSource(${url});`
-    + "es.addEventListener('reload', () => { es.close(); location.reload(); });}</script>\n";
+  return `\n<script>{const es = new window.EventSource(${url});`
+    + `es.addEventListener('reload', () => { es.close(); location.reload(); });${LEAVE_FRAME}}</script>\n`;
 }
 
 // ページは sandbox（opaque origin、Origin: null）から購読するので、CORS は null にだけ開ける。
