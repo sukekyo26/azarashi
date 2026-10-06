@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a55c0'/%3E%3Cpath d='M11 6.5h7.5L23 11v13a1.5 1.5 0 0 1-1.5 1.5h-10.5A1.5 1.5 0 0 1 9.5 24V8A1.5 1.5 0 0 1 11 6.5Z' fill='%23fff'/%3E%3Cpath d='M18.5 6.5v3a1.5 1.5 0 0 0 1.5 1.5h3Z' fill='%232a55c0' opacity='.35'/%3E%3Cpath d='M16 13c.4 2.6 1.9 4.1 4.5 4.5-2.6.4-4.1 1.9-4.5 4.5-.4-2.6-1.9-4.1-4.5-4.5 2.6-.4 4.1-1.9 4.5-4.5Z' fill='%232a55c0'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Murecho:wght@700;800&family=Zen+Kaku+Gothic+New:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <script>
   // 保存したテーマを描画前に当て、読み込み時に OS の配色で一瞬光らないようにする
   try {
@@ -30,8 +30,10 @@
     --scrim: light-dark(rgb(13 18 32 / 0.4), rgb(0 0 0 / 0.6));
     --shadow-sm: 0 1px 2px light-dark(rgb(16 24 40 / 0.06), rgb(0 0 0 / 0.3));
     --shadow: 0 1px 2px light-dark(rgb(16 24 40 / 0.04), rgb(0 0 0 / 0.3)), 0 10px 30px -14px light-dark(rgb(16 24 40 / 0.16), rgb(0 0 0 / 0.5));
-    --body: "Geist", system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
-    --mono: "Geist Mono", ui-monospace, Menlo, Consolas, monospace;
+    /* 書体は雛形（template.html）とそろえる */
+    --display: "Murecho", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    --body: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
     --bar: 3.5rem;
     color-scheme: light dark;
   }
@@ -58,7 +60,7 @@
   }
   /* 一覧と外枠で同じ位置に出すため、幅は本文に合わせず画面いっぱいにする */
   .bar-inner { padding: 0 16px; height: var(--bar); display: flex; align-items: center; gap: 0.75rem; }
-  .brand { display: flex; align-items: center; gap: 0.6rem; flex: none; color: var(--fg); text-decoration: none; font-size: 1.05rem; font-weight: 650; letter-spacing: -0.02em; }
+  .brand { display: flex; align-items: center; gap: 0.6rem; flex: none; color: var(--fg); text-decoration: none; font: 700 1.05rem/1 var(--display); letter-spacing: -0.02em; }
   .brand svg { width: 26px; height: 26px; flex: none; filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--accent) 35%, transparent)); }
   .bar-end { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; flex: none; }
   .frame-actions { display: flex; gap: 0.15rem; }
