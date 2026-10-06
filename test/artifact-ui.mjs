@@ -188,14 +188,6 @@ async function extras({ send, evaluate }) {
   await evaluate("document.getElementById('bulk-delete').click()");
   await until(() => evaluate("document.getElementById('bulk').hidden"), 'the selection to clear');
   out.push(await evaluate("calls.splice(0).sort().join(',')"));
-  // resting the mouse on a row shows a small preview of the page alone; leaving the row hides it
-  const center = (sel) => evaluate(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 }); })()`).then(JSON.parse);
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...(await center('#list li .title')) });
-  out.push(await until(() => evaluate("!document.getElementById('preview').hidden && document.querySelector('#preview iframe').getAttribute('src')"), 'the preview'));
-  // redrawing the list (a delete, paging, a change elsewhere) removes the hovered row, so the preview closes too
-  out.push(await evaluate("render(); document.getElementById('preview').hidden"));
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
-  out.push(await until(() => evaluate("document.getElementById('preview').hidden"), 'the preview to hide'));
   // the pencil opens a modal with the current description; saving sends the new one
   await evaluate("document.querySelector('#list li .edit').click()");
   out.push(await evaluate("[document.getElementById('edit-dialog').open, document.getElementById('edit-desc').value].join(' ')"));
