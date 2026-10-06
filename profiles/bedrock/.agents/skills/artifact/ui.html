@@ -891,6 +891,8 @@
     dl.setAttribute('aria-label', `${a.title} をダウンロード`);
     if (a.missing) {
       link.removeAttribute('href');
+      // href が無いとフォーカスできず、↑↓ の移動がこの行の手前で止まる。スクリプトからは移れるようにする
+      link.tabIndex = -1;
       open.hidden = true;
       dl.hidden = true;
     }

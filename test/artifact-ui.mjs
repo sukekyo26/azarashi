@@ -137,6 +137,7 @@ async function extras({ send, evaluate }) {
       { slug: 'a', title: 'Alpha', description: 'old', createdAt: at(1), updatedAt: at(8) },
       { slug: 'c', title: 'Gamma', description: '', createdAt: at(5), updatedAt: at(7), favorite: true },
       { slug: 'l', title: 'Linked', description: '', path: '/tmp/x/l.html', createdAt: at(1), updatedAt: at(1) },
+      { slug: 'm', title: 'Missing', description: '', path: '/tmp/x/m.html', missing: true, createdAt: at(1), updatedAt: at(1) },
     ]);
     window.fetch = (url, init = {}) => {
       if (!init.method) return Promise.resolve(new Response(list));
@@ -206,6 +207,11 @@ async function extras({ send, evaluate }) {
   await evaluate("document.querySelector('#list li .copy').click()");
   out.push(await until(() => evaluate("calls.join(',')"), 'the copy'));
   out.push(await evaluate("document.getElementById('toasts').textContent.includes('パスをコピーしました')"));
+  // a link whose file is gone has no href, but ↓ still reaches it
+  await evaluate('document.activeElement.blur()');
+  await key('ArrowDown');
+  await key('ArrowDown');
+  out.push(await evaluate('document.activeElement.textContent'));
   // the theme switch overrides the OS setting and is remembered; "OS に合わせる" drops the override
   await evaluate("document.querySelector('[data-theme-choice=dark]').click()");
   out.push(await evaluate("[document.documentElement.dataset.theme, getComputedStyle(document.body).backgroundColor, localStorage.getItem('artifacts.theme')].join(' ')"));
