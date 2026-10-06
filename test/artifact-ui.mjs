@@ -275,7 +275,9 @@ async function leave({ send, evaluate, dir }) {
     // 3 つのリンクを決まった位置に置き、読み込めたら外枠に知らせる
     writeFileSync(join(dir, 'leave.html'), `<title>Leave</title><style>a { position: fixed; left: 0; width: 200px; height: 40px; }</style>`
       + `<a href="${other}/blank" target="_blank" style="top: 0">blank</a><a href="${other}/plain" style="top: 60px">plain</a><a href="inner.html" style="top: 120px">inner</a>`
-      + "<script>setInterval(() => parent.postMessage('ready', '*'), 100)</script>");
+      // the page declares globals named like the ones the appended script uses; the script must not pick them up
+      + "<script>const open = () => {}; const URL = null; const EventSource = null; const self = null;"
+      + "setInterval(() => parent.postMessage('ready', '*'), 100)</script>");
     execFileSync(process.execPath, [art, 'publish', join(dir, 'leave.html'), '--slug', 'leave'], { stdio: 'ignore' });
     await send('Page.navigate', { url: `${base}/a/leave/` });
     await until(() => evaluate("(window.listening ||= (addEventListener('message', (e) => { window.reported = e.data; }), true)) && window.reported"), 'the page in the frame');

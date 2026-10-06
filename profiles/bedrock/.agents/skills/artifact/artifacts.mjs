@@ -458,14 +458,15 @@ function send(res, status, body, headers = {}) {
 
 // 外枠の中では、別のサイトへのリンクを新しいタブで開く。多くのサイトは iframe に入れられるのを拒むので、
 // 外枠の中で開くと何も表示されない。_top・_parent も sandbox が上の階層への移動を禁じていて開けない。
-// sandbox の中では location.origin が "null" なので、比べるのは host
-const LEAVE_FRAME = "if (top !== self) addEventListener('click', (e) => {"
+// sandbox の中では location.origin が "null" なので、比べるのは host。
+// ページは open・URL・self などを同名のトップレベル宣言で覆えるので、覆えない window・top・location 以外は window から引く
+const LEAVE_FRAME = "if (top !== window) window.addEventListener('click', (e) => {"
   + "const a = e.target.closest?.('a[href]');"
   + "if (!a || e.defaultPrevented || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;"
   + "if (!['', '_self', '_parent', '_top'].includes(a.target)) return;"
-  + "const u = new URL(a.href, location.href);"
+  + "const u = new window.URL(a.href, location.href);"
   + "if (!/^https?:$/.test(u.protocol) || u.host === location.host) return;"
-  + "e.preventDefault(); open(u.href, '_blank', 'noopener');});";
+  + "e.preventDefault(); window.open(u.href, '_blank', 'noopener');});";
 
 // 配信時にだけ末尾へ足すスクリプト。公開し直したら（リンクはファイルを保存したら）開いているタブを再読み込みさせ、
 // 外枠の中では外部リンクを新しいタブで開く。読み込んだ版を since に埋め込むので、接続前に変わっても取りこぼさない。
@@ -473,7 +474,7 @@ function servedScript(slug, rest, version) {
   // rest には ' が残り得るので、文字列リテラルは JSON.stringify で作る
   const url = JSON.stringify(`/api/events/${slug}${rest ? `/${rest}` : ''}?since=${encodeURIComponent(version)}`);
   // 合図を受けたら購読を閉じてから読み直す。読み直しが遅いと、再接続で合図がもう一度届くため
-  return `\n<script>{const es = new EventSource(${url});`
+  return `\n<script>{const es = new window.EventSource(${url});`
     + `es.addEventListener('reload', () => { es.close(); location.reload(); });${LEAVE_FRAME}}</script>\n`;
 }
 
