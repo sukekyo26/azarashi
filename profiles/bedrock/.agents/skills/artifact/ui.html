@@ -148,9 +148,19 @@
   .chip.project::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--glyph-fg); }
   .chip .n { font: 0.68rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
   .chip.none { border-style: dashed; }
-  .chip.fav { flex: none; }
-  .chip.fav svg { width: 13px; height: 13px; color: var(--star); }
-  .chip.fav[aria-pressed="true"] svg { fill: currentColor; }
+  /* お気に入りはプロジェクトと掛け合わせる別の条件なので、チップと形を変えたオン／オフの切り替えにし、線で区切る */
+  .fav-toggle {
+    display: inline-flex; align-items: center; gap: 0.4rem; flex: none; padding: 0.22rem 0.7rem 0.22rem 0.55rem; font-size: 0.8rem; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .fav-toggle:hover { color: var(--fg); border-color: var(--faint); }
+  .fav-toggle svg { width: 14px; height: 14px; color: var(--faint); }
+  .fav-toggle .n { font: 0.68rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
+  .fav-toggle[aria-checked="true"] {
+    color: var(--fg); background: color-mix(in srgb, var(--star) 14%, var(--panel)); border-color: color-mix(in srgb, var(--star) 55%, transparent);
+  }
+  .fav-toggle[aria-checked="true"] svg { color: var(--star); fill: currentColor; }
+  .filters .divider { flex: none; width: 1px; height: 1.25rem; background: var(--line); }
   .chip[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
   .chip[aria-pressed="true"] .n { color: inherit; opacity: 0.65; }
   .count { margin-left: auto; flex: none; font: 0.74rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
@@ -398,7 +408,8 @@
       </button>
     </div>
     <div class="filters">
-      <button type="button" class="chip fav" id="fav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>お気に入り<span class="n"></span></button>
+      <button type="button" class="fav-toggle" id="fav" role="switch" aria-checked="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>お気に入りのみ<span class="n"></span></button>
+      <span class="divider" aria-hidden="true"></span>
       <div class="chips" id="chips" role="group" aria-label="プロジェクト"></div>
       <span class="count" id="count"></span>
       <label class="sort"><span class="sr-only">並び順</span>
@@ -783,10 +794,10 @@
     // 最後の 1 件を消しても選択が勝手に「すべて」へ戻らないよう、0 件でも選択肢に残す
     if (project && !counts.has(project)) counts.set(project, 0);
     const names = [...counts.keys()].filter((k) => k !== NONE).sort((x, y) => x.localeCompare(y));
-    const chips = [chip('すべて', '', list.length), ...names.map((name) => chip(name, name, counts.get(name), 'project'))];
+    const chips = [chip('全プロジェクト', '', list.length), ...names.map((name) => chip(name, name, counts.get(name), 'project'))];
     if (counts.has(NONE)) chips.push(chip('記録なし', NONE, counts.get(NONE), 'none'));
     $('chips').replaceChildren(...chips);
-    $('fav').setAttribute('aria-pressed', String(fav));
+    $('fav').setAttribute('aria-checked', String(fav));
     $('fav').querySelector('.n').textContent = list.filter((a) => a.favorite).length;
   }
 

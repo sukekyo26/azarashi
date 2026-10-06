@@ -1317,7 +1317,7 @@ RECORDER
       "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true"
     art rm live
     # newest-first list | first row's download link and its new-tab link to the page alone | rows, pressed chip and URL after clicking a project tag |
-    # "すべて" chip clears the URL and is pressed | filtered rows | search in the URL | restored from it | first click only arms | row still there |
+    # "全プロジェクト" chip clears the URL and is pressed | filtered rows | search in the URL | restored from it | first click only arms | row still there |
     # rows after the second click | store after it | error shown when DELETE cannot
     # reach the server | row kept | server indicator down | empty state once all are gone | indicator up again |
     # polling turns it down and up again |

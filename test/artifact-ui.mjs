@@ -55,7 +55,7 @@ async function manage({ send, evaluate }) {
   await send('Page.navigate', { url: `${base}/` });
   out.push(await until(titles, 'the list to render'));
   out.push(await evaluate("(() => { const d = document.querySelector('#list li .download'); const o = document.querySelector('#list li .open'); return `${d.getAttribute('href')} ${d.getAttribute('download')} ${o.getAttribute('href')} ${o.target}`; })()"));
-  // a row's project tag filters by it and keeps the choice in the URL; the "すべて" chip clears it
+  // a row's project tag filters by it and keeps the choice in the URL; the "全プロジェクト" chip clears it
   out.push(await evaluate(`(() => {
     const tag = document.querySelector('#list li .tag');
     tag.click();
