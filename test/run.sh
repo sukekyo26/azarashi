@@ -1012,10 +1012,11 @@ expect_false "repo-setup: an unknown argument fails" \
 # ART_RUNTIME is what runs artifacts.mjs (node by default; CI also runs the suite with ART_RUNTIME=bun).
 # The harness around it (port probing, the browser driver) always uses node.
 ART_RUNTIME=${ART_RUNTIME:-node}
-[ "$ART_RUNTIME" = node ] || command -v "$ART_RUNTIME" >/dev/null 2>&1 ||
-  ng "artifact: ART_RUNTIME=$ART_RUNTIME is not installed"
 
-if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+# a missing ART_RUNTIME fails once and skips the section, instead of a cascade of "not found" failures
+if [ "$ART_RUNTIME" != node ] && ! command -v "$ART_RUNTIME" >/dev/null 2>&1; then
+  ng "artifact: ART_RUNTIME=$ART_RUNTIME is not installed (artifact skill tests skipped)"
+elif command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   ART="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/artifacts.mjs"
   # the real path: linked files are stored by it, so a symlinked temp dir (macOS /var) must not differ
   ART_TMP=$(cd "$(mktemp -d)" && pwd -P)
