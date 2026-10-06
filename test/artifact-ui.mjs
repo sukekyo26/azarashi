@@ -6,6 +6,7 @@
 //   reload: ライブリロードと、ページの外枠。artifacts.mjs で live を公開し直す（ARTIFACTS_DIR / ARTIFACTS_PORT を引き継ぐ）
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -188,14 +189,6 @@ async function extras({ send, evaluate }) {
   await evaluate("document.getElementById('bulk-delete').click()");
   await until(() => evaluate("document.getElementById('bulk').hidden"), 'the selection to clear');
   out.push(await evaluate("calls.splice(0).sort().join(',')"));
-  // resting the mouse on a row shows a small preview of the page alone; leaving the row hides it
-  const center = (sel) => evaluate(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 }); })()`).then(JSON.parse);
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...(await center('#list li .title')) });
-  out.push(await until(() => evaluate("!document.getElementById('preview').hidden && document.querySelector('#preview iframe').getAttribute('src')"), 'the preview'));
-  // redrawing the list (a delete, paging, a change elsewhere) removes the hovered row, so the preview closes too
-  out.push(await evaluate("render(); document.getElementById('preview').hidden"));
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
-  out.push(await until(() => evaluate("document.getElementById('preview').hidden"), 'the preview to hide'));
   // the pencil opens a modal with the current description; saving sends the new one
   await evaluate("document.querySelector('#list li .edit').click()");
   out.push(await evaluate("[document.getElementById('edit-dialog').open, document.getElementById('edit-desc').value].join(' ')"));
@@ -248,12 +241,72 @@ async function reload({ send, evaluate }) {
     await send('Page.navigate', { url: `${base}/a/live/` });
     out.push(await until(() => evaluate("document.title.startsWith('Live') && document.title"), 'the frame title'));
     out.push(await evaluate("new URL(document.getElementById('frame').src).search === '?raw'"));
+    // the frame lets the page write to the clipboard and go fullscreen. The page reports its own policy to the frame
+    // until someone listens, since it may load before the listener is attached
+    // permissionsPolicy is the standard name; Chrome still ships it as featurePolicy. Without either, say so instead of a false "denied"
+    writeFileSync(join(dir, 'perm.html'), "<title>Perm</title><script>const policy = document.permissionsPolicy ?? document.featurePolicy; setInterval(() => parent.postMessage(policy ? ['clipboard-write', 'fullscreen'].map((f) => policy.allowsFeature(f)).join() : 'no policy API', '*'), 100)</script>");
+    execFileSync(process.execPath, [art, 'publish', join(dir, 'perm.html'), '--slug', 'perm'], { stdio: 'ignore' });
+    await send('Page.navigate', { url: `${base}/a/perm/` });
+    // one listener per document keeps the last report; until() polls it at its usual pace
+    out.push(await until(() => evaluate("(window.listening ||= (addEventListener('message', (e) => { window.reported = e.data; }), true)) && window.reported"), 'the page permissions'));
+    execFileSync(process.execPath, [art, 'rm', 'perm'], { stdio: 'ignore' });
+    out.push(await leave({ send, evaluate, dir }));
     // an unknown page shows the way back instead of the frame
     await send('Page.navigate', { url: `${base}/a/no-such/` });
     out.push(await until(() => evaluate("!document.getElementById('notfound').hidden && document.getElementById('frame').hidden && !document.getElementById('frame').hasAttribute('src')"), 'the not-found state'));
     return out;
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ページ内のリンクで別のサイトへ出る。target=_blank のタブは sandbox を引き継がずそのサイトの origin で動き、
+// target の無いリンクも外枠の中ではなく新しいタブで開く（多くのサイトは iframe に入れられるのを拒む）。
+// 同じサーバー内のリンクは今までどおり外枠の中で開く。別のサイトは、iframe を拒む小さなサーバーで代える。
+// 出力は開いたタブごとの origin（無ければ none）
+async function leave({ send, evaluate, dir }) {
+  const site = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html', 'x-frame-options': 'DENY' });
+    res.end('<title>Elsewhere</title>');
+  });
+  await new Promise((r) => site.listen(0, '127.0.0.1', r));
+  const other = `http://127.0.0.1:${site.address().port}`;
+  try {
+    // 3 つのリンクを決まった位置に置き、読み込めたら外枠に知らせる
+    writeFileSync(join(dir, 'leave.html'), `<title>Leave</title><style>a { position: fixed; left: 0; width: 200px; height: 40px; }</style>`
+      + `<a href="${other}/blank" target="_blank" style="top: 0">blank</a><a href="${other}/plain" style="top: 60px">plain</a><a href="inner.html" style="top: 120px">inner</a>`
+      // the page declares globals named like the ones the appended script uses; the script must not pick them up
+      + "<script>const open = () => {}; const URL = null; const EventSource = null; const self = null;"
+      + "setInterval(() => parent.postMessage('ready', '*'), 100)</script>");
+    execFileSync(process.execPath, [art, 'publish', join(dir, 'leave.html'), '--slug', 'leave'], { stdio: 'ignore' });
+    await send('Page.navigate', { url: `${base}/a/leave/` });
+    await until(() => evaluate("(window.listening ||= (addEventListener('message', (e) => { window.reported = e.data; }), true)) && window.reported"), 'the page in the frame');
+    const box = JSON.parse(await evaluate("JSON.stringify(document.getElementById('frame').getBoundingClientRect())"));
+    for (const y of [20, 80, 140]) {
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await send('Input.dispatchMouseEvent', { type, x: box.x + 20, y: box.y + y, button: 'left', clickCount: 1 });
+      }
+    }
+    const tab = async (url) => (await send('Target.getTargets')).result.targetInfos.find((t) => t.type === 'page' && t.url === url);
+    await until(() => tab(`${other}/blank`), 'the target=_blank tab');
+    // 外枠の中で開いたリンクではタブは増えない。増えるなら blank と同じ頃に増える
+    await sleep(500);
+    const origins = [];
+    for (const url of [`${other}/blank`, `${other}/plain`, `${base}/a/leave/inner.html`]) {
+      const t = await tab(url);
+      if (!t) {
+        origins.push('none');
+        continue;
+      }
+      const { sessionId } = (await send('Target.attachToTarget', { targetId: t.targetId, flatten: true })).result;
+      const origin = (await send('Runtime.evaluate', { expression: 'self.origin', returnByValue: true }, sessionId)).result.result.value;
+      origins.push(origin === other ? 'own' : origin);
+      await send('Target.closeTarget', { targetId: t.targetId });
+    }
+    execFileSync(process.execPath, [art, 'rm', 'leave'], { stdio: 'ignore' });
+    return origins.join(' ');
+  } finally {
+    site.close();
   }
 }
 
@@ -288,9 +341,10 @@ try {
     pending.get(m.id)?.(m);
     pending.delete(m.id);
   };
-  const send = (method, params = {}) => new Promise((resolve) => {
+  // sessionId は Target.attachToTarget（flatten）で付けた別のタブ宛て
+  const send = (method, params = {}, sessionId = undefined) => new Promise((resolve) => {
     pending.set(++nextId, resolve);
-    ws.send(JSON.stringify({ id: nextId, method, params }));
+    ws.send(JSON.stringify({ id: nextId, method, params, sessionId }));
   });
   const evaluate = async (expression) => {
     const { result } = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });

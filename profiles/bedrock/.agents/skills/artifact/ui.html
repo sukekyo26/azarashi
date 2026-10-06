@@ -280,13 +280,6 @@
   }
   .toast svg { width: 16px; height: 16px; flex: none; color: var(--good); }
   @keyframes toast { 0% { opacity: 0; transform: translateY(8px); } 8%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
-  /* 行のホバーで出す縮小プレビュー。1280×800 で描いて 0.28 倍に縮める */
-  .preview {
-    position: fixed; z-index: 30; width: 360px; height: 225px; overflow: hidden; pointer-events: none;
-    background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 24px 60px -16px rgb(0 0 0 / 0.4);
-    animation: pop 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  .preview iframe { width: 1280px; height: 800px; border: 0; transform: scale(0.28125); transform-origin: 0 0; }
   /* 選択中は操作バーの分だけ下に余白を空け、最後の行に重ねない */
   .shell:has(.bulk:not([hidden])) { padding-bottom: 6rem; }
   .bulk {
@@ -467,9 +460,9 @@
     <button type="button" class="btn danger" id="bulk-delete"></button>
   </div>
 </main>
-<iframe class="frame" id="frame" hidden></iframe>
+<!-- ページ内のコピーや全画面のボタンを動かす。ページは sandbox で opaque origin になり、既定の 'src' に一致しないので * にする -->
+<iframe class="frame" id="frame" allow="clipboard-write *; fullscreen *" hidden></iframe>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
-<div class="preview" id="preview" aria-hidden="true" hidden><iframe tabindex="-1" title="プレビュー"></iframe></div>
 <div class="state notfound" id="notfound" hidden>
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 0v5h5"/></svg>
   <strong>ページが見つかりません</strong>
@@ -843,8 +836,6 @@
     li.querySelector('.desc').title = a.description;
     li.querySelector('.desc').hidden = !a.description;
     li.querySelector('.sub').hidden = !a.description && !a.path;
-    li.addEventListener('pointerenter', (e) => schedulePreview(e, a, li));
-    li.addEventListener('pointerleave', hidePreview);
     if (a.project) {
       const tag = document.createElement('button');
       tag.type = 'button';
@@ -901,36 +892,6 @@
     del.addEventListener('click', () => remove(a, del));
     del.addEventListener('blur', () => disarm(a, del));
     return li;
-  }
-
-  // 行にしばらくマウスを止めたときだけ縮小プレビューを出す（通りがかりで出さない）。タッチでは出さない（タップは開く操作なので）
-  const PREVIEW_DELAY_MS = 2000;
-  let previewTimer;
-
-  function schedulePreview(e, a, li) {
-    if (e.pointerType !== 'mouse' || a.missing) return;
-    clearTimeout(previewTimer);
-    previewTimer = setTimeout(() => showPreview(a, li), PREVIEW_DELAY_MS);
-  }
-
-  function showPreview(a, li) {
-    const box = $('preview');
-    box.querySelector('iframe').src = `/a/${a.slug}/?raw`;
-    box.hidden = false;
-    const row = li.getBoundingClientRect();
-    const { width, height } = box.getBoundingClientRect();
-    // 行の下に出し、画面に収まらなければ上に出す
-    const top = row.bottom + height + 8 <= innerHeight ? row.bottom + 6 : row.top - height - 6;
-    box.style.left = `${Math.max(16, Math.min(li.querySelector('.title').getBoundingClientRect().left, innerWidth - width - 16))}px`;
-    box.style.top = `${top}px`;
-  }
-
-  // 隠すときは空のページに替え、プレビューが開いた再読み込みの購読を閉じる
-  function hidePreview() {
-    clearTimeout(previewTimer);
-    if ($('preview').hidden) return;
-    $('preview').hidden = true;
-    $('preview').querySelector('iframe').src = 'about:blank';
   }
 
   async function toggleFavorite(a) {
@@ -1018,8 +979,6 @@
   }
 
   function render() {
-    // 行を作り直すと、マウスが乗っていた行ごと消えて pointerleave が起きないので、ここでプレビューを閉じる
-    hidePreview();
     for (const b of document.querySelectorAll('.tabs button')) {
       b.setAttribute('aria-pressed', String(b.dataset.tab === tab));
       b.querySelector('.n').textContent = items.filter((a) => inTab(a, b.dataset.tab)).length;
@@ -1212,7 +1171,6 @@
     });
     $('bulk-delete').addEventListener('click', removeSelected);
     $('bulk-delete').addEventListener('blur', disarmBulk);
-    addEventListener('scroll', hidePreview, { passive: true });
     setInterval(refreshTimes, 60000);
     $('prev').addEventListener('click', () => goPage(page - 1));
     $('next').addEventListener('click', () => goPage(page + 1));

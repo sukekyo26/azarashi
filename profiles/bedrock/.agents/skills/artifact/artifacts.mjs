@@ -32,11 +32,13 @@ const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
 const ORIGINS = new Set([...HOSTS].map((h) => `http://${h}`));
 // ページは opaque origin で動かし、ページのスクリプトから管理 API を叩けないようにする
-const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-forms allow-modals allow-downloads';
+// allow-popups-to-escape-sandbox: ページから新しいタブで開いた別のサイトには sandbox を引き継がせない（opener は持たないので管理 API には届かない）
+const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-downloads';
 
 const USAGE = `usage: artifacts.sh <command>
-  publish <file.html> [--link] [--slug s] [--title t] [--description d]
-                 store the page (same slug overwrites) and print its URL;
+  publish <file.html> [--link] [--slug s] [--title t] [--description d] [--force]
+                 store the page and print its URL; the same slug from the same project overwrites it,
+                 and a slug published from another project is refused unless --force;
                  body-only HTML (no doctype/html/head/body/title) is wrapped in template.html;
                  a new slug is also opened in the browser ($BROWSER, wslview, xdg-open);
                  --link registers the file in place instead of copying it: it is read on every request,
@@ -290,14 +292,31 @@ function prepare(file, opts, cwd) {
     );
   }
   const now = new Date().toISOString();
+  // ルート（/）では名前が空になる。空は記録せず「記録なし」に入れる（管理画面の「すべて」の値 '' と衝突するため）
+  const from = projectName(path ? dirname(path) : cwd) || undefined;
+  // 保存したページは、別のプロジェクトから同じ slug で公開されても黙って上書きしない（test-report のような slug は重なりやすい）。
+  // 持ち主は公開した場所のプロジェクトで、画面で変えられる表示用の project とは別に記録する。記録の無い古いページは project で見るが、
+  // 画面で編集された project は公開した場所を表さないので持ち主にしない
+  const owner = path ? undefined : prev?.publishedFrom ?? (prev?.projectEdited ? undefined : prev?.project);
+  const replacing = Boolean(owner) && owner !== from;
+  if (replacing && !opts.force) {
+    fail(`"${slug}" was published from project ${owner}; use another --slug, or add --force to replace that page`);
+  }
+  // --force で別のプロジェクトのページを置き換えたら、そのページの説明・お気に入り・編集は引き継がない
+  const base = replacing ? undefined : prev;
+  // 管理画面で付けたお気に入りと、画面で編集したタイトル・プロジェクトは公開し直しても保つ。タイトルは --title が優先する
+  const keepTitle = !opts.title && base?.titleEdited;
   const meta = {
     path,
-    // リンクのタイトルは毎回ファイルから取るので、--title で固定したときだけ記録する
-    title: path ? opts.title : opts.title ?? (titleOf(html) || prev?.title || slug),
-    description: opts.description ?? prev?.description ?? '',
-    // ルート（/）では名前が空になる。空は記録せず「記録なし」に入れる（管理画面の「すべて」の値 '' と衝突するため）
-    project: projectName(path ? dirname(path) : cwd) || undefined,
-    createdAt: prev?.createdAt ?? now,
+    // リンクのタイトルは毎回ファイルから取るので、--title か画面で固定したときだけ記録する
+    title: opts.title ?? (path || keepTitle ? base?.title : titleOf(html) || base?.title || slug),
+    titleEdited: keepTitle || undefined,
+    description: opts.description ?? base?.description ?? '',
+    project: base?.projectEdited ? base.project : from,
+    projectEdited: base?.projectEdited,
+    publishedFrom: path ? undefined : from,
+    favorite: base?.favorite,
+    createdAt: base?.createdAt ?? now,
     updatedAt: now,
   };
   return {
@@ -388,7 +407,7 @@ function servePage(res, slug, rest) {
   // 資材も sandbox で返す。直接開いた SVG や HTML が 127.0.0.1 の origin で動き、管理 API を叩けないように
   const headers = { 'content-type': type, 'content-security-policy': PAGE_CSP, 'x-content-type-options': 'nosniff' };
   if (type !== TYPES['.html']) return stream(res, fd, headers);
-  return sendPage(res, fd, meta, slug, rest, headers, reloaderScript(slug, rest, version));
+  return sendPage(res, fd, meta, slug, rest, headers, servedScript(slug, rest, version));
 }
 
 function openOrNull(file) {
@@ -440,8 +459,8 @@ function stream(res, fd, headers, tail = '') {
   const s = createReadStream(null, { fd, start: 0 });
   s.on('error', () => res.destroy());
   s.on('end', () => res.end(tail));
-  // 途中で切断されたら読むのをやめて fd を閉じる
-  res.on('close', () => s.destroy());
+  // 途中で切断されたら読むのをやめて fd を閉じる。bun は終えていない応答の切断で res の close を出さないので req で見る
+  res.req.on('close', () => s.destroy());
   s.pipe(res, { end: false });
 }
 
@@ -450,14 +469,26 @@ function send(res, status, body, headers = {}) {
   res.end(body);
 }
 
-// 公開し直したら（リンクはファイルを保存したら）開いているタブを再読み込みさせるスクリプトを、配信時にだけ末尾へ足す。
-// 読み込んだ版を since に埋め込むので、接続前に変わっても取りこぼさない。
-function reloaderScript(slug, rest, version) {
+// 外枠の中では、別のサイトへのリンクを新しいタブで開く。多くのサイトは iframe に入れられるのを拒むので、
+// 外枠の中で開くと何も表示されない。_top・_parent も sandbox が上の階層への移動を禁じていて開けない。
+// sandbox の中では location.origin が "null" なので、比べるのは host。
+// ページは open・URL・self などを同名のトップレベル宣言で覆えるので、覆えない window・top・location 以外は window から引く
+const LEAVE_FRAME = "if (top !== window) window.addEventListener('click', (e) => {"
+  + "const a = e.target.closest?.('a[href]');"
+  + "if (!a || e.defaultPrevented || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;"
+  + "if (!['', '_self', '_parent', '_top'].includes(a.target)) return;"
+  + "const u = new window.URL(a.href, location.href);"
+  + "if (!/^https?:$/.test(u.protocol) || u.host === location.host) return;"
+  + "e.preventDefault(); window.open(u.href, '_blank', 'noopener');});";
+
+// 配信時にだけ末尾へ足すスクリプト。公開し直したら（リンクはファイルを保存したら）開いているタブを再読み込みさせ、
+// 外枠の中では外部リンクを新しいタブで開く。読み込んだ版を since に埋め込むので、接続前に変わっても取りこぼさない。
+function servedScript(slug, rest, version) {
   // rest には ' が残り得るので、文字列リテラルは JSON.stringify で作る
   const url = JSON.stringify(`/api/events/${slug}${rest ? `/${rest}` : ''}?since=${encodeURIComponent(version)}`);
   // 合図を受けたら購読を閉じてから読み直す。読み直しが遅いと、再接続で合図がもう一度届くため
-  return `\n<script>{const es = new EventSource(${url});`
-    + "es.addEventListener('reload', () => { es.close(); location.reload(); });}</script>\n";
+  return `\n<script>{const es = new window.EventSource(${url});`
+    + `es.addEventListener('reload', () => { es.close(); location.reload(); });${LEAVE_FRAME}}</script>\n`;
 }
 
 // ページは sandbox（opaque origin、Origin: null）から購読するので、CORS は null にだけ開ける。
@@ -547,15 +578,18 @@ async function editArtifact(req, res, slug) {
   if (has('description')) next.description = input.description.trim();
   // 外したときは記録から消す
   if (has('favorite')) next.favorite = input.favorite || undefined;
-  // 空にしたタイトルは、リンクならファイルから取り直し、保存したページなら HTML の <title> か slug に戻す
+  // 空にしたタイトルは、リンクならファイルから取り直し、保存したページなら HTML の <title> か slug に戻す。
+  // 編集した印（titleEdited・projectEdited）があれば公開し直しても保ち、空にしたら印を外して自動に戻す
   if (has('title')) {
     next.title = input.title.trim()
       || (isLink(meta) ? undefined : titleOf(readText(join(ROOT, slug, 'index.html')) ?? '') || slug);
+    next.titleEdited = Boolean(input.title.trim()) || undefined;
   }
   // 空にしたプロジェクトは記録しない（「記録なし」に入る）。/ は管理画面で「記録なし」を表す値なので使えない
   if (has('project')) {
     if (input.project.trim() === '/') return send(res, 400, 'プロジェクト名に / だけは使えません');
     next.project = input.project.trim() || undefined;
+    next.projectEdited = Boolean(next.project) || undefined;
   }
   const to = has('slug') ? input.slug.trim() : slug;
   if (!SLUG_RE.test(to)) return send(res, 400, `URL 名「${to}」は使えません。英小文字・数字・ハイフンで入力してください`);
@@ -681,9 +715,11 @@ async function ensureServer() {
   let p = await probe();
   // スキルの更新や bun の出し入れの後も、起動したときのコードとランタイムのままのサーバーを使い続けない
   if (p.state === 'ours' && p.root === ROOT && (p.build !== BUILD || p.runtime !== process.execPath)) {
-    terminate(p.pid);
-    p = await waitWhile(p, (q) => q.state === 'ours');
-    if (p.state === 'ours') fail(`the outdated server (pid ${p.pid}) did not stop; run "artifacts.sh stop" and publish again`);
+    const old = p.pid;
+    terminate(old);
+    // 止めたサーバーだけを待つ。並行した別の publish が先に起動し直していれば、そのサーバーをそのまま使う
+    p = await waitWhile(p, (q) => q.state === 'ours' && q.pid === old);
+    if (p.state === 'ours' && p.pid === old) fail(`the outdated server (pid ${old}) did not stop; run "artifacts.sh stop" and publish again`);
   }
   if (p.state === 'down') {
     spawn(process.execPath, [SCRIPT, 'serve'], { detached: true, stdio: 'ignore' }).unref();
@@ -730,8 +766,13 @@ async function main() {
     allowPositionals: true,
     options: {
       link: { type: 'boolean' }, slug: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' },
+      force: { type: 'boolean' },
     },
   });
+  // 空のタイトルは「付けない」と区別できず、一覧が空欄になるだけなので受け付けない
+  if (values.title !== undefined && !values.title.trim()) {
+    fail('--title is empty: give the page a name, or omit --title to take it from the <title> or first <h1>');
+  }
   const [cmd, ...args] = positionals;
   switch (cmd) {
     case 'publish': {

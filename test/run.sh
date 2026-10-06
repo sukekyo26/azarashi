@@ -1059,6 +1059,12 @@ RECORDER
     "$(jq -r '[.description, .createdAt] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'a demo\t%s' "$ART_CREATED")"
   art publish "$ART_TMP/My Demo.html" --title 'Renamed' >/dev/null
   assert_eq "artifact: --title overrides the <title>" "$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" Renamed
+  assert_eq "artifact: a blank --title is rejected and the page is left as it was" \
+    "$(
+      art publish "$ART_TMP/My Demo.html" --title ' ' 2>&1
+      echo "rc=$?"
+    )|$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" \
+    "$(printf -- '--title is empty: give the page a name, or omit --title to take it from the <title> or first <h1>\nrc=1')|Renamed"
   sleep 0.3 # let a (wrong) opener from the republishes above reach the recorder
   assert_eq "artifact: republishing the same slug does not open another tab" "$(art_opened | wc -l | tr -d ' ')" 1
   art publish "$ART_TMP/untitled.html" >/dev/null
@@ -1097,7 +1103,7 @@ RECORDER
   curl -s "$ART_URL/a/untitled/?raw" >"$ART_TMP/raw.html"
   expect_true "artifact: ?raw serves the stored page as is, followed only by the reload script" \
     node -e 'const fs = require("node:fs"); const [raw, stored] = process.argv.slice(1).map((f) => fs.readFileSync(f, "utf8"));
-      process.exit(raw.startsWith(stored) && raw.slice(stored.length).startsWith("\n<script>{const es = new EventSource(") ? 0 : 1)' \
+      process.exit(raw.startsWith(stored) && raw.slice(stored.length).startsWith("\n<script>{const es = new window.EventSource(") ? 0 : 1)' \
     "$ART_TMP/raw.html" "$ART_TMP/store/untitled/index.html"
   expect_false "artifact: a page with its own <title> is stored as is" \
     grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
@@ -1154,7 +1160,7 @@ RECORDER
   ART_NOW=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
   ART_SINCE=$(node -p 'encodeURIComponent(process.argv[1])' "$ART_NOW")
   expect_true "artifact: a served page subscribes to reloads with its own version" \
-    sh -c "curl -s '$ART_URL/a/my-demo/?raw' | grep -qF 'new EventSource(\"/api/events/my-demo?since=$ART_SINCE\")'"
+    sh -c "curl -s '$ART_URL/a/my-demo/?raw' | grep -qF 'new window.EventSource(\"/api/events/my-demo?since=$ART_SINCE\")'"
   ART_SSE=$(curl -s -D - -N --max-time 3 "$ART_URL/api/events/my-demo?since=stale")
   assert_eq "artifact: a stale version gets a bare reload event, with CORS only for the sandboxed page (null)" \
     "$(printf '%s' "$ART_SSE" | grep -ciE '^(access-control-allow-origin: null|event: reload|data: changed)')" 3
@@ -1188,6 +1194,33 @@ RECORDER
     "200 true 200 false 400"
   assert_eq "artifact: clearing the title restores the page's own <title>, clearing the project drops it" \
     "$(jq -r '[.title, has("project")] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'Demo Page\tfalse')"
+  # a republish keeps what was set on the management page (favourite, edited title and project), --title still wins,
+  # and clearing the title and project there hands them back to the page and to where it is published from
+  # (republished from this repository: another project would be refused, see the next check)
+  art_patch -H "$ART_ORIGIN" -d '{"favorite":true,"title":"Mine","project":"p"}' "$ART_URL/api/artifacts/my-demo" >/dev/null
+  art publish "$ART_TMP/My Demo.html" >/dev/null
+  _art_kept=$(jq -r '[.favorite, .title, .project] | @tsv' "$ART_TMP/store/my-demo/meta.json")
+  art publish "$ART_TMP/My Demo.html" --title Agent >/dev/null
+  _art_forced=$(jq -r '[.title, .project] | @tsv' "$ART_TMP/store/my-demo/meta.json")
+  art_patch -H "$ART_ORIGIN" -d '{"favorite":false,"title":"","project":""}' "$ART_URL/api/artifacts/my-demo" >/dev/null
+  art publish "$ART_TMP/My Demo.html" >/dev/null
+  assert_eq "artifact: a republish keeps the favourite and the title and project edited on the management page" \
+    "$_art_kept|$_art_forced|$(jq -r '[.title, .project == "p", has("favorite"), has("titleEdited"), has("projectEdited")] | @tsv' "$ART_TMP/store/my-demo/meta.json")" \
+    "$(printf 'true\tMine\tp|Agent\tp|Demo Page\tfalse\tfalse\tfalse\tfalse')"
+  # the same slug from another project (here $ART_TMP, outside any repository) is refused and the page is left alone;
+  # --force replaces it with a fresh page that keeps nothing of the old one
+  art_patch -H "$ART_ORIGIN" -d '{"favorite":true,"description":"repo page"}' "$ART_URL/api/artifacts/my-demo" >/dev/null
+  _art_owner=$(jq -r .publishedFrom "$ART_TMP/store/my-demo/meta.json")
+  _art_refused=$(
+    cd "$ART_TMP" && art publish "$ART_TMP/My Demo.html" 2>&1
+    echo "rc=$?"
+  )
+  _art_left=$(jq -r '[.publishedFrom, .favorite, .description] | @tsv' "$ART_TMP/store/my-demo/meta.json")
+  _art_created=$(jq -r .createdAt "$ART_TMP/store/my-demo/meta.json")
+  (cd "$ART_TMP" && art publish "$ART_TMP/My Demo.html" --force >/dev/null)
+  assert_eq "artifact: a slug published from another project is refused unless --force, which starts the page afresh" \
+    "$_art_refused|$_art_left|$(jq -r --arg c "$_art_created" '[.publishedFrom, .project, has("favorite"), .description, .createdAt != $c] | @tsv' "$ART_TMP/store/my-demo/meta.json")" \
+    "$(printf '"my-demo" was published from project %s; use another --slug, or add --force to replace that page\nrc=1|%s\ttrue\trepo page|%s\t%s\tfalse\t\ttrue' "$_art_owner" "$_art_owner" "$(basename "$ART_TMP")" "$(basename "$ART_TMP")")"
   assert_eq "artifact: DELETE from a foreign origin is refused" \
     "$(http_code -X DELETE -H 'Origin: http://evil.example' "$ART_URL/api/artifacts/my-demo")" 403
   assert_eq "artifact: DELETE from a sandboxed page (Origin: null) is refused" \
@@ -1219,7 +1252,7 @@ RECORDER
     "$(curl -s -D - -o /dev/null "$ART_LINK/s.css" | grep -ciE '^(content-type: text/css|content-security-policy: sandbox|x-content-type-options: nosniff)')" 3
   expect_true "artifact: an HTML page under a linked directory is served without the frame and watches its own file" \
     sh -c "curl -s '$ART_LINK/sub/p.html' | grep -qF '<title>Sub</title>' &&
-      curl -s '$ART_LINK/sub/p.html' | grep -qF 'new EventSource(\"/api/events/site/sub/p.html?since='"
+      curl -s '$ART_LINK/sub/p.html' | grep -qF 'new window.EventSource(\"/api/events/site/sub/p.html?since='"
   # an encoded slash must not hide a dot element inside one segment (sub%2F.git)
   assert_eq "artifact: dot paths (also behind an encoded slash), .., escaping symlinks, directories and a stored page's subpaths are 404" \
     "$(for p in site/.git/config site/sub%2F.git/config site/sub%2f.git%2fconfig site/%2e%2e/outside.txt site/..%2Foutside.txt site/escape.txt site/sub/ site/sub untitled/index.html; do
@@ -1235,8 +1268,11 @@ RECORDER
   printf '<h1>Linked v3</h1>\n' >"$ART_TMP/site/index.html"
   wait $!
   expect_true "artifact: saving a linked file notifies its open pages" grep -q '^event: reload' "$ART_TMP/sse-link.out"
-  assert_eq "artifact: a link's title set from the management page is pinned, and clearing it follows the file again" \
-    "$(art_patch -H "$ART_ORIGIN" -d '{"title":"Pinned"}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)|$(art_patch -H "$ART_ORIGIN" -d '{"title":""}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)" \
+  assert_eq "artifact: a link's title set from the management page is pinned, also across a re-register, and clearing it follows the file again" \
+    "$(art_patch -H "$ART_ORIGIN" -d '{"title":"Pinned"}' "$ART_URL/api/artifacts/site")|$(
+      art publish "$ART_TMP/site/index.html" --link --slug site >/dev/null
+      art list | grep -F "$ART_TMP/site" | cut -f3
+    )|$(art_patch -H "$ART_ORIGIN" -d '{"title":""}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)" \
     "200|Pinned|200|Linked v3"
   curl -s -o "$ART_TMP/dl-link.html" "$ART_URL/api/artifacts/site/download"
   expect_true "artifact: download of a body-only linked file is wrapped in the template without the reloader" \
@@ -1254,8 +1290,30 @@ RECORDER
   curl -s -o "$ART_TMP/raw-doc.html" "$ART_URL/a/doc-link/?raw"
   expect_true "artifact: a large linked document is streamed byte for byte with the reloader appended" \
     node -e 'const fs = require("node:fs"); const raw = fs.readFileSync(process.argv[1]), doc = fs.readFileSync(process.argv[2]);
-      process.exit(raw.subarray(0, doc.length).equals(doc) && raw.subarray(doc.length).toString().startsWith("\n<script>{const es = new EventSource(") ? 0 : 1)' \
+      process.exit(raw.subarray(0, doc.length).equals(doc) && raw.subarray(doc.length).toString().startsWith("\n<script>{const es = new window.EventSource(") ? 0 : 1)' \
     "$ART_TMP/raw-doc.html" "$ART_TMP/doc/index.html"
+  # a client hanging up mid-stream must not leave the file open (bun emits no res 'close' then); needs /proc
+  _art_pid=$(curl -s "$ART_URL/api/health" | jq -r .pid)
+  if [ -d "/proc/$_art_pid/fd" ]; then
+    mkdir -p "$ART_TMP/abort"
+    node -e 'process.stdout.write("<!doctype html><title>Abort</title><p>" + "x".repeat(8 << 20))' >"$ART_TMP/abort/index.html"
+    art publish "$ART_TMP/abort/index.html" --link --slug abort >/dev/null
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      for _p in "a/abort/?raw" "api/artifacts/abort/download"; do curl -s "$ART_URL/$_p" | head -c 10 >/dev/null; done
+    done
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      _art_open=0
+      for _fd in /proc/"$_art_pid"/fd/*; do
+        case "$(readlink "$_fd" 2>/dev/null)" in "$ART_TMP/abort/"*) _art_open=$((_art_open + 1)) ;; esac
+      done
+      [ "$_art_open" -eq 0 ] && break
+      sleep 0.2
+    done
+    assert_eq "artifact: a client hanging up mid-stream does not leave the file open" "$_art_open" 0
+    art rm abort >/dev/null
+  else
+    printf '  skip - artifact fd leak test (no /proc)\n'
+  fi
   # only the first 1 KB is sniffed: a document marked later is still not wrapped and downloads byte for byte
   node -e 'require("node:fs").writeFileSync(process.argv[1], Buffer.concat([Buffer.from("<!-- " + "x".repeat(2000) + " --><!doctype html><title>Late</title><p>"), Buffer.from([0xff])]))' \
     "$ART_TMP/doc/index.html"
@@ -1354,8 +1412,8 @@ RECORDER
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
     # the page shows version 1, then version 2 once republished, without a manual reload
-    assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in the frame" \
-      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true"
+    assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in a frame that allows clipboard writes and fullscreen and sends links to other sites to new tabs out of the sandbox" \
+      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true,true|own own none|true"
     art rm live
     # newest-first list | first row's download link and its new-tab link to the page alone | rows, pressed chip and URL after clicking a project tag |
     # "全プロジェクト" chip clears the URL and is pressed | filtered rows | search in the URL | restored from it | first click only arms | row still there |
@@ -1368,9 +1426,9 @@ RECORDER
     assert_eq "artifact: the management page lists, filters, deletes with a confirming second click, adds links in a modal and pages" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" manage)" \
       "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html /a/my-demo/?raw _blank|2 true true|true|1|untitled|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false|true|true|add-path false|true|10 1 / 3 false|10 2 / 3 false|2|20 1 / 2 false 20 true"
-    assert_eq "artifact: the management page sorts, filters favourites, switches themes, moves by keyboard, deletes in bulk, previews, edits in a modal, copies paths and notifies; a page steps to its neighbours" \
+    assert_eq "artifact: the management page sorts, filters favourites, switches themes, moves by keyboard, deletes in bulk, edits in a modal, copies paths and notifies; a page steps to its neighbours" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" extras)" \
-      "Beta,Alpha,Gamma|Gamma,Beta,Alpha created|Alpha,Beta,Gamma|Gamma 1|PATCH /api/artifacts/a {\"favorite\":true}|作成 更新|Beta|1 件を選択中|2 件を選択中|本当に 2 件を削除|DELETE /api/artifacts/a,DELETE /api/artifacts/b|/a/a/?raw|true|true|true old|PATCH /api/artifacts/a {\"description\":\"new\"}|true|true|copy /tmp/x/l.html|true|Missing|dark rgb(23, 25, 31) dark|undefined|/a/a/ /a/c/ 2 / 3 /?sort=title"
+      "Beta,Alpha,Gamma|Gamma,Beta,Alpha created|Alpha,Beta,Gamma|Gamma 1|PATCH /api/artifacts/a {\"favorite\":true}|作成 更新|Beta|1 件を選択中|2 件を選択中|本当に 2 件を削除|DELETE /api/artifacts/a,DELETE /api/artifacts/b|true old|PATCH /api/artifacts/a {\"description\":\"new\"}|true|true|copy /tmp/x/l.html|true|Missing|dark rgb(23, 25, 31) dark|undefined|/a/a/ /a/c/ 2 / 3 /?sort=title"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
     printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'
@@ -1422,6 +1480,24 @@ STUB
   art_copy publish "$ART_TMP/restart.html" >/dev/null
   assert_eq "artifact: publish restarts a server running other code, and keeps one running the same code" \
     "$([ "$_art_p0" != "$_art_p1" ] && echo restarted)|$([ "$_art_p1" = "$(art_pid)" ] && echo kept)" "restarted|kept"
+  # two publishes race to replace the copy's server: a preload makes the stop of the old server also run a whole
+  # concurrent publish, which starts the new server before this one looks again; this one must use it, not wait on it
+  # CommonJS so that node loads it with --require (--import needs node 18.18+) and bun with --preload
+  cat >"$ART_TMP/race.cjs" <<'EOF'
+const { execFileSync } = require('node:child_process');
+const kill = process.kill.bind(process);
+process.kill = (pid, sig) => {
+  const sent = kill(pid, sig);
+  execFileSync(process.execPath, [process.env.ART_RACE_SCRIPT, 'publish', process.env.ART_RACE_PAGE], { stdio: 'ignore' });
+  return sent;
+};
+EOF
+  case "$ART_RUNTIME" in *bun) _art_preload=--preload ;; *) _art_preload=--require ;; esac
+  _art_p0=$(art_pid)
+  assert_eq "artifact: a publish racing another one to restart the server uses the server the other one started" \
+    "$(ART_RACE_SCRIPT="$ART" ART_RACE_PAGE="$ART_TMP/restart.html" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" \
+      "$ART_RUNTIME" "$_art_preload" "$ART_TMP/race.cjs" "$ART" publish "$ART_TMP/restart.html" 2>&1)|$([ "$_art_p0" != "$(art_pid)" ] && echo replaced)" \
+    "$ART_URL/a/restart/|replaced"
   art rm restart >/dev/null
   art stop >/dev/null
   _art_up=1
