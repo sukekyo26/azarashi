@@ -5,8 +5,8 @@
 // サーバーは保存先を毎回読むので、CLI とサーバーの間に受け渡しはない。
 import { execFileSync, spawn } from 'node:child_process';
 import {
-  accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync,
-  writeFileSync,
+  accessSync, closeSync, constants, createReadStream, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
+  realpathSync, renameSync, rmSync, statSync, writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
@@ -187,8 +187,10 @@ const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => `&${Object.keys(ENTITIES)
 
 // 文書の枠（<!doctype> <html> <head> <body> <title>）を持たない入力は本文だけの断片とみなし、
 // 同梱の雛形で包む。包んだ結果を保存するので、雛形を後で変えても公開済みのページは変わらない。
+const DOCUMENT_RE = /<!doctype|<(html|head|body|title)[\s>]/i;
+
 function wrapFragment(html, title) {
-  if (/<!doctype|<(html|head|body|title)[\s>]/i.test(outsideSvg(html))) return html;
+  if (DOCUMENT_RE.test(outsideSvg(html))) return html;
   const template = readFileSync(join(dirname(SCRIPT), 'template.html'), 'utf8');
   // 置換文字列の $& などを解釈させないよう関数で渡す
   return template.replace('{{title}}', () => escapeHtml(title)).replace('{{content}}', () => html);
@@ -373,29 +375,67 @@ const TYPES = {
   '.wasm': 'application/wasm',
 };
 
-// LIMIT: 資材も丸ごと読んでから返す。大きな動画などを置くなら stream と Range 対応に替える
+// LIMIT: Range に対応しない。動画をシークして見る用途が出たら足す
 function servePage(res, slug, rest) {
   const meta = readMeta(slug);
   const file = meta && resolveFile(meta, slug, rest);
   if (!file) return send(res, 404, 'not found');
   // 版は本文より先に取る。間に変わっても、取りこぼさず再読み込みが 1 回余分に起きるだけで済む
   const version = versionOf(meta, file);
-  let body;
-  try {
-    body = readFileSync(file);
-  } catch {
-    return send(res, 404, 'not found');
-  }
+  const fd = openOrNull(file);
+  if (fd === null) return send(res, 404, 'not found');
   const type = rest ? TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream' : TYPES['.html'];
   // 資材も sandbox で返す。直接開いた SVG や HTML が 127.0.0.1 の origin で動き、管理 API を叩けないように
   const headers = { 'content-type': type, 'content-security-policy': PAGE_CSP, 'x-content-type-options': 'nosniff' };
-  if (type !== TYPES['.html']) return send(res, 200, body, headers);
-  const page = body.toString('utf8');
-  return send(res, 200, withReloader(isLink(meta) ? wrapLink(meta, slug, rest, page) : page, slug, rest, version), headers);
+  if (type !== TYPES['.html']) return stream(res, fd, headers);
+  return sendPage(res, fd, meta, slug, rest, headers, reloaderScript(slug, rest, version));
 }
 
+function openOrNull(file) {
+  try {
+    return openSync(file, 'r');
+  } catch {
+    return null;
+  }
+}
+
+// ページを返す。書き換えが要るのは断片のリンクだけで、それ以外は全体をメモリに載せずに流す。
 // 保存したページは公開時に包んである。リンクはファイルが変わり続けるので、配信やダウンロードのたびに包む
+function sendPage(res, fd, meta, slug, rest, headers, tail = '') {
+  if (!isLink(meta) || startsAsDocument(fd)) return stream(res, fd, headers, tail);
+  let body;
+  try {
+    body = readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  const text = body.toString('utf8');
+  const wrapped = wrapLink(meta, slug, rest, text);
+  // 先頭で文書と分からなかった文書はバイト列のまま返す（UTF-8 でないファイルを読み替えて壊さないため）
+  return send(res, 200, wrapped === text ? Buffer.concat([body, Buffer.from(tail)]) : wrapped + tail, headers);
+}
+
 const wrapLink = (meta, slug, rest, page) => wrapFragment(page, (!rest && meta.title) || titleOf(page) || slug);
+
+// 先頭 1 KB だけで文書かを見る。目印は wrapFragment と同じで、SVG の <title> を拾わないよう最初の <svg> より前で探す。
+// 目印が先頭に無い文書は全体を読み、wrapFragment があらためて判定する（遅くなるだけで結果は変わらない）
+function startsAsDocument(fd) {
+  const buf = Buffer.alloc(1024);
+  const head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0));
+  const svg = head.search(/<svg[\s>]/i);
+  return DOCUMENT_RE.test(svg < 0 ? head : head.slice(0, svg));
+}
+
+// 開いたファイルを先頭から流し、tail を末尾に足す。ヘッダーを送った後に読めなくなったら接続を切る
+function stream(res, fd, headers, tail = '') {
+  res.writeHead(200, { 'cache-control': 'no-store', ...headers });
+  const s = createReadStream(null, { fd, start: 0 });
+  s.on('error', () => res.destroy());
+  s.on('end', () => res.end(tail));
+  // 途中で切断されたら読むのをやめて fd を閉じる
+  res.on('close', () => s.destroy());
+  s.pipe(res, { end: false });
+}
 
 function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...headers });
@@ -404,11 +444,11 @@ function send(res, status, body, headers = {}) {
 
 // 公開し直したら（リンクはファイルを保存したら）開いているタブを再読み込みさせるスクリプトを、配信時にだけ末尾へ足す。
 // 読み込んだ版を since に埋め込むので、接続前に変わっても取りこぼさない。
-function withReloader(page, slug, rest, version) {
+function reloaderScript(slug, rest, version) {
   // rest には ' が残り得るので、文字列リテラルは JSON.stringify で作る
   const url = JSON.stringify(`/api/events/${slug}${rest ? `/${rest}` : ''}?since=${encodeURIComponent(version)}`);
   // 合図を受けたら購読を閉じてから読み直す。読み直しが遅いと、再接続で合図がもう一度届くため
-  return `${page}\n<script>{const es = new EventSource(${url});`
+  return `\n<script>{const es = new EventSource(${url});`
     + "es.addEventListener('reload', () => { es.close(); location.reload(); });}</script>\n";
 }
 
@@ -545,19 +585,10 @@ async function handle(req, res, ui) {
     // 保存したままの HTML を返す。本文だけのリンクは表示と同じく雛形で包み、1 ファイルで完結したページとして渡す。
     // 再読み込みのスクリプトなど配信時に差し込むものは含めない
     const meta = readMeta(m[1]);
-    let page;
-    try {
-      page = readFileSync(resolveFile(meta, m[1], ''));
-    } catch {
-      return send(res, 404, 'not found');
-    }
-    if (isLink(meta)) {
-      // 包まない文書はバイト列のまま返す（UTF-8 でないファイルを読み替えて壊さないため）
-      const text = page.toString('utf8');
-      const wrapped = wrapLink(meta, m[1], '', text);
-      if (wrapped !== text) page = wrapped;
-    }
-    return send(res, 200, page, { ...html, 'content-disposition': `attachment; filename="${m[1]}.html"` });
+    const file = meta && resolveFile(meta, m[1], '');
+    const fd = file ? openOrNull(file) : null;
+    if (fd === null) return send(res, 404, 'not found');
+    return sendPage(res, fd, meta, m[1], '', { ...html, 'content-disposition': `attachment; filename="${m[1]}.html"` });
   }
   if (req.method === 'POST' && pathname === '/api/artifacts') return addLink(req, res);
   if (req.method === 'PATCH' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)$/)) && SLUG_RE.test(m[1])) {
