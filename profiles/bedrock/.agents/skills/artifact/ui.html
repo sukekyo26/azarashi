@@ -56,7 +56,7 @@
     background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 650;
   }
   .tabs button:hover { color: var(--fg); }
-  .tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+  .tabs button[aria-pressed="true"] { color: var(--fg); border-bottom-color: var(--accent); }
   .tabs .n { font: 0.72rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
 
   .add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 0.5rem; }
@@ -165,9 +165,10 @@
     <span class="server" id="server"></span>
   </header>
   <div class="toolbar">
-    <div class="tabs" role="tablist" aria-label="種類">
-      <button type="button" role="tab" data-tab="pages">アーティファクト<span class="n"></span></button>
-      <button type="button" role="tab" data-tab="links">リンク<span class="n"></span></button>
+    <!-- 一覧を切り替えるボタン。WAI-ARIA の tabs（矢印キー移動・tabpanel）は実装しないので、チップと同じ aria-pressed にする -->
+    <div class="tabs" role="group" aria-label="種類">
+      <button type="button" data-tab="pages">アーティファクト<span class="n"></span></button>
+      <button type="button" data-tab="links">リンク<span class="n"></span></button>
     </div>
     <label class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -359,7 +360,7 @@
   function render() {
     const q = $('q').value.trim().toLowerCase();
     for (const b of document.querySelectorAll('.tabs button')) {
-      b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+      b.setAttribute('aria-pressed', String(b.dataset.tab === tab));
       b.querySelector('.n').textContent = items.filter((a) => inTab(a, b.dataset.tab)).length;
     }
     $('add').hidden = tab !== 'links';
