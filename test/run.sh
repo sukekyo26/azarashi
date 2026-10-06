@@ -1249,6 +1249,11 @@ RECORDER
   curl -s -o "$ART_TMP/dl-doc.html" "$ART_URL/api/artifacts/doc-link/download"
   expect_true "artifact: download of a linked document returns the file as is" cmp -s "$ART_TMP/dl-doc.html" "$ART_TMP/doc/index.html"
   art rm doc-link >/dev/null
+  # the server caches a link's title per file version; a rewrite of the same size must still be picked up
+  art_api_title() { curl -s "$ART_URL/api/artifacts" | jq -r '.[] | select(.slug == "site") | .title'; }
+  _art_t1=$(art_api_title)
+  printf '<h1>Linked v4</h1>\n' >"$ART_TMP/site/index.html"
+  assert_eq "artifact: the list API follows a linked file rewritten at the same size" "$_art_t1|$(art_api_title)" "Linked v3|Linked v4"
   assert_eq "artifact: a slug cannot switch between a stored page and a linked file" \
     "$(
       art publish "$ART_TMP/untitled.html" --slug site 2>/dev/null

@@ -106,6 +106,27 @@ function versionOf(meta, file) {
   }
 }
 
+// 一覧は管理画面と開いているページが数秒ごとに取りに来るので、リンク先のタイトルをファイルの版ごとに覚え、
+// 数 MB のレポートを毎回全文読まない。読めなければ null
+// LIMIT: 登録を外したパスの分も残る（1 件数百バイト）。サーバーの寿命の間に数万パスを超えるなら remove で消す
+const titleCache = new Map();
+function linkTitle(file) {
+  let st;
+  try {
+    st = statSync(file);
+  } catch {
+    return null;
+  }
+  const key = `${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`;
+  const hit = titleCache.get(file);
+  if (hit?.key === key) return hit.title;
+  const html = readText(file);
+  if (html === null) return null;
+  const title = titleOf(html);
+  titleCache.set(file, { key, title });
+  return title;
+}
+
 function listArtifacts() {
   if (!existsSync(ROOT)) return [];
   return readdirSync(ROOT)
@@ -116,13 +137,13 @@ function listArtifacts() {
       // リンクのタイトルと更新日時はファイルから取る。読めなければ、タイトルは --title で固定した値か slug、
       // 更新日時は登録日時にして、missing を付ける。配信しないファイルは読まない（resolveFile と同じ判定）
       const file = resolveFile(meta, slug, '');
-      const html = file && readText(file);
+      const title = file ? linkTitle(file) : null;
       return {
         slug,
         ...meta,
-        title: meta.title ?? (titleOf(html ?? '') || slug),
-        updatedAt: (html !== null && versionOf(meta, file)) || meta.updatedAt,
-        missing: html === null,
+        title: meta.title ?? (title || slug),
+        updatedAt: (title !== null && versionOf(meta, file)) || meta.updatedAt,
+        missing: title === null,
       };
     })
     // meta.json が無い・壊れたエントリは除き、1 件のために一覧全体を落とさない
