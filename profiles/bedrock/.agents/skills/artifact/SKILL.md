@@ -55,4 +55,4 @@ description: 'Artifacts 機能が使えない環境で、単一 HTML ページ�
 
 ## 管理
 
-`~/.agents/skills/artifact/artifacts.sh` の `list`（更新日時・slug・タイトル・リンク先をタブ区切り）、`rm <slug>...`（リンクは登録を外すだけ）、`stop`。スキルを更新したら `stop` してから `publish` する（動いているサーバーは古いコードのまま）。
+`~/.agents/skills/artifact/artifacts.sh` の `list`（更新日時・slug・タイトル・リンク先をタブ区切り）、`rm <slug>...`（リンクは登録を外すだけ）、`stop`。
