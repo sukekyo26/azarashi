@@ -1397,6 +1397,26 @@ STUB
     sleep 0.1
   done
   assert_eq "artifact: stop shuts the server down" "$_art_up" 0
+  # idle shutdown on its own port with a 0.6 s limit: an open SSE stream keeps it up, and it exits once that closes
+  _art_idle_port=$(node -e 'const s = require("node:net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); });')
+  art_idle() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$_art_idle_port" ARTIFACTS_IDLE_MINUTES=0.01 "$ART_RUNTIME" "$ART" "$@"; }
+  printf '<h1>Idle</h1>\n' >"$ART_TMP/idle.html"
+  art_idle publish "$ART_TMP/idle.html" >/dev/null
+  curl -s -N -m 2 "http://127.0.0.1:$_art_idle_port/api/events/idle?since=$(jq -r .updatedAt "$ART_TMP/store/idle/meta.json")" >/dev/null &
+  _art_sse=$!
+  # another request finishing meanwhile must not start the idle timer while the stream is still open
+  sleep 0.2
+  http_code "http://127.0.0.1:$_art_idle_port/api/health" >/dev/null
+  sleep 1
+  _art_idle_up=$(http_code "http://127.0.0.1:$_art_idle_port/api/health")
+  wait "$_art_sse"
+  sleep 1.2
+  assert_eq "artifact: the server stays up while a page is open and exits after the idle limit" \
+    "$_art_idle_up $(http_code "http://127.0.0.1:$_art_idle_port/api/health")" "200 000"
+  art_idle stop >/dev/null
+  art rm idle >/dev/null
+  assert_eq "artifact: a non-positive ARTIFACTS_IDLE_MINUTES is rejected" \
+    "$(ARTIFACTS_IDLE_MINUTES=0 art list 2>&1)" 'invalid ARTIFACTS_IDLE_MINUTES "0": use a positive number of minutes'
   rm -rf "$ART_TMP"
   unset BROWSER
 else

@@ -21,6 +21,7 @@ const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = process.env.ARTIFACTS_DIR
   || join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'artifacts');
 const PORT = Number(process.env.ARTIFACTS_PORT || 4317);
+const IDLE_MINUTES = Number(process.env.ARTIFACTS_IDLE_MINUTES || 30);
 // 待ち受けと同じアドレスを表示する。localhost は環境によって ::1 に解決され、届かないことがある
 const BASE = `http://127.0.0.1:${PORT}`;
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
@@ -566,9 +567,22 @@ async function handle(req, res, ui) {
 function serve() {
   mkdirSync(ROOT, { recursive: true });
   const ui = readFileSync(join(dirname(SCRIPT), 'ui.html'));
+  // 応答中の接続が無いまま IDLE_MINUTES 経ったら終了し、常駐メモリを返す。次の publish が起動し直す。
+  // 開いているページは SSE を保ち、表示中の管理画面は数秒ごとに一覧を取るので、見ている間は落ちない
+  let active = 0;
+  let idle;
+  // setTimeout は 2^31-1 ms（約 24.8 日）を超えると即座に発火するので、そこで頭打ちにする
+  const arm = () => { idle = setTimeout(() => process.exit(0), Math.min(IDLE_MINUTES * 60_000, 2 ** 31 - 1)); };
   const server = createServer((req, res) => {
+    active++;
+    clearTimeout(idle);
+    // res ではなく req の close で数える。bun は SSE のように終えていない応答の切断で res の close を出さない
+    req.on('close', () => {
+      if (--active === 0) arm();
+    });
     handle(req, res, ui).catch((e) => send(res, 500, e.message));
   });
+  arm();
   server.on('error', (e) => {
     console.error(e.code === 'EADDRINUSE'
       ? `artifacts: port ${PORT} is in use; stop that program or set ARTIFACTS_PORT`
@@ -630,6 +644,9 @@ function localTime(iso) {
 async function main() {
   if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
     fail(`invalid ARTIFACTS_PORT "${process.env.ARTIFACTS_PORT}": use a port number from 1 to 65535`);
+  }
+  if (!(IDLE_MINUTES > 0)) {
+    fail(`invalid ARTIFACTS_IDLE_MINUTES "${process.env.ARTIFACTS_IDLE_MINUTES}": use a positive number of minutes`);
   }
   const { positionals, values } = parseArgs({
     allowPositionals: true,
