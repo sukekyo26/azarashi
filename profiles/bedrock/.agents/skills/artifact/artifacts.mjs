@@ -199,11 +199,13 @@ function checkLinkPath(path) {
 // リンクで URL 名（slug）を省いたときの名前。同じパスの登録があればそれを更新し、
 // 別のファイルが使っていれば -2, -3 … を付けて新しく登録する（index.html のような同名ファイルを上書きしない）
 function freeSlug(base, path) {
+  // 同じパスは、自動で付く名前と違う URL 名で登録されていてもそれを使う
+  const same = existsSync(ROOT) && readdirSync(ROOT).find((s) => SLUG_RE.test(s) && readMeta(s)?.path === path);
+  if (same) return same;
   for (let n = 1; ; n++) {
     const suffix = n === 1 ? '' : `-${n}`;
     const slug = base.slice(0, 64 - suffix.length).replace(/-+$/, '') + suffix;
-    const meta = readMeta(slug);
-    if (!meta || meta.path === path) return slug;
+    if (!readMeta(slug)) return slug;
   }
 }
 

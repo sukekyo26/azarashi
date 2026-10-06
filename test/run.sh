@@ -1257,7 +1257,11 @@ RECORDER
   assert_eq "artifact: an omitted slug that another file uses gets a number, by --link and from the management page" \
     "$(art publish "$ART_TMP/other/site/index.html" --link) $(curl -s -X POST -H "$ART_ORIGIN" -H 'content-type: application/json' -d "{\"path\":\"$ART_TMP/site/sub/p.html\",\"slug\":\"\"}" "$ART_URL/api/artifacts" | jq -r .slug)" \
     "$ART_URL/a/site-2/ p"
-  art rm site site-2 p
+  art rm site-2
+  art publish "$ART_TMP/other/site/index.html" --link --slug by-hand >/dev/null
+  assert_eq "artifact: an omitted slug reuses the entry of the same path, whatever its slug" \
+    "$(art publish "$ART_TMP/other/site/index.html" --link)" "$ART_URL/a/by-hand/"
+  art rm site p by-hand
   # hidden directories right under $HOME hold settings and keys; ones inside a project (.agents, .github) are fine
   mkdir -p "$ART_TMP/.secret" "$ART_TMP/proj/.agents"
   printf '<p>s</p>\n' >"$ART_TMP/.secret/x.html"
