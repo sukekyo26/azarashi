@@ -1059,6 +1059,12 @@ RECORDER
     "$(jq -r '[.description, .createdAt] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'a demo\t%s' "$ART_CREATED")"
   art publish "$ART_TMP/My Demo.html" --title 'Renamed' >/dev/null
   assert_eq "artifact: --title overrides the <title>" "$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" Renamed
+  assert_eq "artifact: a blank --title is rejected and the page is left as it was" \
+    "$(
+      art publish "$ART_TMP/My Demo.html" --title ' ' 2>&1
+      echo "rc=$?"
+    )|$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" \
+    "$(printf -- '--title is empty: give the page a name, or omit --title to take it from the <title> or first <h1>\nrc=1')|Renamed"
   sleep 0.3 # let a (wrong) opener from the republishes above reach the recorder
   assert_eq "artifact: republishing the same slug does not open another tab" "$(art_opened | wc -l | tr -d ' ')" 1
   art publish "$ART_TMP/untitled.html" >/dev/null
@@ -1188,6 +1194,18 @@ RECORDER
     "200 true 200 false 400"
   assert_eq "artifact: clearing the title restores the page's own <title>, clearing the project drops it" \
     "$(jq -r '[.title, has("project")] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'Demo Page\tfalse')"
+  # a republish keeps what was set on the management page (favourite, edited title and project), --title still wins,
+  # and clearing the title and project there hands them back to the page and to where it is published from
+  art_patch -H "$ART_ORIGIN" -d '{"favorite":true,"title":"Mine","project":"p"}' "$ART_URL/api/artifacts/my-demo" >/dev/null
+  (cd "$ART_TMP" && art publish "$ART_TMP/My Demo.html" >/dev/null)
+  _art_kept=$(jq -r '[.favorite, .title, .project] | @tsv' "$ART_TMP/store/my-demo/meta.json")
+  (cd "$ART_TMP" && art publish "$ART_TMP/My Demo.html" --title Agent >/dev/null)
+  _art_forced=$(jq -r '[.title, .project] | @tsv' "$ART_TMP/store/my-demo/meta.json")
+  art_patch -H "$ART_ORIGIN" -d '{"favorite":false,"title":"","project":""}' "$ART_URL/api/artifacts/my-demo" >/dev/null
+  (cd "$ART_TMP" && art publish "$ART_TMP/My Demo.html" >/dev/null)
+  assert_eq "artifact: a republish keeps the favourite and the title and project edited on the management page" \
+    "$_art_kept|$_art_forced|$(jq -r '[.title, .project == "p", has("favorite"), has("titleEdited"), has("projectEdited")] | @tsv' "$ART_TMP/store/my-demo/meta.json")" \
+    "$(printf 'true\tMine\tp|Agent\tp|Demo Page\tfalse\tfalse\tfalse\tfalse')"
   assert_eq "artifact: DELETE from a foreign origin is refused" \
     "$(http_code -X DELETE -H 'Origin: http://evil.example' "$ART_URL/api/artifacts/my-demo")" 403
   assert_eq "artifact: DELETE from a sandboxed page (Origin: null) is refused" \
@@ -1235,8 +1253,11 @@ RECORDER
   printf '<h1>Linked v3</h1>\n' >"$ART_TMP/site/index.html"
   wait $!
   expect_true "artifact: saving a linked file notifies its open pages" grep -q '^event: reload' "$ART_TMP/sse-link.out"
-  assert_eq "artifact: a link's title set from the management page is pinned, and clearing it follows the file again" \
-    "$(art_patch -H "$ART_ORIGIN" -d '{"title":"Pinned"}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)|$(art_patch -H "$ART_ORIGIN" -d '{"title":""}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)" \
+  assert_eq "artifact: a link's title set from the management page is pinned, also across a re-register, and clearing it follows the file again" \
+    "$(art_patch -H "$ART_ORIGIN" -d '{"title":"Pinned"}' "$ART_URL/api/artifacts/site")|$(
+      art publish "$ART_TMP/site/index.html" --link --slug site >/dev/null
+      art list | grep -F "$ART_TMP/site" | cut -f3
+    )|$(art_patch -H "$ART_ORIGIN" -d '{"title":""}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)" \
     "200|Pinned|200|Linked v3"
   curl -s -o "$ART_TMP/dl-link.html" "$ART_URL/api/artifacts/site/download"
   expect_true "artifact: download of a body-only linked file is wrapped in the template without the reloader" \
