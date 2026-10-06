@@ -1248,6 +1248,24 @@ RECORDER
   art publish "$ART_TMP/doc/index.html" --link --slug doc-link >/dev/null
   curl -s -o "$ART_TMP/dl-doc.html" "$ART_URL/api/artifacts/doc-link/download"
   expect_true "artifact: download of a linked document returns the file as is" cmp -s "$ART_TMP/dl-doc.html" "$ART_TMP/doc/index.html"
+  # pages are streamed: a 1 MB document keeps every byte (\377 included) and gets the reloader after its last byte
+  node -e 'require("node:fs").writeFileSync(process.argv[1], Buffer.concat([Buffer.from("<!doctype html><title>Big</title><p>" + "x".repeat(1 << 20)), Buffer.from([0xff])]))' \
+    "$ART_TMP/doc/index.html"
+  curl -s -o "$ART_TMP/raw-doc.html" "$ART_URL/a/doc-link/?raw"
+  expect_true "artifact: a large linked document is streamed byte for byte with the reloader appended" \
+    node -e 'const fs = require("node:fs"); const raw = fs.readFileSync(process.argv[1]), doc = fs.readFileSync(process.argv[2]);
+      process.exit(raw.subarray(0, doc.length).equals(doc) && raw.subarray(doc.length).toString().startsWith("\n<script>{const es = new EventSource(") ? 0 : 1)' \
+    "$ART_TMP/raw-doc.html" "$ART_TMP/doc/index.html"
+  # only the first 1 KB is sniffed: a document marked later is still not wrapped and downloads byte for byte
+  node -e 'require("node:fs").writeFileSync(process.argv[1], Buffer.concat([Buffer.from("<!-- " + "x".repeat(2000) + " --><!doctype html><title>Late</title><p>"), Buffer.from([0xff])]))' \
+    "$ART_TMP/doc/index.html"
+  curl -s -o "$ART_TMP/dl-doc.html" "$ART_URL/api/artifacts/doc-link/download"
+  expect_true "artifact: a linked document marked after the first 1 KB is neither wrapped nor re-encoded" \
+    sh -c "cmp -s '$ART_TMP/dl-doc.html' '$ART_TMP/doc/index.html' && ! curl -s '$ART_URL/a/doc-link/?raw' | grep -q 'local-artifacts template'"
+  # an SVG <title> at the top of a fragment does not make the sniff take it for a document
+  printf '<svg viewBox="0 0 1 1"><title>Chart</title></svg>\n<h1>Frag</h1>\n' >"$ART_TMP/doc/index.html"
+  expect_true "artifact: a linked fragment starting with an SVG <title> is still wrapped" \
+    sh -c "curl -s '$ART_URL/a/doc-link/?raw' | grep -q 'local-artifacts template'"
   art rm doc-link >/dev/null
   # the server caches a link's title per file version; a rewrite of the same size must still be picked up
   art_api_title() { curl -s "$ART_URL/api/artifacts" | jq -r '.[] | select(.slug == "site") | .title'; }
