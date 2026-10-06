@@ -1356,6 +1356,14 @@ STUB
         paste -sd' ' "$ART_TMP/runtime"
       )" "bun node"
   fi
+  # with neither runtime, say so instead of the shell's "exec: node: not found"; rt-none only supplies dirname
+  mkdir -p "$ART_TMP/rt-none"
+  ln -s "$(command -v dirname)" "$ART_TMP/rt-none/dirname"
+  assert_eq "artifact: artifacts.sh without bun or node says to install one, exit 127" \
+    "$(
+      PATH="$ART_TMP/rt-none" "$(dirname "$ART")/artifacts.sh" list 2>&1
+      echo "rc=$?"
+    )" "$(printf 'artifacts.sh: neither bun nor node is installed; install one of them (bun starts faster) and run again\nrc=127')"
   art stop >/dev/null
   _art_up=1
   for _i in 1 2 3 4 5 6 7 8 9 10; do
