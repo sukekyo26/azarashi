@@ -1211,6 +1211,10 @@ RECORDER
     "$(for p in site/.git/config site/%2e%2e/outside.txt site/..%2Foutside.txt site/escape.txt site/sub/ site/sub untitled/index.html; do
       printf '%s\n' "$(http_code --path-as-is "$ART_URL/a/$p")"
     done | paste -sd' ' -)" "404 404 404 404 404 404 404"
+  # reading a FIFO would block the whole server until a writer shows up; -m keeps a regression from hanging the suite
+  mkfifo "$ART_TMP/site/pipe.txt" "$ART_TMP/site/pipe.html"
+  assert_eq "artifact: a FIFO under a linked directory is 404 and does not block the server" \
+    "$(http_code -m 3 "$ART_LINK/pipe.txt") $(http_code -m 3 "$ART_URL/api/health")" "404 200"
   ART_MTIME=$(curl -s "$ART_LINK/" | grep -o 'since=[^"]*' | cut -d= -f2)
   curl -s -N --max-time 4 "$ART_URL/api/events/site?since=$ART_MTIME" >"$ART_TMP/sse-link.out" &
   sleep 0.3
@@ -1243,9 +1247,9 @@ RECORDER
   assert_eq "artifact: adding a link from another origin, from a sandboxed page, or without JSON is refused" \
     "$(art_post -H 'Origin: http://evil.example' -d "{\"path\":\"$ART_TMP/site/index.html\"}") $(art_post -H 'Origin: null' -d "{\"path\":\"$ART_TMP/site/index.html\"}") $(http_code -X POST -H "$ART_ORIGIN" -H 'content-type: text/plain' -d "{\"path\":\"$ART_TMP/site/index.html\"}" "$ART_URL/api/artifacts")" \
     "403 403 415"
-  assert_eq "artifact: adding a relative or non-HTML path, or bad JSON, is a client error" \
-    "$(art_post -H "$ART_ORIGIN" -d '{"path":"site/index.html"}') $(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/outside.txt\"}") $(art_post -H "$ART_ORIGIN" -d '{bad')" \
-    "400 400 400"
+  assert_eq "artifact: adding a relative or non-HTML path, a FIFO named .html, or bad JSON, is a client error" \
+    "$(art_post -H "$ART_ORIGIN" -d '{"path":"site/index.html"}') $(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/outside.txt\"}") $(art_post -m 3 -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/pipe.html\"}") $(art_post -H "$ART_ORIGIN" -d '{bad')" \
+    "400 400 400 400"
   assert_eq "artifact: the management page adds a link, named after the directory of an index.html" \
     "$(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/index.html\",\"slug\":\"\",\"description\":\"from ui\"}")|$(jq -r '[.path, .description] | @tsv' "$ART_TMP/store/site/meta.json")" \
     "201|$(printf '%s\tfrom ui' "$ART_TMP/site/index.html")"

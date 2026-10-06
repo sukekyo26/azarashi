@@ -80,12 +80,16 @@ function resolveFile(meta, slug, rest) {
   try {
     // 登録時に実体のパスへ解決してある。途中が symlink に差し替わって実体が変わっていれば、登録時の検査が効かないので返さない
     if (realpathSync(meta.path) !== meta.path) return null;
-    if (!rest) return meta.path;
-    const parts = rest.split('/').map(decodeURIComponent);
-    if (parts.some((p) => p === '' || p.startsWith('.'))) return null;
-    const base = dirname(meta.path);
-    const file = realpathSync(join(base, ...parts));
-    return file.startsWith(base + sep) ? file : null;
+    let file = meta.path;
+    if (rest) {
+      const parts = rest.split('/').map(decodeURIComponent);
+      if (parts.some((p) => p === '' || p.startsWith('.'))) return null;
+      const base = dirname(meta.path);
+      file = realpathSync(join(base, ...parts));
+      if (!file.startsWith(base + sep)) return null;
+    }
+    // 通常のファイルだけを返す。FIFO を readFileSync すると、書き手が現れるまでサーバー全体が止まる
+    return statSync(file).isFile() ? file : null;
   } catch {
     return null;
   }
@@ -182,7 +186,8 @@ function projectName(dir) {
 // ホームやルートの直下は丸ごと公開になり、ホーム直下の隠しディレクトリ（~/.ssh・~/.config 等）は設定や鍵の置き場なので拒否する。
 // リポジトリ内の .agents・.github などは対象外（配下の .git 等は resolveFile が配信しない）
 function checkLinkPath(path) {
-  if (!/\.html?$/i.test(path)) {
+  // 名前が .html でも FIFO などは読むと止まるので、通常のファイルに限る
+  if (!/\.html?$/i.test(path) || !statSync(path).isFile()) {
     fail(`${path} is not an .html file; only HTML files can be linked`, `${path} は HTML ファイル（.html / .htm）ではありません`);
   }
   const home = homedir();
