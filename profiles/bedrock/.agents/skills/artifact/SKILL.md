@@ -5,7 +5,7 @@ description: 'Artifacts 機能が使えない環境で、表・図・比較・�
 
 # artifact
 
-単一 HTML ページを書き、`artifacts.mjs publish` でローカルサーバーに載せて URL を返す。ネイティブの artifact 公開機能が使える環境ではそちらを使い、このスキルは使わない。
+単一 HTML ページを書き、`artifacts.sh publish` でローカルサーバーに載せて URL を返す。ネイティブの artifact 公開機能が使える環境ではそちらを使い、このスキルは使わない。
 
 ## 手順
 
@@ -15,9 +15,10 @@ description: 'Artifacts 機能が使えない環境で、表・図・比較・�
 2. 公開する。
 
    ```sh
-   node ~/.agents/skills/artifact/artifacts.mjs publish <file.html> --slug <slug> --description '<一文の説明>'
+   ~/.agents/skills/artifact/artifacts.sh publish <file.html> --slug <slug> --description '<一文の説明>'
    ```
 
+   - `artifacts.sh` は `bun` があれば bun、無ければ node で `artifacts.mjs` を動かす（bun の方が 1 回あたり約 20 ms 速い）。どちらも無ければ失敗する。
    - 作業中のプロジェクトのディレクトリで実行する。実行した場所の git リポジトリ名（origin の URL から。git の外ならディレクトリ名）を生成元として記録し、管理画面で絞り込みに使う。
    - サーバーが止まっていれば裏で起動し、ページの URL（`http://127.0.0.1:4317/a/<slug>/`）を 1 行出す。
    - 新しい slug のときはブラウザでページを開く（`$BROWSER` → `wslview` → `xdg-open`、macOS は `open`）。開く手段が無い環境では URL を出すだけになる。
@@ -32,7 +33,7 @@ description: 'Artifacts 機能が使えない環境で、表・図・比較・�
 エージェントが書いたページではなく、すでにある HTML（カバレッジやテストのレポート、プロジェクトで編集中のドキュメントなど）は、コピーせずに登録する。
 
 ```sh
-node ~/.agents/skills/artifact/artifacts.mjs publish <path/to/file.html> --link --slug <slug> --description '<一文の説明>'
+~/.agents/skills/artifact/artifacts.sh publish <path/to/file.html> --link --slug <slug> --description '<一文の説明>'
 ```
 
 - 登録するのはパスだけで、リクエストのたびにそのファイルを読む。ファイルを保存すれば、開いているタブが自動で再読み込みされる。
@@ -94,11 +95,11 @@ node ~/.agents/skills/artifact/artifacts.mjs publish <path/to/file.html> --link 
 
 | 操作 | 方法 |
 |:----|:----|
-| 一覧 | 管理画面（「アーティファクト」と「リンク」のタブに分かれ、生成元のプロジェクトで絞り込める）、または `artifacts.mjs list`（更新日時・slug・タイトル・リンク先のパスをタブ区切りで出す。保存したページのパスは空） |
-| 削除 | 管理画面の削除ボタン、または `artifacts.mjs rm <slug>...`。リンクは登録を外すだけで、元のファイルは消さない |
+| 一覧 | 管理画面（「アーティファクト」と「リンク」のタブに分かれ、生成元のプロジェクトで絞り込める）、または `~/.agents/skills/artifact/artifacts.sh list`（更新日時・slug・タイトル・リンク先のパスをタブ区切りで出す。保存したページのパスは空） |
+| 削除 | 管理画面の削除ボタン、または `~/.agents/skills/artifact/artifacts.sh rm <slug>...`。リンクは登録を外すだけで、元のファイルは消さない |
 | ダウンロード | 管理画面のダウンロードボタン。保存したままの HTML（リンクはファイルのまま）を `<slug>.html` として保存する |
-| サーバー停止 | `artifacts.mjs stop`。次の `publish` で再び起動する |
-| スキル更新後の反映 | `stop` してから `publish` する（動いているサーバーは古いコードのまま） |
+| サーバー停止 | `~/.agents/skills/artifact/artifacts.sh stop`。次の `publish` で再び起動する |
+| スキル更新後の反映 | `stop` してから `publish` する（動いているサーバーは古いコードのまま）。bun を入れた・外したときも同じで、動いているサーバーは起動したときのランタイムのまま |
 
 - 保存先は `~/.local/share/artifacts/<slug>/`（`ARTIFACTS_DIR` で変更）。リンクはここに `meta.json` だけを置く。ポートは `ARTIFACTS_PORT` で変更できる。
 - サーバーは 127.0.0.1 だけで待ち受ける。コンテナの中で動かす場合は、ホストへのポート転送が必要。

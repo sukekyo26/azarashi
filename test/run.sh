@@ -1009,14 +1009,21 @@ expect_false "repo-setup: an unknown argument fails" \
 
 # --- artifact skill (skipped when node or curl unavailable) -----------------
 
-if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+# ART_RUNTIME is what runs artifacts.mjs (node by default; CI also runs the suite with ART_RUNTIME=bun).
+# The harness around it (port probing, the browser driver) always uses node.
+ART_RUNTIME=${ART_RUNTIME:-node}
+
+# a missing ART_RUNTIME fails once and skips the section, instead of a cascade of "not found" failures
+if [ "$ART_RUNTIME" != node ] && ! command -v "$ART_RUNTIME" >/dev/null 2>&1; then
+  ng "artifact: ART_RUNTIME=$ART_RUNTIME is not installed (artifact skill tests skipped)"
+elif command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   ART="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/artifacts.mjs"
   # the real path: linked files are stored by it, so a symlinked temp dir (macOS /var) must not differ
   ART_TMP=$(cd "$(mktemp -d)" && pwd -P)
   # a port the OS reports free right now, rather than a guess that a busy host may already use
   ART_PORT=$(node -e 'const s = require("node:net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); });')
   ART_URL="http://127.0.0.1:$ART_PORT"
-  art() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" "$@"; }
+  art() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART" "$@"; }
   http_code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
   printf '<title>Demo  Page</title><p>hi</p>\n' >"$ART_TMP/My Demo.html"
   printf '<p>untitled</p>\n' >"$ART_TMP/untitled.html"
@@ -1128,19 +1135,19 @@ RECORDER
     "$ART_TMP/store/frag/index.html" "$ART_TMP/frag.html"
   art rm frag
   expect_false "artifact: an invalid slug is rejected" \
-    sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
+    sh -c "ARTIFACTS_DIR='$ART_TMP/store' '$ART_RUNTIME' '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
   assert_eq "artifact: an invalid ARTIFACTS_PORT fails at once with a clear message" \
     "$(
-      ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT=abc node "$ART" list 2>&1
+      ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT=abc "$ART_RUNTIME" "$ART" list 2>&1
       echo "rc=$?"
     )" \
     "$(printf 'invalid ARTIFACTS_PORT "abc": use a port number from 1 to 65535\nrc=1')"
   expect_false "artifact: port 0 and out-of-range ports are rejected too" \
-    sh -c "ARTIFACTS_PORT=0 node '$ART' list 2>/dev/null || ARTIFACTS_PORT=70000 node '$ART' list 2>/dev/null"
+    sh -c "ARTIFACTS_PORT=0 '$ART_RUNTIME' '$ART' list 2>/dev/null || ARTIFACTS_PORT=70000 '$ART_RUNTIME' '$ART' list 2>/dev/null"
   expect_false "artifact: a missing file is rejected" \
-    sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' publish '$ART_TMP/nope.html' 2>/dev/null"
+    sh -c "ARTIFACTS_DIR='$ART_TMP/store' '$ART_RUNTIME' '$ART' publish '$ART_TMP/nope.html' 2>/dev/null"
   expect_false "artifact: publishing to a server that serves another store fails" \
-    sh -c "ARTIFACTS_DIR='$ART_TMP/other' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/My Demo.html' 2>/dev/null"
+    sh -c "ARTIFACTS_DIR='$ART_TMP/other' ARTIFACTS_PORT='$ART_PORT' '$ART_RUNTIME' '$ART' publish '$ART_TMP/My Demo.html' 2>/dev/null"
   expect_false "artifact: a failed publish leaves nothing in the store" test -e "$ART_TMP/other/my-demo"
   expect_true "artifact: the management page is served" \
     sh -c "curl -s '$ART_URL/' | grep -q '<title>Artifacts</title>'"
@@ -1235,7 +1242,7 @@ RECORDER
     )" "1 1"
   printf '<p>top</p>\n' >"$ART_TMP/top.html"
   expect_false "artifact: a file directly under \$HOME cannot be linked (its whole directory would be served)" \
-    sh -c "HOME='$ART_TMP' ARTIFACTS_DIR='$ART_TMP/store' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/top.html' --link 2>/dev/null"
+    sh -c "HOME='$ART_TMP' ARTIFACTS_DIR='$ART_TMP/store' ARTIFACTS_PORT='$ART_PORT' '$ART_RUNTIME' '$ART' publish '$ART_TMP/top.html' --link 2>/dev/null"
   mv "$ART_TMP/site/index.html" "$ART_TMP/site/gone.html"
   assert_eq "artifact: a linked file that is gone is listed as missing, and its page and download are 404" \
     "$(curl -s "$ART_URL/api/artifacts" | jq -r '.[] | select(.slug == "site") | .missing') $(http_code "$ART_LINK/") $(http_code "$ART_URL/api/artifacts/site/download")" \
@@ -1275,9 +1282,9 @@ RECORDER
   printf '<p>a</p>\n' >"$ART_TMP/proj/.agents/doc.html"
   assert_eq "artifact: a file in a hidden directory of \$HOME cannot be linked, one in a project's hidden directory can" \
     "$(
-      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" publish "$ART_TMP/.secret/x.html" --link >/dev/null 2>&1
+      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART" publish "$ART_TMP/.secret/x.html" --link >/dev/null 2>&1
       echo $?
-    ) $(HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" publish "$ART_TMP/proj/.agents/doc.html" --link)" \
+    ) $(HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART" publish "$ART_TMP/proj/.agents/doc.html" --link)" \
     "1 $ART_URL/a/doc/"
   art rm doc
   # symlinks are resolved before the checks, so neither a file link nor a directory link reaches into it
@@ -1287,10 +1294,10 @@ RECORDER
   ln -s "$ART_TMP/.secret" "$ART_TMP/pub/dir"
   assert_eq "artifact: a symlink to a file or a directory in a hidden directory of \$HOME cannot be linked" \
     "$(
-      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" publish "$ART_TMP/pub/alias.html" --link >/dev/null 2>&1
+      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART" publish "$ART_TMP/pub/alias.html" --link >/dev/null 2>&1
       echo $?
     ) $(
-      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" publish "$ART_TMP/pub/dir/x.html" --link >/dev/null 2>&1
+      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART" publish "$ART_TMP/pub/dir/x.html" --link >/dev/null 2>&1
       echo $?
     )" "1 1"
   printf '<h1>R</h1>\n' >"$ART_TMP/real/page.html"
@@ -1325,7 +1332,39 @@ RECORDER
   fi
   art rm untitled
   assert_eq "artifact: rm deletes the page" "$(art list)" ""
-  expect_false "artifact: rm of an unknown slug fails" sh -c "ARTIFACTS_DIR='$ART_TMP/store' node '$ART' rm untitled 2>/dev/null"
+  expect_false "artifact: rm of an unknown slug fails" sh -c "ARTIFACTS_DIR='$ART_TMP/store' '$ART_RUNTIME' '$ART' rm untitled 2>/dev/null"
+  # artifacts.sh runs artifacts.mjs with bun when bun is on PATH, else with node; the stand-ins record which one ran
+  ART_NODE=$(command -v node)
+  mkdir -p "$ART_TMP/rt-both" "$ART_TMP/rt-node"
+  for _rt in bun node; do
+    cat >"$ART_TMP/rt-both/$_rt" <<STUB
+#!/bin/sh
+echo $_rt >>"$ART_TMP/runtime"
+exec "$ART_NODE" "\$@"
+STUB
+    chmod +x "$ART_TMP/rt-both/$_rt"
+  done
+  cp "$ART_TMP/rt-both/node" "$ART_TMP/rt-node/node"
+  # /usr/bin:/bin only supplies dirname; a real bun there would make the node-only case meaningless
+  if env PATH=/usr/bin:/bin sh -c 'command -v bun' >/dev/null 2>&1; then
+    printf '  skip - artifact launcher test (bun is installed in /usr/bin or /bin)\n'
+  else
+    assert_eq "artifact: artifacts.sh prefers bun on PATH and falls back to node" \
+      "$(
+        for _d in rt-both rt-node; do
+          ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" PATH="$ART_TMP/$_d:/usr/bin:/bin" "$(dirname "$ART")/artifacts.sh" list
+        done
+        paste -sd' ' "$ART_TMP/runtime"
+      )" "bun node"
+  fi
+  # with neither runtime, say so instead of the shell's "exec: node: not found"; rt-none only supplies dirname
+  mkdir -p "$ART_TMP/rt-none"
+  ln -s "$(command -v dirname)" "$ART_TMP/rt-none/dirname"
+  assert_eq "artifact: artifacts.sh without bun or node says to install one, exit 127" \
+    "$(
+      PATH="$ART_TMP/rt-none" "$(dirname "$ART")/artifacts.sh" list 2>&1
+      echo "rc=$?"
+    )" "$(printf 'artifacts.sh: neither bun nor node is installed; install one of them (bun starts faster) and run again\nrc=127')"
   art stop >/dev/null
   _art_up=1
   for _i in 1 2 3 4 5 6 7 8 9 10; do
