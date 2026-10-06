@@ -402,7 +402,15 @@ function openOrNull(file) {
 // ページを返す。書き換えが要るのは断片のリンクだけで、それ以外は全体をメモリに載せずに流す。
 // 保存したページは公開時に包んである。リンクはファイルが変わり続けるので、配信やダウンロードのたびに包む
 function sendPage(res, fd, meta, slug, rest, headers, tail = '') {
-  if (!isLink(meta) || startsAsDocument(fd)) return stream(res, fd, headers, tail);
+  let streamable;
+  try {
+    streamable = !isLink(meta) || startsAsDocument(fd);
+  } catch (e) {
+    // 先頭を読めなかったときも fd を閉じる。投げた例外は handle の呼び出し元が 500 にする
+    closeSync(fd);
+    throw e;
+  }
+  if (streamable) return stream(res, fd, headers, tail);
   let body;
   try {
     body = readFileSync(fd);
