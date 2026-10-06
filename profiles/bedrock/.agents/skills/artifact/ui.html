@@ -297,6 +297,9 @@
       <span class="meta"><span class="slug"></span><time></time></span>
     </div>
     <div class="actions">
+      <a class="icon-btn open" target="_blank" rel="noopener" title="ページだけを新しいタブで開く">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6m0-6-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+      </a>
       <a class="icon-btn download" title="ダウンロード">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
       </a>
@@ -471,12 +474,16 @@
       path.textContent = a.missing ? `${a.path}（ファイルが見つかりません）` : a.path;
       li.querySelector('.meta').append(path);
     }
+    const open = li.querySelector('.open');
+    open.href = `/a/${a.slug}/?raw`;
+    open.setAttribute('aria-label', `${a.title} だけを新しいタブで開く`);
     const dl = li.querySelector('.download');
     dl.href = `/api/artifacts/${a.slug}/download`;
     dl.download = `${a.slug}.html`;
     dl.setAttribute('aria-label', `${a.title} をダウンロード`);
     if (a.missing) {
       link.removeAttribute('href');
+      open.hidden = true;
       dl.hidden = true;
     }
     const del = li.querySelector('.delete');
