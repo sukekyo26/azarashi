@@ -82,7 +82,8 @@ function resolveFile(meta, slug, rest) {
     if (realpathSync(meta.path) !== meta.path) return null;
     let file = meta.path;
     if (rest) {
-      const parts = rest.split('/').map(decodeURIComponent);
+      // デコードしてから区切る。区切ってからだと %2F が要素の中に / として残り、ドットの検査をすり抜ける
+      const parts = decodeURIComponent(rest).split('/');
       if (parts.some((p) => p === '' || p.startsWith('.'))) return null;
       const base = dirname(meta.path);
       file = realpathSync(join(base, ...parts));

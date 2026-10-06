@@ -1185,11 +1185,12 @@ RECORDER
   assert_eq "artifact: DELETE of a page that is already gone, or of a bad slug, is 404" \
     "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo") $(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/Bad_Slug")" "404 404"
   # --link: the file stays where it is and is read on every request; its directory serves the relative references
-  mkdir -p "$ART_TMP/site/sub" "$ART_TMP/site/.git"
+  mkdir -p "$ART_TMP/site/sub/.git" "$ART_TMP/site/.git"
   printf '<h1>Linked v1</h1><link rel="stylesheet" href="s.css">\n' >"$ART_TMP/site/index.html"
   printf 'p{}' >"$ART_TMP/site/s.css"
   printf '<title>Sub</title><p>sub</p>\n' >"$ART_TMP/site/sub/p.html"
   printf 'secret' >"$ART_TMP/site/.git/config"
+  printf 'secret' >"$ART_TMP/site/sub/.git/config"
   printf 'outside' >"$ART_TMP/outside.txt"
   ln -s "$ART_TMP/outside.txt" "$ART_TMP/site/escape.txt"
   ART_LINK="$ART_URL/a/site"
@@ -1207,10 +1208,11 @@ RECORDER
   expect_true "artifact: an HTML page under a linked directory gets the Home link and watches its own file" \
     sh -c "curl -s '$ART_LINK/sub/p.html' | grep -qF '<style>:where(.artifact-home)' &&
       curl -s '$ART_LINK/sub/p.html' | grep -qF 'new EventSource(\"/api/events/site/sub/p.html?since='"
-  assert_eq "artifact: dot paths, .., escaping symlinks, directories and a stored page's subpaths are 404" \
-    "$(for p in site/.git/config site/%2e%2e/outside.txt site/..%2Foutside.txt site/escape.txt site/sub/ site/sub untitled/index.html; do
+  # an encoded slash must not hide a dot element inside one segment (sub%2F.git)
+  assert_eq "artifact: dot paths (also behind an encoded slash), .., escaping symlinks, directories and a stored page's subpaths are 404" \
+    "$(for p in site/.git/config site/sub%2F.git/config site/sub%2f.git%2fconfig site/%2e%2e/outside.txt site/..%2Foutside.txt site/escape.txt site/sub/ site/sub untitled/index.html; do
       printf '%s\n' "$(http_code --path-as-is "$ART_URL/a/$p")"
-    done | paste -sd' ' -)" "404 404 404 404 404 404 404"
+    done | paste -sd' ' -)" "404 404 404 404 404 404 404 404 404"
   # reading a FIFO would block the whole server until a writer shows up; -m keeps a regression from hanging the suite
   mkfifo "$ART_TMP/site/pipe.txt" "$ART_TMP/site/pipe.html"
   assert_eq "artifact: a FIFO under a linked directory is 404 and does not block the server" \
