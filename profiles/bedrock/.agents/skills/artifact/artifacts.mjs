@@ -440,8 +440,8 @@ function stream(res, fd, headers, tail = '') {
   const s = createReadStream(null, { fd, start: 0 });
   s.on('error', () => res.destroy());
   s.on('end', () => res.end(tail));
-  // 途中で切断されたら読むのをやめて fd を閉じる
-  res.on('close', () => s.destroy());
+  // 途中で切断されたら読むのをやめて fd を閉じる。bun は終えていない応答の切断で res の close を出さないので req で見る
+  res.req.on('close', () => s.destroy());
   s.pipe(res, { end: false });
 }
 

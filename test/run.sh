@@ -1256,6 +1256,28 @@ RECORDER
     node -e 'const fs = require("node:fs"); const raw = fs.readFileSync(process.argv[1]), doc = fs.readFileSync(process.argv[2]);
       process.exit(raw.subarray(0, doc.length).equals(doc) && raw.subarray(doc.length).toString().startsWith("\n<script>{const es = new EventSource(") ? 0 : 1)' \
     "$ART_TMP/raw-doc.html" "$ART_TMP/doc/index.html"
+  # a client hanging up mid-stream must not leave the file open (bun emits no res 'close' then); needs /proc
+  _art_pid=$(curl -s "$ART_URL/api/health" | jq -r .pid)
+  if [ -d "/proc/$_art_pid/fd" ]; then
+    mkdir -p "$ART_TMP/abort"
+    node -e 'process.stdout.write("<!doctype html><title>Abort</title><p>" + "x".repeat(8 << 20))' >"$ART_TMP/abort/index.html"
+    art publish "$ART_TMP/abort/index.html" --link --slug abort >/dev/null
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      for _p in "a/abort/?raw" "api/artifacts/abort/download"; do curl -s "$ART_URL/$_p" | head -c 10 >/dev/null; done
+    done
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      _art_open=0
+      for _fd in /proc/"$_art_pid"/fd/*; do
+        case "$(readlink "$_fd" 2>/dev/null)" in "$ART_TMP/abort/"*) _art_open=$((_art_open + 1)) ;; esac
+      done
+      [ "$_art_open" -eq 0 ] && break
+      sleep 0.2
+    done
+    assert_eq "artifact: a client hanging up mid-stream does not leave the file open" "$_art_open" 0
+    art rm abort >/dev/null
+  else
+    printf '  skip - artifact fd leak test (no /proc)\n'
+  fi
   # only the first 1 KB is sniffed: a document marked later is still not wrapped and downloads byte for byte
   node -e 'require("node:fs").writeFileSync(process.argv[1], Buffer.concat([Buffer.from("<!-- " + "x".repeat(2000) + " --><!doctype html><title>Late</title><p>"), Buffer.from([0xff])]))' \
     "$ART_TMP/doc/index.html"
