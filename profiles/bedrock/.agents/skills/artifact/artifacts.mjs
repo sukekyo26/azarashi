@@ -42,10 +42,16 @@ const USAGE = `usage: artifacts.mjs <command>
   serve          run the server in the foreground
   stop           stop the background server`;
 
-class UsageError extends Error {}
+// ja は管理画面に返す日本語の理由。管理画面から起き得る失敗にだけ付ける
+class UsageError extends Error {
+  constructor(msg, ja) {
+    super(msg);
+    this.ja = ja ?? msg;
+  }
+}
 
-function fail(msg) {
-  throw new UsageError(msg);
+function fail(msg, ja) {
+  throw new UsageError(msg, ja);
 }
 
 function readMeta(slug) {
@@ -169,31 +175,62 @@ function projectName(dir) {
 }
 
 // リンクとして登録できるか。ディレクトリの配下も配信するので、公開範囲を HTML のあるディレクトリに絞る:
-// ホームやルートの直下は丸ごと公開になり、ドットで始まる要素（~/.ssh・.git 等）は秘密を置く場所なので拒否する
+// ホームやルートの直下は丸ごと公開になり、ホーム直下の隠しディレクトリ（~/.ssh・~/.config 等）は設定や鍵の置き場なので拒否する。
+// リポジトリ内の .agents・.github などは対象外（配下の .git 等は resolveFile が配信しない）
 function checkLinkPath(path) {
-  if (!/\.html?$/i.test(path)) fail(`${path} is not an .html file; only HTML files can be linked`);
-  if (path.split(sep).some((p) => p.startsWith('.'))) fail(`${path} is under a hidden (dot) directory; move it out to link it`);
-  if ([sep, homedir()].includes(dirname(path))) {
-    fail(`${path} would expose all of ${dirname(path)}; move it into a directory of its own and link it there`);
+  if (!/\.html?$/i.test(path)) {
+    fail(`${path} is not an .html file; only HTML files can be linked`, `${path} は HTML ファイル（.html / .htm）ではありません`);
+  }
+  const home = homedir();
+  if (path.startsWith(home + sep) && path.slice(home.length + 1).startsWith('.')) {
+    fail(
+      `${path} is under a hidden directory of your home (settings and keys live there); move it out to link it`,
+      `${path} はホーム直下の隠しディレクトリ（設定や鍵の置き場）の中にあるので登録できません`,
+    );
+  }
+  if ([sep, home].includes(dirname(path))) {
+    fail(
+      `${path} would expose all of ${dirname(path)}; move it into a directory of its own and link it there`,
+      `${path} を登録すると ${dirname(path)} 全体が公開されます。専用のディレクトリに置いてから登録してください`,
+    );
+  }
+}
+
+// リンクで URL 名（slug）を省いたときの名前。同じパスの登録があればそれを更新し、
+// 別のファイルが使っていれば -2, -3 … を付けて新しく登録する（index.html のような同名ファイルを上書きしない）
+function freeSlug(base, path) {
+  for (let n = 1; ; n++) {
+    const suffix = n === 1 ? '' : `-${n}`;
+    const slug = base.slice(0, 64 - suffix.length).replace(/-+$/, '') + suffix;
+    const meta = readMeta(slug);
+    if (!meta || meta.path === path) return slug;
   }
 }
 
 // 検証して保存する内容を作る（まだ書かない）。CLI の publish と管理画面の登録で共通
 function prepare(file, opts, cwd) {
-  let html;
-  try {
-    html = readFileSync(file, 'utf8');
-  } catch (e) {
-    fail(`cannot read ${file}: ${e.message}`);
-  }
-  const slug = opts.slug ?? slugFromFile(file);
-  if (!SLUG_RE.test(slug)) fail(`invalid slug "${slug}": use lowercase letters, digits and hyphens via --slug`);
-  const prev = readMeta(slug);
-  if (prev && isLink(prev) !== Boolean(opts.link)) {
-    fail(`"${slug}" is ${isLink(prev) ? 'a linked file' : 'a stored page'}; run "artifacts.mjs rm ${slug}" first or use another --slug`);
-  }
   const path = opts.link ? resolve(cwd, file) : undefined;
   if (path) checkLinkPath(path);
+  let html;
+  try {
+    html = readFileSync(path ?? file, 'utf8');
+  } catch (e) {
+    fail(`cannot read ${file}: ${e.message}`, `${file} を読めません（${e.code ?? e.message}）。パスとファイルがあるかを確かめてください`);
+  }
+  const slug = opts.slug ?? (path ? freeSlug(slugFromFile(path), path) : slugFromFile(file));
+  if (!SLUG_RE.test(slug)) {
+    fail(
+      `invalid slug "${slug}": use lowercase letters, digits and hyphens via --slug`,
+      `URL 名「${slug}」は使えません。英小文字・数字・ハイフンで入力してください`,
+    );
+  }
+  const prev = readMeta(slug);
+  if (prev && isLink(prev) !== Boolean(opts.link)) {
+    fail(
+      `"${slug}" is ${isLink(prev) ? 'a linked file' : 'a stored page'}; run "artifacts.mjs rm ${slug}" first or use another --slug`,
+      `URL 名「${slug}」は${isLink(prev) ? 'リンク' : 'アーティファクト'}で使われています。別の URL 名を入力してください`,
+    );
+  }
   const now = new Date().toISOString();
   const meta = {
     path,
@@ -366,22 +403,26 @@ async function addLink(req, res) {
   try {
     input = JSON.parse(body);
   } catch {
-    return send(res, 400, 'invalid JSON');
+    return send(res, 400, '送られた内容を読めませんでした（JSON ではありません）');
   }
   const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
   const path = text(input?.path);
-  if (!path || !isAbsolute(path)) return send(res, 400, 'enter the absolute path of an HTML file');
+  if (!path || !isAbsolute(path)) return send(res, 400, 'HTML ファイルの絶対パス（/ で始まるパス）を入力してください');
   let entry;
   try {
     entry = prepare(path, { link: true, slug: text(input.slug), description: text(input.description) }, dirname(path));
   } catch (e) {
-    if (e instanceof UsageError) return send(res, 400, e.message);
+    if (e instanceof UsageError) return send(res, 400, e.ja);
     throw e;
   }
-  // CLI と違って既存の slug は上書きしない。画面の入力ミスで別のページを置き換えないように
-  if (!entry.created) return send(res, 409, `"${entry.slug}" already exists; choose another slug`);
+  // CLI と違い、入力した URL 名が別のファイルで使われていれば上書きしない。画面の入力ミスで別のリンクを置き換えないように。
+  // 省いたときは prepare が空いている名前か同じパスの登録を選ぶので、ここには来ない
+  const prev = readMeta(entry.slug);
+  if (prev && prev.path !== entry.meta.path) {
+    return send(res, 409, `URL 名「${entry.slug}」は ${prev.path} で使われています。別の URL 名を入力するか、空欄にしてください`);
+  }
   save(entry);
-  return send(res, 201, JSON.stringify({ slug: entry.slug }), { 'content-type': 'application/json' });
+  return send(res, entry.created ? 201 : 200, JSON.stringify({ slug: entry.slug }), { 'content-type': 'application/json' });
 }
 
 async function handle(req, res, ui) {

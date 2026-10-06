@@ -1239,19 +1239,36 @@ RECORDER
   # adding a link from the management page: POST /api/artifacts with JSON, from its own origin only
   art_post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' "$@" "$ART_URL/api/artifacts"; }
   ART_ORIGIN="Origin: http://127.0.0.1:$ART_PORT"
-  printf '<p>hidden</p>\n' >"$ART_TMP/site/.git/x.html"
   assert_eq "artifact: adding a link from another origin, from a sandboxed page, or without JSON is refused" \
     "$(art_post -H 'Origin: http://evil.example' -d "{\"path\":\"$ART_TMP/site/index.html\"}") $(art_post -H 'Origin: null' -d "{\"path\":\"$ART_TMP/site/index.html\"}") $(http_code -X POST -H "$ART_ORIGIN" -H 'content-type: text/plain' -d "{\"path\":\"$ART_TMP/site/index.html\"}" "$ART_URL/api/artifacts")" \
     "403 403 415"
-  assert_eq "artifact: adding a relative, non-HTML or hidden-directory path, or bad JSON, is a client error" \
-    "$(art_post -H "$ART_ORIGIN" -d '{"path":"site/index.html"}') $(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/outside.txt\"}") $(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/.git/x.html\"}") $(art_post -H "$ART_ORIGIN" -d '{bad')" \
-    "400 400 400 400"
+  assert_eq "artifact: adding a relative or non-HTML path, or bad JSON, is a client error" \
+    "$(art_post -H "$ART_ORIGIN" -d '{"path":"site/index.html"}') $(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/outside.txt\"}") $(art_post -H "$ART_ORIGIN" -d '{bad')" \
+    "400 400 400"
   assert_eq "artifact: the management page adds a link, named after the directory of an index.html" \
     "$(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/index.html\",\"slug\":\"\",\"description\":\"from ui\"}")|$(jq -r '[.path, .description] | @tsv' "$ART_TMP/store/site/meta.json")" \
     "201|$(printf '%s\tfrom ui' "$ART_TMP/site/index.html")"
-  assert_eq "artifact: adding a link never replaces an existing slug" \
-    "$(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/sub/p.html\",\"slug\":\"site\"}")" 409
-  art rm site
+  assert_eq "artifact: adding a link never replaces another file's slug given by hand, and re-adding the same path updates it" \
+    "$(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/sub/p.html\",\"slug\":\"site\"}") $(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/index.html\"}")|$(art list | cut -f2 | grep -c '^site')" \
+    "409 200|1"
+  # an omitted slug never takes over another file's: index.html in another "site" directory gets site-2
+  mkdir -p "$ART_TMP/other/site"
+  printf '<p>other</p>\n' >"$ART_TMP/other/site/index.html"
+  assert_eq "artifact: an omitted slug that another file uses gets a number, by --link and from the management page" \
+    "$(art publish "$ART_TMP/other/site/index.html" --link) $(curl -s -X POST -H "$ART_ORIGIN" -H 'content-type: application/json' -d "{\"path\":\"$ART_TMP/site/sub/p.html\",\"slug\":\"\"}" "$ART_URL/api/artifacts" | jq -r .slug)" \
+    "$ART_URL/a/site-2/ p"
+  art rm site site-2 p
+  # hidden directories right under $HOME hold settings and keys; ones inside a project (.agents, .github) are fine
+  mkdir -p "$ART_TMP/.secret" "$ART_TMP/proj/.agents"
+  printf '<p>s</p>\n' >"$ART_TMP/.secret/x.html"
+  printf '<p>a</p>\n' >"$ART_TMP/proj/.agents/doc.html"
+  assert_eq "artifact: a file in a hidden directory of \$HOME cannot be linked, one in a project's hidden directory can" \
+    "$(
+      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" publish "$ART_TMP/.secret/x.html" --link >/dev/null 2>&1
+      echo $?
+    ) $(HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$ART" publish "$ART_TMP/proj/.agents/doc.html" --link)" \
+    "1 $ART_URL/a/doc/"
+  art rm doc
   # in a headless browser (skipped without Chrome or Node's WebSocket)
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then

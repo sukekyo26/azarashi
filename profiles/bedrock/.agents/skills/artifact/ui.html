@@ -171,7 +171,7 @@
     </div>
     <label class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input type="search" id="q" placeholder="タイトル・説明・slug・パスを検索" aria-label="検索" autocomplete="off">
+      <input type="search" id="q" placeholder="タイトル・説明・URL 名・パスを検索" aria-label="検索" autocomplete="off">
       <kbd aria-hidden="true">/</kbd>
     </label>
     <div class="filters">
@@ -184,7 +184,8 @@
     <input class="path" id="add-path" required autocomplete="off" spellcheck="false"
       placeholder="HTML ファイルの絶対パス（例: /home/you/project/coverage/index.html）" aria-label="HTML ファイルの絶対パス">
     <input id="add-slug" autocomplete="off" spellcheck="false" pattern="[a-z0-9]([a-z0-9\-]{0,62}[a-z0-9])?"
-      title="英小文字・数字・ハイフン" placeholder="slug（省略時はファイル名）" aria-label="slug">
+      title="ページの URL（/a/〇〇/）に使う名前。英小文字・数字・ハイフン。空欄ならファイル名（index.html はフォルダ名）から付ける"
+      placeholder="URL 名（空欄なら自動）" aria-label="URL 名">
     <input id="add-desc" autocomplete="off" placeholder="説明（省略可）" aria-label="説明">
     <button type="submit">追加</button>
     <p class="error" id="add-error" hidden></p>
@@ -327,7 +328,8 @@
       tag.addEventListener('click', () => setProject(a.project));
       li.querySelector('.meta').prepend(tag);
     }
-    li.querySelector('.slug').textContent = a.slug;
+    li.querySelector('.slug').textContent = `/a/${a.slug}/`;
+    li.querySelector('.slug').title = `URL 名: ${a.slug}`;
     const time = li.querySelector('time');
     time.dateTime = a.updatedAt;
     time.textContent = ago(a.updatedAt);
