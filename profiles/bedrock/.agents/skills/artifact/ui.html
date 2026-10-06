@@ -59,6 +59,9 @@
   .brand svg { width: 26px; height: 26px; flex: none; filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--accent) 35%, transparent)); }
   .bar-end { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; flex: none; }
   .frame-actions { display: flex; gap: 0.15rem; }
+  .frame-nav { display: flex; align-items: center; gap: 0.15rem; padding-left: 0.6rem; margin-left: 0.15rem; border-left: 1px solid var(--line); }
+  .frame-nav a[aria-disabled="true"] { opacity: 0.35; pointer-events: none; }
+  .frame-pos { min-width: 3.5rem; text-align: center; font: 0.72rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
   .server {
     display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.7rem; font: 0.72rem/1 var(--mono); color: var(--muted);
     background: var(--panel); border: 1px solid var(--line); border-radius: 999px; font-variant-numeric: tabular-nums;
@@ -181,16 +184,16 @@
   a.title:focus-visible { outline: none; }
   li:has(a.title:focus-visible) { box-shadow: inset 0 0 0 2px var(--accent); }
   li:has(a.title:focus-visible)::before { opacity: 1; }
-  /* タイトル・説明・パスを 1 行に並べ、収まらない分は省略する。タイトルを優先して残す */
-  .body { display: flex; align-items: baseline; gap: 0.65rem; min-width: 0; }
-  .body > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* タイトルの下に説明（リンクはその後ろにパス）を置き、収まらない分は省略する */
+  .body { display: grid; gap: 0.05rem; min-width: 0; }
+  .body > a.title, .sub > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* 行全体をリンクの当たり判定にし、操作部品だけをその上に出す */
-  a.title { flex: none; max-width: 100%; color: var(--fg); font-weight: 600; text-decoration: none; scroll-margin-block: 10rem 5rem; }
-  /* 縮めるのは説明とパスで、タイトルは本文の幅に収まる限り残す。パスは説明の直後に詰めて置く */
+  a.title { justify-self: start; max-width: 100%; color: var(--fg); font-weight: 600; text-decoration: none; scroll-margin-block: 10rem 5rem; }
   a.title::after { content: ""; position: absolute; inset: 0; }
   li:hover a.title { color: var(--accent); }
-  .desc { flex: 0 1 auto; color: var(--muted); font-size: 0.84rem; }
-  .body .path { flex: 0 1 auto; font: 0.74rem var(--mono); color: var(--faint); }
+  .sub { display: flex; align-items: baseline; gap: 0.65rem; min-width: 0; }
+  .desc { flex: 0 1 auto; color: var(--muted); font-size: 0.82rem; }
+  .sub .path { flex: 0 1 auto; font: 0.72rem var(--mono); color: var(--faint); }
   .missing { color: var(--danger); }
   li:has(.missing) a.title { color: var(--muted); text-decoration: line-through; }
   .proj, .slug, li time { font: 0.72rem/1 var(--mono); color: var(--faint); white-space: nowrap; }
@@ -241,6 +244,21 @@
   @media (hover: none) { .keys { display: none; } }
 
   /* 選択中だけ下に浮かぶ操作バー */
+  .toasts { position: fixed; right: 16px; bottom: 1.25rem; z-index: 40; display: grid; gap: 0.5rem; justify-items: end; pointer-events: none; }
+  .toast {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.95rem; font-size: 0.84rem; font-weight: 550;
+    color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 11px; box-shadow: var(--shadow);
+    animation: toast 3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  }
+  .toast svg { width: 16px; height: 16px; flex: none; color: var(--good); }
+  @keyframes toast { 0% { opacity: 0; transform: translateY(8px); } 8%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  /* 行のホバーで出す縮小プレビュー。1280×800 で描いて 0.28 倍に縮める */
+  .preview {
+    position: fixed; z-index: 30; width: 360px; height: 225px; overflow: hidden; pointer-events: none;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 24px 60px -16px rgb(0 0 0 / 0.4);
+    animation: pop 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .preview iframe { width: 1280px; height: 800px; border: 0; transform: scale(0.28125); transform-origin: 0 0; }
   /* 選択中は操作バーの分だけ下に余白を空け、最後の行に重ねない */
   .shell:has(.bulk:not([hidden])) { padding-bottom: 6rem; }
   .bulk {
@@ -294,7 +312,7 @@
     .framed .server { font-size: 0; gap: 0; padding: 0.45rem; }
     ul { display: block; }
     li { grid-template-columns: auto auto minmax(0, 1fr) auto; row-gap: 0.3rem; column-gap: 0.6rem; }
-    .body { grid-column: 2 / 4; grid-row: 1; flex-direction: column; align-items: stretch; gap: 0.1rem; }
+    .body { grid-column: 2 / 4; grid-row: 1; }
     .proj { grid-column: 2; grid-row: 2; }
     li time { grid-column: 3; grid-row: 2; text-align: left; }
     .actions { grid-column: 4; grid-row: 1 / 3; }
@@ -320,6 +338,11 @@
       </svg>
       Artifacts
     </a>
+    <nav class="frame-nav" aria-label="前後のページ" hidden>
+      <a class="icon-btn" id="frame-prev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></a>
+      <span class="frame-pos" id="frame-pos"></span>
+      <a class="icon-btn" id="frame-next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+    </nav>
     <div class="bar-end">
       <span class="frame-actions" hidden>
         <a class="icon-btn" id="frame-download" title="ダウンロード" aria-label="ダウンロード">
@@ -410,6 +433,8 @@
   </div>
 </main>
 <iframe class="frame" id="frame" hidden></iframe>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<div class="preview" id="preview" aria-hidden="true" hidden><iframe tabindex="-1" title="プレビュー"></iframe></div>
 <div class="state notfound" id="notfound" hidden>
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 0v5h5"/></svg>
   <strong>ページが見つかりません</strong>
@@ -480,7 +505,7 @@
     <span class="glyph" aria-hidden="true"></span>
     <div class="body">
       <a class="title"></a>
-      <span class="desc"></span>
+      <span class="sub"><span class="desc"></span></span>
     </div>
     <span class="proj"></span>
     <span class="slug"></span>
@@ -511,25 +536,33 @@
   let items = [];
   // /a/<slug>/ ならページの外枠として動く（サーバーが同じ HTML を返す）
   const framed = location.pathname.match(/^\/a\/([^/]+)\/$/)?.[1];
-  // 一覧の状態（タブ・プロジェクト・検索語・ページ番号）は URL に持ち、記事から戻ったときや再読み込みで同じ一覧を開く
-  const params = new URLSearchParams(location.search);
-  let project = params.get('project') ?? '';
   // 保存したページ（pages）と、絶対パスで登録したリンク（links）をタブで分ける
-  let tab = params.get('tab') === 'links' ? 'links' : 'pages';
   const inTab = (a, t = tab) => Boolean(a.path) === (t === 'links');
   // 生成元を記録する前のページ。project はディレクトリ名で / を含まないので衝突しない
   const NONE = '/';
   const SIZES = [10, 20, 50, 100];
   const SIZE_KEY = 'artifacts.pageSize';
   let size = SIZES[0];
-  let page = Math.max(1, Number.parseInt(params.get('page'), 10) || 1);
   // 並び順。updated はサーバーの並び（更新が新しい順）のまま使う
   const SORTS = {
     updated: null,
     created: (x, y) => (y.createdAt ?? '').localeCompare(x.createdAt ?? ''),
     title: (x, y) => x.title.localeCompare(y.title, 'ja'),
   };
-  let sort = Object.hasOwn(SORTS, params.get('sort')) ? params.get('sort') : 'updated';
+  // 一覧の状態（タブ・プロジェクト・検索語・並び順・ページ番号）は URL に持ち、再読み込みで同じ一覧を開く。
+  // 同じ内容をタブ内にも残し、ページ表示中の前後移動と「一覧へ戻る」に使う
+  const LIST_KEY = 'artifacts.list';
+  function readState(search) {
+    const p = new URLSearchParams(search);
+    return {
+      tab: p.get('tab') === 'links' ? 'links' : 'pages',
+      project: p.get('project') ?? '',
+      q: p.get('q') ?? '',
+      sort: Object.hasOwn(SORTS, p.get('sort')) ? p.get('sort') : 'updated',
+      page: Math.max(1, Number.parseInt(p.get('page'), 10) || 1),
+    };
+  }
+  let { tab, project, sort, page } = readState(location.search);
   // 選択した slug。絞り込みやタブを変えたら解除する（見えない項目を消さないように）。ページをまたいだ選択は残す
   const selected = new Set();
   // LIMIT: 一覧の変化と接続の回復は 3 秒ごとの取り直しで拾う。件数が数百を超えて重くなったら SSE で変化だけを通知する
@@ -585,6 +618,28 @@
       else url.searchParams.delete(name);
     }
     history.replaceState(null, '', url);
+    try {
+      sessionStorage.setItem(LIST_KEY, url.search);
+    } catch {
+      // 保存できなければ、ページ表示中の前後移動は全件の更新順になる
+    }
+  }
+
+  // 一覧に出す項目を、タブ・プロジェクト・検索語・並び順に従って並べる。一覧とページ表示中の前後移動で共通
+  function arrange(state) {
+    const q = state.q.trim().toLowerCase();
+    const shown = items.filter((a) => inTab(a, state.tab) && (!state.project || (a.project ?? NONE) === state.project)
+      && (!q || [a.title, a.description, a.slug, a.project, a.path].join(' ').toLowerCase().includes(q)));
+    return SORTS[state.sort] ? shown.sort(SORTS[state.sort]) : shown;
+  }
+
+  function toast(msg) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+    t.append(msg);
+    $('toasts').append(t);
+    setTimeout(() => t.remove(), 3000);
   }
 
   // 絞り込みを変えたら 1 ページ目から見せる
@@ -660,6 +715,7 @@
     const reasons = await Promise.all(slugs.map(deleteOne));
     slugs.forEach((slug, i) => { if (!reasons[i]) selected.delete(slug); });
     const failed = reasons.filter(Boolean);
+    if (failed.length < slugs.length) toast(`${slugs.length - failed.length} 件を${tabVerb()}しました`);
     showError(failed.length ? `${failed.length} 件を${tabVerb()}できませんでした（${failed[0]}）。選択したまま残しています。` : '');
     await load();
     renderBulk();
@@ -739,6 +795,9 @@
     li.querySelector('.desc').textContent = a.description;
     li.querySelector('.desc').title = a.description;
     li.querySelector('.desc').hidden = !a.description;
+    li.querySelector('.sub').hidden = !a.description && !a.path;
+    li.addEventListener('pointerenter', (e) => schedulePreview(e, a, li));
+    li.addEventListener('pointerleave', hidePreview);
     if (a.project) {
       const tag = document.createElement('button');
       tag.type = 'button';
@@ -762,7 +821,7 @@
       path.className = a.missing ? 'path missing' : 'path';
       path.textContent = a.missing ? `${a.path}（ファイルが見つかりません）` : a.path;
       path.title = a.path;
-      li.querySelector('.body').append(path);
+      li.querySelector('.sub').append(path);
       const copy = li.querySelector('.copy');
       copy.hidden = false;
       copy.setAttribute('aria-label', `${a.title} のパスをコピー`);
@@ -790,6 +849,35 @@
     return li;
   }
 
+  // 行にマウスを止めると縮小プレビューを出す。タッチでは出さない（タップは開く操作なので）
+  let previewTimer;
+
+  function schedulePreview(e, a, li) {
+    if (e.pointerType !== 'mouse' || a.missing) return;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => showPreview(a, li), 400);
+  }
+
+  function showPreview(a, li) {
+    const box = $('preview');
+    box.querySelector('iframe').src = `/a/${a.slug}/?raw`;
+    box.hidden = false;
+    const row = li.getBoundingClientRect();
+    const { width, height } = box.getBoundingClientRect();
+    // 行の下に出し、画面に収まらなければ上に出す
+    const top = row.bottom + height + 8 <= innerHeight ? row.bottom + 6 : row.top - height - 6;
+    box.style.left = `${Math.max(16, Math.min(li.querySelector('.title').getBoundingClientRect().left, innerWidth - width - 16))}px`;
+    box.style.top = `${top}px`;
+  }
+
+  // 隠すときは空のページに替え、プレビューが開いた再読み込みの購読を閉じる
+  function hidePreview() {
+    clearTimeout(previewTimer);
+    if ($('preview').hidden) return;
+    $('preview').hidden = true;
+    $('preview').querySelector('iframe').src = 'about:blank';
+  }
+
   async function copyPath(path, btn) {
     try {
       await navigator.clipboard.writeText(path);
@@ -799,6 +887,7 @@
     }
     btn.classList.add('copied');
     btn.title = 'コピーしました';
+    toast('パスをコピーしました');
     setTimeout(() => {
       btn.classList.remove('copied');
       btn.title = 'パスをコピー';
@@ -833,6 +922,7 @@
       });
       if (!res.ok) throw new Error(`${await res.text()}（HTTP ${res.status}）`);
       $('edit-dialog').close();
+      toast('保存しました');
       await load();
     } catch (err) {
       $('edit-error').textContent = `保存できませんでした: ${err.message}`;
@@ -843,7 +933,6 @@
   }
 
   function render() {
-    const q = $('q').value.trim().toLowerCase();
     for (const b of document.querySelectorAll('.tabs button')) {
       b.setAttribute('aria-pressed', String(b.dataset.tab === tab));
       b.querySelector('.n').textContent = items.filter((a) => inTab(a, b.dataset.tab)).length;
@@ -851,9 +940,7 @@
     $('add-open').hidden = tab !== 'links';
     const list = items.filter((a) => inTab(a));
     renderChips(list);
-    const shown = list.filter((a) => (!project || (a.project ?? NONE) === project)
-      && (!q || [a.title, a.description, a.slug, a.project, a.path].join(' ').toLowerCase().includes(q)));
-    if (SORTS[sort]) shown.sort(SORTS[sort]);
+    const shown = arrange({ tab, project, q: $('q').value, sort });
     $('sort').value = sort;
     // 別の場所で消えた項目は選択から外す
     for (const slug of selected) if (!list.some((a) => a.slug === slug)) selected.delete(slug);
@@ -871,6 +958,30 @@
     syncUrl();
   }
 
+  // 開く前の一覧（タブ内に残した状態）の並びで前後へ移る。その一覧に無ければ、同じ種類の全件を更新順で使う
+  function renderNeighbors(a) {
+    let saved = '';
+    try {
+      saved = sessionStorage.getItem(LIST_KEY) ?? '';
+    } catch {
+      // 保存先を使えない
+    }
+    const openable = (state) => arrange(state).filter((x) => !x.missing);
+    let order = openable(readState(saved));
+    if (!order.some((x) => x.slug === a.slug)) order = openable({ ...readState(''), tab: a.path ? 'links' : 'pages' });
+    const at = order.findIndex((x) => x.slug === a.slug);
+    for (const [id, x, label] of [['frame-prev', order[at - 1], '前'], ['frame-next', order[at + 1], '次']]) {
+      const link = $(id);
+      if (x) link.href = `/a/${x.slug}/`;
+      else link.removeAttribute('href');
+      link.setAttribute('aria-disabled', String(!x));
+      link.title = x ? `${label}: ${x.title}` : `${label}のページはありません`;
+      link.setAttribute('aria-label', link.title);
+    }
+    $('frame-pos').textContent = `${at + 1} / ${order.length}`;
+    document.querySelector('.brand').href = `/${saved}`;
+  }
+
   function renderFrame() {
     const a = items.find((x) => x.slug === framed);
     const found = Boolean(a && !a.missing);
@@ -882,6 +993,8 @@
       : '削除されたか、URL が間違っています。';
     $('frame').hidden = !found;
     $('frame').title = a?.title ?? framed;
+    document.querySelector('.frame-nav').hidden = !found;
+    if (found) renderNeighbors(a);
     // 見つかってから読み込む（無いページの 404 を一瞬見せない）。一度読んだら src を変えず、iframe 内の移動を保つ
     if (found && !$('frame').hasAttribute('src')) $('frame').src = '?raw';
   }
@@ -906,6 +1019,7 @@
     }
     selected.delete(a.slug);
     showError('');
+    toast(`「${a.title}」を${verb(a)}しました`);
     // 取り直して描いた内容を記録する。手元で消すだけだと、次の取り直しで描き直しが起き、別の行の確認状態が解ける
     await load();
   }
@@ -950,8 +1064,10 @@
       });
       // サーバーは理由を 1 行のテキストで返す
       if (!res.ok) throw new Error(`${await res.text()}（HTTP ${res.status}）`);
+      const { slug } = await res.json();
       $('add').reset();
       $('add-dialog').close();
+      toast(`リンクを追加しました（/a/${slug}/）`);
       page = 1;
       await load();
     } catch (err) {
@@ -966,9 +1082,16 @@
     document.body.classList.add('framed');
     $('frame-download').href = `/api/artifacts/${framed}/download`;
     $('frame-download').download = `${framed}.html`;
+    // 外枠にフォーカスがあるときだけ効く（iframe の中のキー操作はページのもの）
+    document.addEventListener('keydown', (e) => {
+      const link = { ArrowLeft: $('frame-prev'), ArrowRight: $('frame-next') }[e.key];
+      if (!link?.href || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      location.href = link.href;
+    });
   } else {
     $('manage').hidden = false;
-    $('q').value = params.get('q') ?? '';
+    $('q').value = readState(location.search).q;
     $('add').addEventListener('submit', add);
     $('add-open').addEventListener('click', () => {
       $('add-error').hidden = true;
@@ -998,6 +1121,7 @@
     });
     $('bulk-delete').addEventListener('click', removeSelected);
     $('bulk-delete').addEventListener('blur', disarmBulk);
+    addEventListener('scroll', hidePreview, { passive: true });
     setInterval(refreshTimes, 60000);
     $('prev').addEventListener('click', () => goPage(page - 1));
     $('next').addEventListener('click', () => goPage(page + 1));

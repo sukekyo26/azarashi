@@ -127,8 +127,9 @@ async function manage({ send, evaluate }) {
 // 一覧と書き込みは差し替えた fetch で受け、送られた要求を calls に記録する
 async function extras({ send, evaluate }) {
   await send('Page.navigate', { url: `${base}/` });
-  await until(() => evaluate("document.readyState === 'complete' && typeof load === 'function'").catch(() => false), 'the page');
-  await evaluate(`(() => {
+  const ready = () => until(() => evaluate("document.readyState === 'complete' && typeof load === 'function'").catch(() => false), 'the page');
+  await ready();
+  const stub = `(() => {
     window.calls = [];
     const at = (d) => \`2026-01-0\${d}T00:00:00.000Z\`;
     const list = JSON.stringify([
@@ -147,7 +148,8 @@ async function extras({ send, evaluate }) {
       return Promise.resolve();
     };
     return load();
-  })()`);
+  })()`;
+  await evaluate(stub);
   const titles = () => evaluate("[...document.querySelectorAll('#list .title')].map((a) => a.textContent).join(',')");
   const sortBy = (v) => evaluate(`(() => {
     const s = document.getElementById('sort');
@@ -177,17 +179,31 @@ async function extras({ send, evaluate }) {
   await evaluate("document.getElementById('bulk-delete').click()");
   await until(() => evaluate("document.getElementById('bulk').hidden"), 'the selection to clear');
   out.push(await evaluate("calls.splice(0).sort().join(',')"));
+  // resting the mouse on a row shows a small preview of the page alone; leaving the row hides it
+  const center = (sel) => evaluate(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 }); })()`).then(JSON.parse);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...(await center('#list li .title')) });
+  out.push(await until(() => evaluate("!document.getElementById('preview').hidden && document.querySelector('#preview iframe').getAttribute('src')"), 'the preview'));
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+  out.push(await until(() => evaluate("document.getElementById('preview').hidden"), 'the preview to hide'));
   // the pencil opens a modal with the current description; saving sends the new one
   await evaluate("document.querySelector('#list li .edit').click()");
   out.push(await evaluate("[document.getElementById('edit-dialog').open, document.getElementById('edit-desc').value].join(' ')"));
   await evaluate("document.getElementById('edit-desc').value = 'new'; document.getElementById('edit').requestSubmit()");
   await until(() => evaluate("!document.getElementById('edit-dialog').open"), 'the edit modal to close');
   out.push(await evaluate("calls.splice(0).join(',')"));
+  out.push(await evaluate("document.getElementById('toasts').textContent.includes('保存しました')"));
   // only linked files have a copy button for their path
   out.push(await evaluate("document.querySelector('#list li .copy').hidden"));
   await evaluate("document.querySelector('.tabs [data-tab=links]').click()");
   await evaluate("document.querySelector('#list li .copy').click()");
   out.push(await until(() => evaluate("calls.join(',')"), 'the copy'));
+  out.push(await evaluate("document.getElementById('toasts').textContent.includes('パスをコピーしました')"));
+  // a page opened from the list steps to its neighbours in that list's order, and the logo returns to that list
+  await evaluate("sessionStorage.setItem('artifacts.list', '?sort=title')");
+  await send('Page.navigate', { url: `${base}/a/b/` });
+  await ready();
+  await evaluate(stub);
+  out.push(await until(() => evaluate("document.getElementById('frame-pos').textContent && ['frame-prev', 'frame-next'].map((id) => document.getElementById(id).getAttribute('href')).concat(document.getElementById('frame-pos').textContent, document.querySelector('.brand').getAttribute('href')).join(' ')"), 'the neighbours'));
   return out;
 }
 
