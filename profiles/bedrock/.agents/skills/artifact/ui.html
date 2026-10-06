@@ -110,7 +110,7 @@
 
   .search { position: relative; flex: 1 1 18rem; }
   .search svg { position: absolute; left: 0.75rem; top: 50%; translate: 0 -50%; width: 15px; height: 15px; color: var(--faint); pointer-events: none; }
-  input.text, .search input {
+  .text, .search input {
     width: 100%; min-width: 0; height: 36px; padding: 0 0.75rem; font: inherit; font-weight: 400; color: var(--fg);
     background: var(--panel); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow-sm);
     transition: border-color 0.15s, box-shadow 0.15s;
@@ -164,11 +164,23 @@
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--glyph-fg) 14%, transparent);
   }
   .glyph.none { color: var(--faint); background: var(--subtle); box-shadow: inset 0 0 0 1px var(--line); }
+  /* 選択のチェックボックスはアイコンと同じ位置に重ね、ホバー・選択中・ホバーの無い端末で見せる */
+  .pick { position: relative; z-index: 1; display: grid; }
+  .pick > * { grid-area: 1 / 1; }
+  .sel { width: 28px; height: 28px; margin: 0; opacity: 0; cursor: pointer; accent-color: var(--accent); transition: opacity 0.15s; }
+  li:hover .sel, .sel:checked, .sel:focus-visible, ul.selecting .sel { opacity: 1; }
+  li:hover .glyph, li:has(.sel:checked) .glyph, li:has(.sel:focus-visible) .glyph, ul.selecting .glyph { opacity: 0; }
+  @media (hover: none) { .sel { opacity: 1; } .glyph { opacity: 0; } }
+  li:has(.sel:checked) { background: color-mix(in srgb, var(--accent-soft) 70%, var(--panel)); }
+  /* キーボードで選んだ行は行全体を囲む。タイトル自体の枠は出さない */
+  a.title:focus-visible { outline: none; }
+  li:has(a.title:focus-visible) { box-shadow: inset 0 0 0 2px var(--accent); }
+  li:has(a.title:focus-visible)::before { opacity: 1; }
   /* タイトル・説明・パスを 1 行に並べ、収まらない分は省略する。タイトルを優先して残す */
   .body { display: flex; align-items: baseline; gap: 0.65rem; min-width: 0; }
   .body > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* 行全体をリンクの当たり判定にし、操作部品だけをその上に出す */
-  a.title { flex: none; max-width: 100%; color: var(--fg); font-weight: 600; text-decoration: none; }
+  a.title { flex: none; max-width: 100%; color: var(--fg); font-weight: 600; text-decoration: none; scroll-margin-block: 10rem 5rem; }
   /* 縮めるのは説明とパスで、タイトルは本文の幅に収まる限り残す。パスは説明の直後に詰めて置く */
   a.title::after { content: ""; position: absolute; inset: 0; }
   li:hover a.title { color: var(--accent); }
@@ -196,6 +208,8 @@
   .icon-btn:hover { background: var(--subtle); color: var(--fg); }
   .icon-btn:disabled { opacity: 0.35; cursor: default; background: transparent; color: var(--muted); }
   .delete:hover { color: var(--danger); }
+  .copy .done, .copy.copied > svg { display: none; }
+  .copy.copied .done { display: block; color: var(--good); }
   .delete .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .delete.armed { color: var(--danger); background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 50%, transparent); font-size: 0.78rem; font-weight: 650; }
   .delete.armed .label { position: static; width: auto; height: auto; clip-path: none; }
@@ -209,6 +223,32 @@
   .pages { display: inline-flex; align-items: center; gap: 0.45rem; font: 0.74rem/1 var(--mono); font-variant-numeric: tabular-nums; }
   .pages .icon-btn { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow-sm); }
   .pages .range { color: var(--faint); margin-right: 0.35rem; }
+
+  .sort select {
+    height: 30px; padding: 0 1.8rem 0 0.65rem; font: inherit; font-size: 0.8rem; color: var(--muted); cursor: pointer;
+    background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b93a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E") no-repeat right 0.5rem center / 14px;
+    border: 1px solid var(--line); border-radius: 8px; appearance: none;
+  }
+  .sort select:hover { color: var(--fg); border-color: var(--faint); }
+
+  .keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem 1rem; margin: 0; font-size: 0.74rem; color: var(--faint); }
+  .keys kbd {
+    display: inline-block; min-width: 1.4rem; margin-right: 0.2rem; padding: 0.1rem 0.35rem; text-align: center;
+    font: 0.68rem/1.4 var(--mono); color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px;
+  }
+  @media (hover: none) { .keys { display: none; } }
+
+  /* 選択中だけ下に浮かぶ操作バー */
+  .bulk {
+    position: fixed; left: 50%; bottom: 1.25rem; z-index: 20; translate: -50% 0; display: flex; align-items: center; gap: 0.4rem;
+    max-width: calc(100% - 32px); padding: 0.4rem 0.4rem 0.4rem 1rem; color: var(--bg); background: var(--fg);
+    border-radius: 14px; box-shadow: 0 18px 40px -12px rgb(0 0 0 / 0.45); animation: pop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .bulk-count { margin-right: 0.5rem; font-size: 0.84rem; font-weight: 600; white-space: nowrap; }
+  .bulk .btn { height: 32px; color: inherit; background: transparent; border-color: color-mix(in srgb, var(--bg) 25%, transparent); box-shadow: none; }
+  .bulk .btn:hover { background: color-mix(in srgb, var(--bg) 12%, transparent); }
+  .bulk .btn.danger { color: #fff; background: var(--danger); border-color: transparent; }
+  .bulk .btn.danger.armed { outline: 2px solid color-mix(in srgb, var(--danger) 50%, transparent); outline-offset: 2px; }
 
   .state { display: grid; justify-items: center; gap: 0.5rem; padding: 3.5rem 1.5rem; text-align: center; color: var(--muted); }
   .state svg {
@@ -250,13 +290,14 @@
     .framed .server { font-size: 0; gap: 0; padding: 0.45rem; }
     ul { display: block; }
     li { grid-template-columns: auto auto minmax(0, 1fr) auto; row-gap: 0.3rem; column-gap: 0.6rem; }
-    .glyph { grid-column: 1; grid-row: 1 / 3; }
     .body { grid-column: 2 / 4; grid-row: 1; flex-direction: column; align-items: stretch; gap: 0.1rem; }
     .proj { grid-column: 2; grid-row: 2; }
     li time { grid-column: 3; grid-row: 2; text-align: left; }
     .actions { grid-column: 4; grid-row: 1 / 3; }
     .filters { flex-wrap: wrap; }
     .count { margin-left: 0; }
+    .pick { grid-column: 1; grid-row: 1 / 3; }
+    .bulk { left: 16px; right: 16px; translate: none; flex-wrap: wrap; }
   }
   @media (prefers-reduced-motion: reduce) { *, *::before { transition: none !important; animation: none !important; } }
 </style>
@@ -309,6 +350,13 @@
     <div class="filters">
       <div class="chips" id="chips" role="group" aria-label="プロジェクト"></div>
       <span class="count" id="count"></span>
+      <label class="sort"><span class="sr-only">並び順</span>
+        <select id="sort">
+          <option value="updated">更新が新しい順</option>
+          <option value="created">作成が新しい順</option>
+          <option value="title">タイトル順</option>
+        </select>
+      </label>
     </div>
   </div>
   <p class="error" id="error" hidden></p>
@@ -345,6 +393,16 @@
       </button>
     </div>
   </nav>
+  <p class="keys" aria-hidden="true">
+    <span><kbd>j</kbd><kbd>k</kbd>移動</span><span><kbd>Enter</kbd>開く</span><span><kbd>x</kbd>選択</span>
+    <span><kbd>←</kbd><kbd>→</kbd>ページ</span><span><kbd>/</kbd>検索</span>
+  </p>
+  <div class="bulk" id="bulk" role="region" aria-label="選択した項目の操作" hidden>
+    <span class="bulk-count" id="bulk-count" aria-live="polite"></span>
+    <button type="button" class="btn" id="bulk-page">このページをすべて選択</button>
+    <button type="button" class="btn" id="bulk-clear">選択を解除</button>
+    <button type="button" class="btn danger" id="bulk-delete"></button>
+  </div>
 </main>
 <iframe class="frame" id="frame" hidden></iframe>
 <div class="state notfound" id="notfound" hidden>
@@ -376,14 +434,33 @@
     </label>
     <p class="error" id="add-error" hidden></p>
     <div class="dialog-actions">
-      <button type="button" class="btn" id="add-cancel">キャンセル</button>
+      <button type="button" class="btn" id="add-cancel" data-close>キャンセル</button>
       <button type="submit" class="btn primary" id="add-submit">追加</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="edit-dialog" aria-labelledby="edit-title">
+  <form class="add" id="edit">
+    <div class="add-head">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4"/></svg>
+      <div>
+        <h2 id="edit-title">説明を編集</h2>
+        <p class="lead" id="edit-target"></p>
+      </div>
+    </div>
+    <label class="field">説明
+      <input class="text" id="edit-desc" autocomplete="off">
+    </label>
+    <p class="error" id="edit-error" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="submit" class="btn primary" id="edit-submit">保存</button>
     </div>
   </form>
 </dialog>
 <template id="row">
   <li>
-    <span class="glyph" aria-hidden="true"></span>
+    <span class="pick"><span class="glyph" aria-hidden="true"></span><input type="checkbox" class="sel"></span>
     <div class="body">
       <a class="title"></a>
       <span class="desc"></span>
@@ -392,6 +469,13 @@
     <span class="slug"></span>
     <time></time>
     <div class="actions">
+      <button type="button" class="icon-btn copy" title="パスをコピー" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 9h10v11H9zM5 15V4h10"/></svg>
+        <span class="done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+      </button>
+      <button type="button" class="icon-btn edit" title="説明を編集">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4"/></svg>
+      </button>
       <a class="icon-btn open" target="_blank" rel="noopener" title="ページだけを新しいタブで開く">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6m0-6-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
       </a>
@@ -422,6 +506,15 @@
   const SIZE_KEY = 'artifacts.pageSize';
   let size = SIZES[0];
   let page = Math.max(1, Number.parseInt(params.get('page'), 10) || 1);
+  // 並び順。updated はサーバーの並び（更新が新しい順）のまま使う
+  const SORTS = {
+    updated: null,
+    created: (x, y) => (y.createdAt ?? '').localeCompare(x.createdAt ?? ''),
+    title: (x, y) => x.title.localeCompare(y.title, 'ja'),
+  };
+  let sort = Object.hasOwn(SORTS, params.get('sort')) ? params.get('sort') : 'updated';
+  // 選択した slug。絞り込みやタブを変えたら解除する（見えない項目を消さないように）。ページをまたいだ選択は残す
+  const selected = new Set();
   // LIMIT: 一覧の変化と接続の回復は 3 秒ごとの取り直しで拾う。件数が数百を超えて重くなったら SSE で変化だけを通知する
   const POLL_MS = 3000;
   // 表示件数は閲覧者の好みとしてブラウザに残す。保存できない環境では既定値で動く
@@ -467,7 +560,9 @@
   // 既定値（pages タブ・すべて・空の検索・1 ページ目）は URL から省く
   function syncUrl() {
     const url = new URL(location.href);
-    const state = { tab: tab === 'links' ? tab : '', project, q: $('q').value.trim(), page: page > 1 ? String(page) : '' };
+    const state = {
+      tab: tab === 'links' ? tab : '', project, q: $('q').value.trim(), sort: sort === 'updated' ? '' : sort, page: page > 1 ? String(page) : '',
+    };
     for (const [name, value] of Object.entries(state)) {
       if (value) url.searchParams.set(name, value);
       else url.searchParams.delete(name);
@@ -478,6 +573,7 @@
   // 絞り込みを変えたら 1 ページ目から見せる
   function refilter() {
     page = 1;
+    selected.clear();
     render();
   }
 
@@ -505,6 +601,57 @@
     page = n;
     render();
     scrollTo(0, 0);
+  }
+
+  // リンクを消しても元のファイルは残るので、「削除」ではなく「登録解除」と書く
+  const verb = (a) => (a.path ? '登録解除' : '削除');
+  const tabVerb = () => (tab === 'links' ? '登録解除' : '削除');
+
+  // 2 回押して実行するボタン。1 回目で確認状態にして true を返し、フォーカスが外れたら戻す
+  function arm(btn, armedLabel) {
+    if (btn.classList.contains('armed')) return false;
+    btn.classList.add('armed');
+    (btn.querySelector('.label') ?? btn).textContent = armedLabel;
+    return true;
+  }
+
+  function disarmBulk() {
+    $('bulk-delete').classList.remove('armed');
+    $('bulk-delete').textContent = tabVerb();
+  }
+
+  function renderBulk() {
+    $('bulk').hidden = selected.size === 0;
+    $('list').classList.toggle('selecting', selected.size > 0);
+    $('bulk-count').textContent = `${selected.size} 件を選択中`;
+    disarmBulk();
+  }
+
+  // 失敗したときの理由を返す。もう無い（404）なら消せたものとして扱う
+  async function deleteOne(slug) {
+    try {
+      const res = await api(`/api/artifacts/${slug}`, { method: 'DELETE' });
+      return res.ok || res.status === 404 ? '' : `HTTP ${res.status}`;
+    } catch (e) {
+      return e.message;
+    }
+  }
+
+  async function removeSelected() {
+    const btn = $('bulk-delete');
+    if (arm(btn, `本当に ${selected.size} 件を${tabVerb()}`)) return;
+    const slugs = [...selected];
+    const reasons = await Promise.all(slugs.map(deleteOne));
+    slugs.forEach((slug, i) => { if (!reasons[i]) selected.delete(slug); });
+    const failed = reasons.filter(Boolean);
+    showError(failed.length ? `${failed.length} 件を${tabVerb()}できませんでした（${failed[0]}）。選択したまま残しています。` : '');
+    await load();
+    renderBulk();
+  }
+
+  // 相対時刻（「3 分前」など）は一覧を描き直さなくても進める
+  function refreshTimes() {
+    for (const t of document.querySelectorAll('#list time')) t.textContent = ago(t.dateTime);
   }
 
   // プロジェクトの色相。行のアイコン・タグ・チップで同じ色にする
@@ -556,6 +703,15 @@
   function row(a, i) {
     const li = $('row').content.firstElementChild.cloneNode(true);
     li.style.setProperty('--i', i);
+    li.dataset.slug = a.slug;
+    const sel = li.querySelector('.sel');
+    sel.checked = selected.has(a.slug);
+    sel.setAttribute('aria-label', `${a.title} を選択`);
+    sel.addEventListener('change', () => {
+      if (sel.checked) selected.add(a.slug);
+      else selected.delete(a.slug);
+      renderBulk();
+    });
     const glyph = li.querySelector('.glyph');
     glyph.textContent = [...(a.project ?? a.title)][0]?.toUpperCase() ?? '';
     if (a.project) li.style.setProperty('--h', hue(a.project));
@@ -578,10 +734,12 @@
     }
     li.querySelector('.slug').textContent = `/a/${a.slug}/`;
     li.querySelector('.slug').title = `URL 名: ${a.slug}`;
+    // 作成順で並べたときは作成日時を出す
+    const [when, label] = sort === 'created' && a.createdAt ? [a.createdAt, '作成'] : [a.updatedAt, '更新'];
     const time = li.querySelector('time');
-    time.dateTime = a.updatedAt;
-    time.textContent = ago(a.updatedAt);
-    time.title = `更新 ${fmt(a.updatedAt)}`;
+    time.dateTime = when;
+    time.textContent = ago(when);
+    time.title = `${label} ${fmt(when)}`;
     // リンクは登録した場所のファイルを表示する。消えていれば開けないことを示す
     if (a.path) {
       const path = document.createElement('span');
@@ -589,7 +747,14 @@
       path.textContent = a.missing ? `${a.path}（ファイルが見つかりません）` : a.path;
       path.title = a.path;
       li.querySelector('.body').append(path);
+      const copy = li.querySelector('.copy');
+      copy.hidden = false;
+      copy.setAttribute('aria-label', `${a.title} のパスをコピー`);
+      copy.addEventListener('click', () => copyPath(a.path, copy));
     }
+    const edit = li.querySelector('.edit');
+    edit.setAttribute('aria-label', `${a.title} の説明を編集`);
+    edit.addEventListener('click', () => openEdit(a));
     const open = li.querySelector('.open');
     open.href = `/a/${a.slug}/?raw`;
     open.setAttribute('aria-label', `${a.title} だけを新しいタブで開く`);
@@ -609,6 +774,52 @@
     return li;
   }
 
+  async function copyPath(path, btn) {
+    try {
+      await navigator.clipboard.writeText(path);
+    } catch (e) {
+      showError(`パスをコピーできませんでした（${e.message}）。`);
+      return;
+    }
+    btn.classList.add('copied');
+    btn.title = 'コピーしました';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.title = 'パスをコピー';
+    }, 1500);
+  }
+
+  let editing = '';
+
+  function openEdit(a) {
+    editing = a.slug;
+    $('edit-target').textContent = a.title;
+    $('edit-desc').value = a.description ?? '';
+    $('edit-error').hidden = true;
+    $('edit-dialog').showModal();
+  }
+
+  async function saveEdit(e) {
+    e.preventDefault();
+    const btn = $('edit-submit');
+    btn.disabled = true;
+    try {
+      const res = await api(`/api/artifacts/${editing}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ description: $('edit-desc').value }),
+      });
+      if (!res.ok) throw new Error(`${await res.text()}（HTTP ${res.status}）`);
+      $('edit-dialog').close();
+      await load();
+    } catch (err) {
+      $('edit-error').textContent = `保存できませんでした: ${err.message}`;
+      $('edit-error').hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   function render() {
     const q = $('q').value.trim().toLowerCase();
     for (const b of document.querySelectorAll('.tabs button')) {
@@ -620,6 +831,10 @@
     renderChips(list);
     const shown = list.filter((a) => (!project || (a.project ?? NONE) === project)
       && (!q || [a.title, a.description, a.slug, a.project, a.path].join(' ').toLowerCase().includes(q)));
+    if (SORTS[sort]) shown.sort(SORTS[sort]);
+    $('sort').value = sort;
+    // 別の場所で消えた項目は選択から外す
+    for (const slug of selected) if (!list.some((a) => a.slug === slug)) selected.delete(slug);
     $('count').textContent = shown.length === list.length ? `${list.length} 件` : `${shown.length} / ${list.length} 件`;
     $('empty').hidden = tab !== 'pages' || list.length > 0;
     $('empty-links').hidden = tab !== 'links' || list.length > 0;
@@ -630,6 +845,7 @@
     const start = (page - 1) * size;
     $('list').replaceChildren(...shown.slice(start, start + size).map(row));
     renderPager(shown.length, pages, start);
+    renderBulk();
     syncUrl();
   }
 
@@ -648,9 +864,6 @@
     if (found && !$('frame').hasAttribute('src')) $('frame').src = '?raw';
   }
 
-  // リンクを消しても元のファイルは残るので、「削除」ではなく「登録解除」と書く
-  const verb = (a) => (a.path ? '登録解除' : '削除');
-
   function disarm(a, btn) {
     btn.classList.remove('armed');
     btn.title = verb(a);
@@ -660,23 +873,16 @@
 
   // 1 回目のクリックで確認状態にし、2 回目で削除する
   async function remove(a, btn) {
-    if (!btn.classList.contains('armed')) {
-      btn.classList.add('armed');
-      btn.querySelector('.label').textContent = `本当に${verb(a)}`;
+    if (arm(btn, `本当に${verb(a)}`)) {
       btn.setAttribute('aria-label', `${a.title} を本当に${verb(a)}`);
       return;
     }
-    let res;
-    try {
-      res = await api(`/api/artifacts/${a.slug}`, { method: 'DELETE' });
-    } catch (e) {
-      showError(`「${a.title}」を${verb(a)}できませんでした（${e.message}）。サーバーが止まっていれば ~/.agents/skills/artifact/artifacts.sh serve で起動してください。`);
+    const reason = await deleteOne(a.slug);
+    if (reason) {
+      showError(`「${a.title}」を${verb(a)}できませんでした（${reason}）。サーバーが止まっていれば ~/.agents/skills/artifact/artifacts.sh serve で起動してください。`);
       return;
     }
-    if (!res.ok && res.status !== 404) {
-      showError(`「${a.title}」を${verb(a)}できませんでした（HTTP ${res.status}）。`);
-      return;
-    }
+    selected.delete(a.slug);
     showError('');
     // 取り直して描いた内容を記録する。手元で消すだけだと、次の取り直しで描き直しが起き、別の行の確認状態が解ける
     await load();
@@ -746,11 +952,31 @@
       $('add-error').hidden = true;
       $('add-dialog').showModal();
     });
-    $('add-cancel').addEventListener('click', () => $('add-dialog').close());
+    $('edit').addEventListener('submit', saveEdit);
+    for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', () => b.closest('dialog').close());
     // 背景（dialog 自身）のクリックで閉じる。中身は form が埋めるので、枠内のクリックはここに来ない
-    $('add-dialog').addEventListener('click', (e) => {
-      if (e.target === $('add-dialog')) $('add-dialog').close();
+    for (const d of document.querySelectorAll('dialog')) {
+      d.addEventListener('click', (e) => {
+        if (e.target === d) d.close();
+      });
+    }
+    $('sort').addEventListener('change', () => {
+      sort = $('sort').value;
+      refilter();
     });
+    $('bulk-page').addEventListener('click', () => {
+      for (const sel of $('list').querySelectorAll('.sel')) sel.checked = true;
+      for (const li of $('list').children) selected.add(li.dataset.slug);
+      renderBulk();
+    });
+    $('bulk-clear').addEventListener('click', () => {
+      selected.clear();
+      for (const sel of $('list').querySelectorAll('.sel')) sel.checked = false;
+      renderBulk();
+    });
+    $('bulk-delete').addEventListener('click', removeSelected);
+    $('bulk-delete').addEventListener('blur', disarmBulk);
+    setInterval(refreshTimes, 60000);
     $('prev').addEventListener('click', () => goPage(page - 1));
     $('next').addEventListener('click', () => goPage(page + 1));
     for (const b of document.querySelectorAll('.tabs button')) b.addEventListener('click', () => setTab(b.dataset.tab));
@@ -765,11 +991,29 @@
       $('q').value = '';
       setProject('');
     });
-    // 入力中やモーダルを開いている間でなければ / で検索欄へ移る
+    // 文字入力中やモーダルを開いている間は効かせない。行の移動はタイトルのリンクにフォーカスを移すので、Enter はそのまま開く
+    const currentRow = () => [...$('list').children].find((li) => li.contains(document.activeElement));
+    const moveRow = (step) => {
+      const rows = [...$('list').children];
+      if (rows.length === 0) return;
+      const at = rows.indexOf(currentRow());
+      const next = at === -1 ? (step > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, at + step));
+      rows[next].querySelector('.title').focus();
+    };
+    const KEYS = {
+      '/': () => $('q').focus(),
+      j: () => moveRow(1),
+      k: () => moveRow(-1),
+      x: () => currentRow()?.querySelector('.sel').click(),
+      ArrowLeft: () => !$('prev').disabled && goPage(page - 1),
+      ArrowRight: () => !$('next').disabled && goPage(page + 1),
+    };
     document.addEventListener('keydown', (e) => {
-      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, [contenteditable], dialog')) return;
+      const action = KEYS[e.key];
+      if (!action || e.ctrlKey || e.metaKey || e.altKey
+        || e.target.closest('input:not([type="checkbox"]), textarea, select, [contenteditable], dialog')) return;
       e.preventDefault();
-      $('q').focus();
+      action();
     });
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });

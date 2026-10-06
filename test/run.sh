@@ -1161,6 +1161,15 @@ RECORDER
   expect_true "artifact: republishing notifies a stream that is already open" grep -q '^event: reload' "$ART_TMP/sse.out"
   assert_eq "artifact: a request under a foreign Host is refused" \
     "$(http_code -H 'Host: evil.example' "$ART_URL/")" 403
+  # editing the description from the management page: PATCH with JSON from its own origin; the version stays
+  art_patch() { curl -s -o /dev/null -w '%{http_code}' -X PATCH -H 'content-type: application/json' "$@"; }
+  ART_ORIGIN="Origin: http://127.0.0.1:$ART_PORT"
+  ART_BEFORE=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
+  assert_eq "artifact: PATCH from another origin is refused; from the management page it trims and sets the description, keeping updatedAt" \
+    "$(art_patch -H 'Origin: http://evil.example' -d '{"description":"x"}' "$ART_URL/api/artifacts/my-demo") $(art_patch -H "$ART_ORIGIN" -d '{"description":"  edited  "}' "$ART_URL/api/artifacts/my-demo")|$(jq -r --arg b "$ART_BEFORE" '[.description, (.updatedAt == $b)] | @tsv' "$ART_TMP/store/my-demo/meta.json")" \
+    "403 204|$(printf 'edited\ttrue')"
+  assert_eq "artifact: PATCH of an unknown slug is 404, of a non-string description 400" \
+    "$(art_patch -H "$ART_ORIGIN" -d '{"description":"x"}' "$ART_URL/api/artifacts/no-such") $(art_patch -H "$ART_ORIGIN" -d '{"description":1}' "$ART_URL/api/artifacts/my-demo")" "404 400"
   assert_eq "artifact: DELETE from a foreign origin is refused" \
     "$(http_code -X DELETE -H 'Origin: http://evil.example' "$ART_URL/api/artifacts/my-demo")" 403
   assert_eq "artifact: DELETE from a sandboxed page (Origin: null) is refused" \
@@ -1230,7 +1239,6 @@ RECORDER
   expect_true "artifact: rm of a linked file leaves the file itself" test -f "$ART_TMP/site/index.html"
   # adding a link from the management page: POST /api/artifacts with JSON, from its own origin only
   art_post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' "$@" "$ART_URL/api/artifacts"; }
-  ART_ORIGIN="Origin: http://127.0.0.1:$ART_PORT"
   assert_eq "artifact: adding a link from another origin, from a sandboxed page, or without JSON is refused" \
     "$(art_post -H 'Origin: http://evil.example' -d "{\"path\":\"$ART_TMP/site/index.html\"}") $(art_post -H 'Origin: null' -d "{\"path\":\"$ART_TMP/site/index.html\"}") $(http_code -X POST -H "$ART_ORIGIN" -H 'content-type: text/plain' -d "{\"path\":\"$ART_TMP/site/index.html\"}" "$ART_URL/api/artifacts")" \
     "403 403 415"
@@ -1307,6 +1315,9 @@ RECORDER
     assert_eq "artifact: the management page lists, filters, deletes with a confirming second click, adds links in a modal and pages" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" manage)" \
       "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html /a/my-demo/?raw _blank|2 true true|true|1|untitled|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false|true|true|add-path false|true|10 1 / 3 false|10 2 / 3 false|2|20 1 / 2 false 20 true"
+    assert_eq "artifact: the management page sorts, moves by keyboard, deletes in bulk, edits in a modal and copies paths" \
+      "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" extras)" \
+      "Beta,Alpha,Gamma|Gamma,Beta,Alpha created|Alpha,Beta,Gamma|Beta|1 件を選択中|本当に 2 件を削除|DELETE /api/artifacts/a,DELETE /api/artifacts/b|true old|PATCH /api/artifacts/a {\"description\":\"new\"}|true|copy /tmp/x/l.html"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
     printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'

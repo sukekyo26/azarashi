@@ -2,6 +2,7 @@
 // test/artifact-ui.mjs <chrome> <base-url> <scenario> [artifacts.mjs] — artifact skill の画面を
 // ヘッドレス Chrome で操作し、観測結果を | 区切りの 1 行で出す（run.sh が期待値と比べる）。
 //   manage: 管理画面。前提はストアに my-demo（Demo Page、新しい方）と untitled の 2 件だけがあること
+//   extras: 並び替え・キーボード操作・まとめて削除・説明の編集・パスのコピー（一覧は差し替えるのでストアの中身は問わない）
 //   reload: ライブリロードと、ページの外枠。artifacts.mjs で live を公開し直す（ARTIFACTS_DIR / ARTIFACTS_PORT を引き継ぐ）
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -10,8 +11,8 @@ import { join } from 'node:path';
 
 const [chrome, base, scenario, art] = process.argv.slice(2);
 // Chrome を起動する前に確かめ、引数の取り違えを型エラーではなく使い方で知らせる
-if (!chrome || !base || !['manage', 'reload'].includes(scenario) || (scenario === 'reload' && !art)) {
-  console.error('usage: artifact-ui.mjs <chrome> <base-url> manage | reload <artifacts.mjs>');
+if (!chrome || !base || !['manage', 'extras', 'reload'].includes(scenario) || (scenario === 'reload' && !art)) {
+  console.error('usage: artifact-ui.mjs <chrome> <base-url> manage | extras | reload <artifacts.mjs>');
   process.exit(2);
 }
 const profile = mkdtempSync(join(tmpdir(), 'artifact-ui-'));
@@ -122,6 +123,71 @@ async function manage({ send, evaluate }) {
   return out;
 }
 
+// 並び替え・キーボード操作・まとめて削除・モーダルでの説明の編集・パスのコピー。
+// 一覧と書き込みは差し替えた fetch で受け、送られた要求を calls に記録する
+async function extras({ send, evaluate }) {
+  await send('Page.navigate', { url: `${base}/` });
+  await until(() => evaluate("document.readyState === 'complete' && typeof load === 'function'").catch(() => false), 'the page');
+  await evaluate(`(() => {
+    window.calls = [];
+    const at = (d) => \`2026-01-0\${d}T00:00:00.000Z\`;
+    const list = JSON.stringify([
+      { slug: 'b', title: 'Beta', description: '', createdAt: at(3), updatedAt: at(9) },
+      { slug: 'a', title: 'Alpha', description: 'old', createdAt: at(1), updatedAt: at(8) },
+      { slug: 'c', title: 'Gamma', description: '', createdAt: at(5), updatedAt: at(7) },
+      { slug: 'l', title: 'Linked', description: '', path: '/tmp/x/l.html', createdAt: at(1), updatedAt: at(1) },
+    ]);
+    window.fetch = (url, init = {}) => {
+      if (!init.method) return Promise.resolve(new Response(list));
+      calls.push([init.method, url, init.body].filter(Boolean).join(' '));
+      return Promise.resolve(new Response(null, { status: 204 }));
+    };
+    navigator.clipboard.writeText = (text) => {
+      calls.push(\`copy \${text}\`);
+      return Promise.resolve();
+    };
+    return load();
+  })()`);
+  const titles = () => evaluate("[...document.querySelectorAll('#list .title')].map((a) => a.textContent).join(',')");
+  const sortBy = (v) => evaluate(`(() => {
+    const s = document.getElementById('sort');
+    s.value = '${v}';
+    s.dispatchEvent(new Event('change'));
+  })()`);
+  const key = (k) => evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '${k}', bubbles: true }))`);
+  const out = [];
+  out.push(await titles());
+  await sortBy('created');
+  out.push(`${await titles()} ${await evaluate("new URLSearchParams(location.search).get('sort')")}`);
+  await sortBy('title');
+  out.push(await titles());
+  // j moves through the rows by focusing their titles, x selects the focused row
+  await key('j');
+  await key('j');
+  out.push(await evaluate('document.activeElement.textContent'));
+  await key('x');
+  out.push(await evaluate("document.getElementById('bulk-count').textContent"));
+  // with Alpha selected too, the first click arms and the second deletes both
+  await evaluate("document.querySelector('#list li .sel').click()");
+  await evaluate("document.getElementById('bulk-delete').click()");
+  out.push(await evaluate("document.getElementById('bulk-delete').textContent"));
+  await evaluate("document.getElementById('bulk-delete').click()");
+  await until(() => evaluate("document.getElementById('bulk').hidden"), 'the selection to clear');
+  out.push(await evaluate("calls.splice(0).sort().join(',')"));
+  // the pencil opens a modal with the current description; saving sends the new one
+  await evaluate("document.querySelector('#list li .edit').click()");
+  out.push(await evaluate("[document.getElementById('edit-dialog').open, document.getElementById('edit-desc').value].join(' ')"));
+  await evaluate("document.getElementById('edit-desc').value = 'new'; document.getElementById('edit').requestSubmit()");
+  await until(() => evaluate("!document.getElementById('edit-dialog').open"), 'the edit modal to close');
+  out.push(await evaluate("calls.splice(0).join(',')"));
+  // only linked files have a copy button for their path
+  out.push(await evaluate("document.querySelector('#list li .copy').hidden"));
+  await evaluate("document.querySelector('.tabs [data-tab=links]').click()");
+  await evaluate("document.querySelector('#list li .copy').click()");
+  out.push(await until(() => evaluate("calls.join(',')"), 'the copy'));
+  return out;
+}
+
 // 開いているページが、公開し直しに合わせて（sandbox の中から）読み直されること
 async function reload({ send, evaluate }) {
   const dir = mkdtempSync(join(tmpdir(), 'artifact-live-'));
@@ -192,7 +258,7 @@ try {
     return result.result.value;
   };
 
-  const scenarios = { manage, reload };
+  const scenarios = { manage, extras, reload };
   console.log((await scenarios[scenario]({ send, evaluate })).join('|'));
 } catch (e) {
   console.error(`artifact-ui: ${e.message}`);

@@ -273,11 +273,15 @@ function prepare(file, opts, cwd) {
   };
 }
 
+function writeMeta(slug, meta) {
+  writeAtomic(join(ROOT, slug, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
+}
+
 function save({ slug, meta, page }) {
   const dir = join(ROOT, slug);
   mkdirSync(dir, { recursive: true });
   if (page !== null) writeAtomic(join(dir, 'index.html'), page);
-  writeAtomic(join(dir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
+  writeMeta(slug, meta);
 }
 
 async function publish(file, opts) {
@@ -397,24 +401,33 @@ function watch(req, res, slug, rest, since) {
   }
 }
 
-// 管理画面からのリンク登録。他サイトや sandbox 内のページからは、Origin の確認と JSON 必須（CORS の preflight が要る）で拒否する。
-// LIMIT: 127.0.0.1 は同じマシンの全ユーザーに開いており、Origin を偽れば誰でも登録できる。共有マシンでは動かさない
-async function addLink(req, res) {
-  if (!ORIGINS.has(req.headers.origin)) return send(res, 403, 'forbidden origin');
-  if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return send(res, 415, 'send application/json');
+// 管理画面からの書き込み（リンクの登録・説明の編集）の本文を読む。他サイトや sandbox 内のページからは、
+// Origin の確認と JSON 必須（CORS の preflight が要る）で拒否する。拒否したら応答を返して undefined を返す。
+// LIMIT: 127.0.0.1 は同じマシンの全ユーザーに開いており、Origin を偽れば誰でも書き込める。共有マシンでは動かさない
+async function readJson(req, res) {
+  const reject = (status, msg) => {
+    send(res, status, msg);
+    return undefined;
+  };
+  if (!ORIGINS.has(req.headers.origin)) return reject(403, 'forbidden origin');
+  if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return reject(415, 'send application/json');
   let body = '';
   for await (const chunk of req) {
     body += chunk;
-    if (body.length > 65536) return send(res, 413, 'request body too large');
+    if (body.length > 65536) return reject(413, 'request body too large');
   }
-  let input;
   try {
-    input = JSON.parse(body);
+    return JSON.parse(body) ?? {};
   } catch {
-    return send(res, 400, '送られた内容を読めませんでした（JSON ではありません）');
+    return reject(400, '送られた内容を読めませんでした（JSON ではありません）');
   }
+}
+
+async function addLink(req, res) {
+  const input = await readJson(req, res);
+  if (input === undefined) return;
   const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
-  const path = text(input?.path);
+  const path = text(input.path);
   if (!path || !isAbsolute(path)) return send(res, 400, 'HTML ファイルの絶対パス（/ で始まるパス）を入力してください');
   let entry;
   try {
@@ -431,6 +444,17 @@ async function addLink(req, res) {
   }
   save(entry);
   return send(res, entry.created ? 201 : 200, JSON.stringify({ slug: entry.slug }), { 'content-type': 'application/json' });
+}
+
+// 説明だけを書き換える。版（updatedAt）は変えないので、並び順も開いているタブの再読み込みも動かない
+async function editArtifact(req, res, slug) {
+  const input = await readJson(req, res);
+  if (input === undefined) return;
+  const meta = readMeta(slug);
+  if (!meta) return send(res, 404, 'not found');
+  if (typeof input.description !== 'string') return send(res, 400, '説明を文字列で送ってください');
+  writeMeta(slug, { ...meta, description: input.description.trim() });
+  return send(res, 204, '');
 }
 
 async function handle(req, res, ui) {
@@ -466,6 +490,9 @@ async function handle(req, res, ui) {
     return send(res, 200, page, { ...html, 'content-disposition': `attachment; filename="${m[1]}.html"` });
   }
   if (req.method === 'POST' && pathname === '/api/artifacts') return addLink(req, res);
+  if (req.method === 'PATCH' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)$/)) && SLUG_RE.test(m[1])) {
+    return editArtifact(req, res, m[1]);
+  }
   if (req.method === 'DELETE' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)$/))) {
     // 他サイトのページや sandbox 内のページ（Origin: null）からの削除を拒否する
     if (!ORIGINS.has(req.headers.origin)) return send(res, 403, 'forbidden origin');
