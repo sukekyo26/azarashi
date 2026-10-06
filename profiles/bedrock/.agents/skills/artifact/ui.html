@@ -17,7 +17,6 @@
     --display: "Bricolage Grotesque", system-ui, sans-serif;
     --body: system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
     --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
-    --width: 56rem;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
@@ -36,16 +35,11 @@
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
   .bar { background: var(--panel); border-bottom: 1px solid var(--line); }
-  .bar-inner {
-    max-width: calc(var(--width) + 32px); margin-inline: auto; padding: 0 16px; min-height: 3.5rem;
-    display: flex; align-items: center; gap: 0.75rem;
-  }
+  /* 一覧と外枠で同じ位置に出すため、幅は本文に合わせず画面いっぱいにする */
+  .bar-inner { padding: 0 16px; min-height: 3.5rem; display: flex; align-items: center; gap: 0.75rem; }
   .brand { display: flex; align-items: center; gap: 0.55rem; flex: none; color: var(--fg); text-decoration: none; font: 800 1.2rem/1 var(--display); letter-spacing: -0.03em; }
   .brand svg { width: 26px; height: 26px; flex: none; }
   .brand:hover { color: var(--accent); }
-  .crumb { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
-  .crumb .sep { color: var(--line); font-size: 1.3rem; font-weight: 300; }
-  .page-title { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95rem; font-weight: 650; }
   .bar-end { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; flex: none; }
   .frame-actions { display: flex; gap: 0.15rem; }
   .server { display: flex; align-items: center; gap: 0.45rem; font: 0.78rem/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -54,10 +48,9 @@
 
   /* 外枠: 見出しバーの下を iframe で埋める。本体の背景が無いページはブラウザ既定の白で見せる */
   body.framed { height: 100dvh; display: flex; flex-direction: column; }
-  body.framed .bar-inner { max-width: none; }
   .frame { flex: 1; display: block; width: 100%; border: 0; background: #fff; }
 
-  .shell { max-width: calc(var(--width) + 32px); margin-inline: auto; padding: 0.5rem 16px 4rem; display: grid; gap: 1rem; }
+  .shell { max-width: calc(56rem + 32px); margin-inline: auto; padding: 0.5rem 16px 4rem; display: grid; gap: 1rem; }
   .toolbar {
     position: sticky; top: 0; z-index: 2; display: grid; gap: 0.65rem;
     margin-inline: -16px; padding: 0.75rem 16px;
@@ -200,10 +193,6 @@
       </svg>
       Artifacts
     </a>
-    <div class="crumb" hidden>
-      <span class="sep" aria-hidden="true">/</span>
-      <h1 class="page-title" id="page-title"></h1>
-    </div>
     <div class="bar-end">
       <span class="frame-actions" hidden>
         <a class="icon-btn" id="frame-download" title="ダウンロード" aria-label="ダウンロード">
@@ -520,11 +509,11 @@
     renderPager(shown.length, pages, start);
   }
 
-  // 外枠の見出し。一覧を読めなければ slug のままにする
+  // 外枠のタブ名。一覧を読めなければ slug のままにする
   function renderFrame() {
-    const a = items.find((x) => x.slug === framed);
-    $('page-title').textContent = a?.title ?? framed;
-    document.title = `${a?.title ?? framed} · Artifacts`;
+    const title = items.find((x) => x.slug === framed)?.title ?? framed;
+    document.title = `${title} · Artifacts`;
+    $('frame').title = title;
   }
 
   // リンクを消しても元のファイルは残るので、「削除」ではなく「登録解除」と書く
@@ -601,7 +590,6 @@
 
   if (framed) {
     document.body.classList.add('framed');
-    document.querySelector('.crumb').hidden = false;
     document.querySelector('.frame-actions').hidden = false;
     $('frame-download').href = `/api/artifacts/${framed}/download`;
     $('frame-download').download = `${framed}.html`;

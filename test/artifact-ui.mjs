@@ -123,9 +123,9 @@ async function reload({ send, evaluate }) {
     out.push(await until(shown('1'), 'the first version') && '1');
     publish('2');
     out.push(await until(shown('2'), 'the page to reload') && '2');
-    // the page URL itself is the frame: the header shows the page's title and the iframe loads ?raw
+    // the page URL itself is the frame: the tab is named after the page and the iframe loads ?raw
     await send('Page.navigate', { url: `${base}/a/live/` });
-    out.push(await until(() => evaluate("document.getElementById('page-title').textContent === 'Live' && document.title"), 'the frame header'));
+    out.push(await until(() => evaluate("document.title.startsWith('Live') && document.title"), 'the frame title'));
     out.push(await evaluate("new URL(document.getElementById('frame').src).search === '?raw'"));
     return out;
   } finally {
