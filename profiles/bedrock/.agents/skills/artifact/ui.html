@@ -49,6 +49,8 @@
   /* 外枠: 見出しバーの下を iframe で埋める。本体の背景が無いページはブラウザ既定の白で見せる */
   body.framed { height: 100dvh; display: flex; flex-direction: column; }
   .frame { flex: 1; display: block; width: 100%; border: 0; background: #fff; }
+  .notfound { flex: 1; align-content: center; }
+  .state a { color: var(--accent); }
 
   .shell { max-width: calc(96rem + 32px); margin-inline: auto; padding: 0.5rem 16px 4rem; display: grid; gap: 1rem; }
   .toolbar {
@@ -266,6 +268,12 @@
   </nav>
 </main>
 <iframe class="frame" id="frame" hidden></iframe>
+<div class="state notfound" id="notfound" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 0v5h5"/></svg>
+  <strong>ページが見つかりません</strong>
+  <p id="notfound-detail"></p>
+  <p><a href="/">一覧へ戻る</a></p>
+</div>
 <dialog id="add-dialog" aria-labelledby="add-title">
   <form class="add" id="add">
     <h2 id="add-title">リンクを追加</h2>
@@ -315,17 +323,20 @@
   let items = [];
   // /a/<slug>/ ならページの外枠として動く（サーバーが同じ HTML を返す）
   const framed = location.pathname.match(/^\/a\/([^/]+)\/$/)?.[1];
-  // 選んだプロジェクトは URL に持ち、再読み込みやリンクで同じ絞り込みを開けるようにする
-  let project = new URLSearchParams(location.search).get('project') ?? '';
-  // 保存したページ（pages）と、絶対パスで登録したリンク（links）をタブで分ける。タブも URL に持つ
-  let tab = new URLSearchParams(location.search).get('tab') === 'links' ? 'links' : 'pages';
+  // 一覧の状態（タブ・プロジェクト・検索語・ページ番号）は URL に持ち、記事から戻ったときや再読み込みで同じ一覧を開く
+  const params = new URLSearchParams(location.search);
+  let project = params.get('project') ?? '';
+  // 保存したページ（pages）と、絶対パスで登録したリンク（links）をタブで分ける
+  let tab = params.get('tab') === 'links' ? 'links' : 'pages';
   const inTab = (a, t = tab) => Boolean(a.path) === (t === 'links');
   // 生成元を記録する前のページ。project はディレクトリ名で / を含まないので衝突しない
   const NONE = '/';
   const SIZES = [10, 20, 50, 100];
   const SIZE_KEY = 'artifacts.pageSize';
   let size = SIZES[0];
-  let page = 1;
+  let page = Math.max(1, Number.parseInt(params.get('page'), 10) || 1);
+  // LIMIT: 一覧の変化と接続の回復は 3 秒ごとの取り直しで拾う。件数が数百を超えて重くなったら SSE で変化だけを通知する
+  const POLL_MS = 3000;
   // 表示件数は閲覧者の好みとしてブラウザに残す。保存できない環境では既定値で動く
   try {
     const saved = Number(localStorage.getItem(SIZE_KEY));
@@ -366,35 +377,41 @@
     }
   }
 
-  // 絞り込みを変えたら 1 ページ目から見せる
-  function setParam(name, value) {
+  // 既定値（pages タブ・すべて・空の検索・1 ページ目）は URL から省く
+  function syncUrl() {
     const url = new URL(location.href);
-    if (value) url.searchParams.set(name, value);
-    else url.searchParams.delete(name);
+    const state = { tab: tab === 'links' ? tab : '', project, q: $('q').value.trim(), page: page > 1 ? String(page) : '' };
+    for (const [name, value] of Object.entries(state)) {
+      if (value) url.searchParams.set(name, value);
+      else url.searchParams.delete(name);
+    }
     history.replaceState(null, '', url);
+  }
+
+  // 絞り込みを変えたら 1 ページ目から見せる
+  function refilter() {
     page = 1;
     render();
   }
 
   function setProject(value) {
     project = value;
-    setParam('project', project);
+    refilter();
   }
 
   function setTab(value) {
     tab = value;
-    setParam('tab', tab === 'links' ? tab : '');
+    refilter();
   }
 
   function setSize(value) {
     size = value;
-    page = 1;
     try {
       localStorage.setItem(SIZE_KEY, String(size));
     } catch {
       // 保存できなくても、この表示には効く
     }
-    render();
+    refilter();
   }
 
   function goPage(n) {
@@ -514,13 +531,22 @@
     const start = (page - 1) * size;
     $('list').replaceChildren(...shown.slice(start, start + size).map(row));
     renderPager(shown.length, pages, start);
+    syncUrl();
   }
 
-  // 外枠のタブ名。一覧を読めなければ slug のままにする
   function renderFrame() {
-    const title = items.find((x) => x.slug === framed)?.title ?? framed;
-    document.title = `${title} · Artifacts`;
-    $('frame').title = title;
+    const a = items.find((x) => x.slug === framed);
+    const found = Boolean(a && !a.missing);
+    document.title = `${a?.title ?? framed} · Artifacts`;
+    document.querySelector('.frame-actions').hidden = !found;
+    $('notfound').hidden = found;
+    $('notfound-detail').textContent = a?.missing
+      ? `${a.path} が見つかりません。移動していれば、新しい場所で登録し直してください。`
+      : '削除されたか、URL が間違っています。';
+    $('frame').hidden = !found;
+    $('frame').title = a?.title ?? framed;
+    // 見つかってから読み込む（無いページの 404 を一瞬見せない）。一度読んだら src を変えず、iframe 内の移動を保つ
+    if (found && !$('frame').hasAttribute('src')) $('frame').src = '?raw';
   }
 
   // リンクを消しても元のファイルは残るので、「削除」ではなく「登録解除」と書く
@@ -553,19 +579,33 @@
       return;
     }
     showError('');
-    items = items.filter((x) => x.slug !== a.slug);
-    render();
+    // 取り直して描いた内容を記録する。手元で消すだけだと、次の取り直しで描き直しが起き、別の行の確認状態が解ける
+    await load();
   }
 
+  // 最後に描いた一覧の応答。変わっていなければ描き直さず、確認状態の削除ボタンやフォーカスを保つ
+  let drawn = '';
+  let loadFailed = false;
+
   async function load() {
+    let text;
     try {
       const res = await api('/api/artifacts');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      items = await res.json();
-      showError('');
+      text = await res.text();
+      if (text !== drawn) items = JSON.parse(text);
     } catch (e) {
+      loadFailed = true;
       showError(`一覧を読み込めませんでした（${e.message}）。サーバーが止まっていれば ~/.agents/skills/artifact/artifacts.sh serve で起動してください。`);
+      return;
     }
+    // 消すのは読み込みの失敗だけ。削除の失敗などは次の操作まで残す
+    if (loadFailed) {
+      loadFailed = false;
+      showError('');
+    }
+    if (text === drawn) return;
+    drawn = text;
     if (framed) renderFrame();
     else render();
   }
@@ -597,15 +637,11 @@
 
   if (framed) {
     document.body.classList.add('framed');
-    document.querySelector('.frame-actions').hidden = false;
     $('frame-download').href = `/api/artifacts/${framed}/download`;
     $('frame-download').download = `${framed}.html`;
-    // 本体は sandbox で配信される（opaque origin）ので、外枠の API や DOM には触れない
-    $('frame').src = '?raw';
-    $('frame').title = framed;
-    $('frame').hidden = false;
   } else {
     $('manage').hidden = false;
+    $('q').value = params.get('q') ?? '';
     $('add').addEventListener('submit', add);
     $('add-open').addEventListener('click', () => {
       $('add-error').hidden = true;
@@ -619,16 +655,12 @@
     $('prev').addEventListener('click', () => goPage(page - 1));
     $('next').addEventListener('click', () => goPage(page + 1));
     for (const b of document.querySelectorAll('.tabs button')) b.addEventListener('click', () => setTab(b.dataset.tab));
-    $('q').addEventListener('input', () => {
-      page = 1;
-      render();
-    });
+    $('q').addEventListener('input', refilter);
     $('q').addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
       $('q').value = '';
       $('q').blur();
-      page = 1;
-      render();
+      refilter();
     });
     $('clear').addEventListener('click', () => {
       $('q').value = '';
@@ -642,6 +674,7 @@
     });
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+  setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
   load();
 </script>
 </body>

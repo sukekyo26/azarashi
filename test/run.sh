@@ -1129,6 +1129,8 @@ RECORDER
     sh -c "curl -s '$ART_URL/' | grep -q '<title>Artifacts</title>'"
   assert_eq "artifact: a page URL without the trailing slash redirects, an unknown slug is 404" \
     "$(http_code "$ART_URL/a/my-demo") $(http_code "$ART_URL/a/no-such/")" "301 404"
+  expect_true "artifact: an unknown page URL still returns the frame, which shows the way back" \
+    sh -c "curl -s '$ART_URL/a/no-such/' | grep -q 'id=\"notfound\"'"
   expect_true "artifact: the page is served in a sandbox" \
     sh -c "curl -s -D - -o /dev/null '$ART_URL/a/my-demo/?raw' | grep -qi '^content-security-policy: sandbox'"
   # download: the stored file as is, as an attachment named after the slug
@@ -1292,18 +1294,19 @@ RECORDER
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
     # the page shows version 1, then version 2 once republished, without a manual reload
     assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in the frame" \
-      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true"
+      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true"
     art rm live
     # newest-first list | first row's download link and its new-tab link to the page alone | rows, pressed chip and URL after clicking a project tag |
-    # "すべて" chip clears the URL and is pressed | filtered rows | first click only arms | row still there |
+    # "すべて" chip clears the URL and is pressed | filtered rows | search in the URL | restored from it | first click only arms | row still there |
     # rows after the second click | store after it | error shown when DELETE cannot
-    # reach the server | row kept | server indicator down | empty state once all are gone | indicator up again
+    # reach the server | row kept | server indicator down | empty state once all are gone | indicator up again |
+    # polling turns it down and up again |
     # | add modal open with the path focused, closed by cancel | add button hidden on the pages tab |
-    # 25 rows paged: default 10 a page, page 2, then 20 a page remembered
+    # 25 rows paged: default 10 a page, page 2 (in the URL), then 20 a page remembered and the URL back to bare
     art publish "$ART_TMP/My Demo.html" >/dev/null
     assert_eq "artifact: the management page lists, filters, deletes with a confirming second click, adds links in a modal and pages" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" manage)" \
-      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html /a/my-demo/?raw _blank|2 true true|true|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false|add-path false|true|10 1 / 3 false|10 2 / 3 false|20 1 / 2 false 20"
+      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html /a/my-demo/?raw _blank|2 true true|true|1|untitled|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false|true|true|add-path false|true|10 1 / 3 false|10 2 / 3 false|2|20 1 / 2 false 20 true"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
     printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'

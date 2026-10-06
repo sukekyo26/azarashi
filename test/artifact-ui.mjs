@@ -66,6 +66,10 @@ async function manage({ send, evaluate }) {
   out.push(await evaluate("location.search === '' && document.querySelector('.chip').getAttribute('aria-pressed')"));
   await filter('untitled');
   out.push(await rows());
+  // the search is kept in the URL and restored from it
+  out.push(await evaluate("new URLSearchParams(location.search).get('q')"));
+  await send('Page.navigate', { url: `${base}/?q=untitled` });
+  out.push(await until(() => evaluate("document.getElementById('q').value === 'untitled' && document.querySelectorAll('#list li').length"), 'the search restored from the URL'));
   await filter('');
   out.push(await clickDelete('untitled'));
   out.push(await rows());
@@ -86,6 +90,11 @@ async function manage({ send, evaluate }) {
   await clickDelete('Demo Page');
   out.push(await until(() => evaluate("!document.getElementById('empty').hidden"), 'the empty state'));
   out.push(await down());
+  // polling notices a lost server and turns the indicator back up once it answers again
+  await evaluate("window.fetch = () => Promise.reject(new TypeError('Failed to fetch'))");
+  out.push(await until(down, 'the indicator to go down'));
+  await evaluate('window.fetch = window.realFetch');
+  out.push(await until(async () => !(await down()), 'the indicator to come back up'));
   // the add form opens in a modal from the links tab only, focused on the path, and cancel closes it
   await evaluate("document.querySelector('.tabs [data-tab=links]').click()");
   out.push(await evaluate(`(() => {
@@ -96,14 +105,20 @@ async function manage({ send, evaluate }) {
   })()`));
   await evaluate("document.querySelector('.tabs [data-tab=pages]').click()");
   out.push(await evaluate("document.getElementById('add-open').hidden"));
-  // paging over 25 rows: 10 a page by default, then the next page, then 20 a page (remembered in the browser)
+  // paging over 25 rows (a stubbed list, so that polling keeps returning it): 10 a page by default,
+  // then the next page (kept in the URL), then 20 a page (remembered in the browser, back to page 1)
   const pager = () => evaluate("[document.querySelectorAll('#list li').length, document.getElementById('pageno').textContent, document.getElementById('next').disabled].join(' ')");
-  await evaluate("items = Array.from({ length: 25 }, (_, i) => ({ slug: `p${i}`, title: `P${i}`, description: '', updatedAt: new Date().toISOString() })); render()");
+  await evaluate(`(() => {
+    const list = JSON.stringify(Array.from({ length: 25 }, (_, i) => ({ slug: \`p\${i}\`, title: \`P\${i}\`, description: '', updatedAt: '2026-01-01T00:00:00.000Z' })));
+    window.fetch = (url, init) => (url === '/api/artifacts' ? Promise.resolve(new Response(list)) : window.realFetch(url, init));
+    return load();
+  })()`);
   out.push(await pager());
   await evaluate("document.getElementById('next').click()");
   out.push(await pager());
+  out.push(await evaluate("new URLSearchParams(location.search).get('page')"));
   await evaluate("[...document.querySelectorAll('#sizes button')].find((b) => b.textContent === '20').click()");
-  out.push(`${await pager()} ${await evaluate("localStorage.getItem('artifacts.pageSize')")}`);
+  out.push(`${await pager()} ${await evaluate("localStorage.getItem('artifacts.pageSize')")} ${await evaluate("location.search === ''")}`);
   return out;
 }
 
@@ -127,6 +142,9 @@ async function reload({ send, evaluate }) {
     await send('Page.navigate', { url: `${base}/a/live/` });
     out.push(await until(() => evaluate("document.title.startsWith('Live') && document.title"), 'the frame title'));
     out.push(await evaluate("new URL(document.getElementById('frame').src).search === '?raw'"));
+    // an unknown page shows the way back instead of the frame
+    await send('Page.navigate', { url: `${base}/a/no-such/` });
+    out.push(await until(() => evaluate("!document.getElementById('notfound').hidden && document.getElementById('frame').hidden && !document.getElementById('frame').hasAttribute('src')"), 'the not-found state'));
     return out;
   } finally {
     rmSync(dir, { recursive: true, force: true });

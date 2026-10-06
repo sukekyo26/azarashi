@@ -480,10 +480,11 @@ async function handle(req, res, ui) {
   }
   if (req.method === 'GET' && (m = pathname.match(/^\/a\/([^/]+)(?:(\/)(.*))?$/)) && SLUG_RE.test(m[1])) {
     if (!m[2]) return send(res, 301, '', { location: `/a/${m[1]}/` });
-    // ページの URL は管理画面と同じ見出しの外枠を返し、本体は外枠の iframe が ?raw で読む。ページの HTML には何も足さない
+    // ページの URL は管理画面と同じ見出しの外枠を返し、本体は外枠の iframe が ?raw で読む。ページの HTML には何も足さない。
+    // 無いページも外枠を 404 で返し、画面で「見つかりません」と一覧への戻り口を出す
     if (!m[3] && !searchParams.has('raw')) {
       const meta = readMeta(m[1]);
-      return meta && resolveFile(meta, m[1], '') ? send(res, 200, ui, html) : send(res, 404, 'not found');
+      return send(res, meta && resolveFile(meta, m[1], '') ? 200 : 404, ui, html);
     }
     return servePage(res, m[1], m[3]);
   }
