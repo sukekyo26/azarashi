@@ -365,11 +365,12 @@ function servePage(res, slug, rest) {
   // 資材も sandbox で返す。直接開いた SVG や HTML が 127.0.0.1 の origin で動き、管理 API を叩けないように
   const headers = { 'content-type': type, 'content-security-policy': PAGE_CSP, 'x-content-type-options': 'nosniff' };
   if (type !== TYPES['.html']) return send(res, 200, body, headers);
-  let page = body.toString('utf8');
-  // 保存したページは公開時に包んである。リンクはファイルが変わり続けるので配信時に包む
-  if (isLink(meta)) page = wrapFragment(page, (!rest && meta.title) || titleOf(page) || slug);
-  return send(res, 200, withReloader(page, slug, rest, version), headers);
+  const page = body.toString('utf8');
+  return send(res, 200, withReloader(isLink(meta) ? wrapLink(meta, slug, rest, page) : page, slug, rest, version), headers);
 }
+
+// 保存したページは公開時に包んである。リンクはファイルが変わり続けるので、配信やダウンロードのたびに包む
+const wrapLink = (meta, slug, rest, page) => wrapFragment(page, (!rest && meta.title) || titleOf(page) || slug);
 
 function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...headers });
@@ -516,13 +517,20 @@ async function handle(req, res, ui) {
     return watch(req, res, m[1], m[2] ?? '', searchParams.get('since') ?? '');
   }
   if (req.method === 'GET' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)\/download$/)) && SLUG_RE.test(m[1])) {
-    // 保存したまま（リンクはファイルのまま）の HTML を返す。配信時に差し込むものは含めず、1 ファイルで完結したページとして渡す
+    // 保存したままの HTML を返す。本文だけのリンクは表示と同じく雛形で包み、1 ファイルで完結したページとして渡す。
+    // 再読み込みのスクリプトなど配信時に差し込むものは含めない
     const meta = readMeta(m[1]);
     let page;
     try {
       page = readFileSync(resolveFile(meta, m[1], ''));
     } catch {
       return send(res, 404, 'not found');
+    }
+    if (isLink(meta)) {
+      // 包まない文書はバイト列のまま返す（UTF-8 でないファイルを読み替えて壊さないため）
+      const text = page.toString('utf8');
+      const wrapped = wrapLink(meta, m[1], '', text);
+      if (wrapped !== text) page = wrapped;
     }
     return send(res, 200, page, { ...html, 'content-disposition': `attachment; filename="${m[1]}.html"` });
   }

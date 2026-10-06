@@ -1239,7 +1239,16 @@ RECORDER
     "$(art_patch -H "$ART_ORIGIN" -d '{"title":"Pinned"}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)|$(art_patch -H "$ART_ORIGIN" -d '{"title":""}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)" \
     "200|Pinned|200|Linked v3"
   curl -s -o "$ART_TMP/dl-link.html" "$ART_URL/api/artifacts/site/download"
-  expect_true "artifact: download of a linked file returns the file as is" cmp -s "$ART_TMP/dl-link.html" "$ART_TMP/site/index.html"
+  expect_true "artifact: download of a body-only linked file is wrapped in the template without the reloader" \
+    sh -c "grep -q 'local-artifacts template' '$ART_TMP/dl-link.html' && grep -qF '<title>Linked v3</title>' '$ART_TMP/dl-link.html' &&
+      grep -qF '<h1>Linked v3</h1>' '$ART_TMP/dl-link.html' && ! grep -q EventSource '$ART_TMP/dl-link.html'"
+  # \377 is not UTF-8: a whole document must come back byte for byte, not re-encoded
+  mkdir -p "$ART_TMP/doc"
+  printf '<!doctype html><title>Doc</title><p>\377</p>\n' >"$ART_TMP/doc/index.html"
+  art publish "$ART_TMP/doc/index.html" --link --slug doc-link >/dev/null
+  curl -s -o "$ART_TMP/dl-doc.html" "$ART_URL/api/artifacts/doc-link/download"
+  expect_true "artifact: download of a linked document returns the file as is" cmp -s "$ART_TMP/dl-doc.html" "$ART_TMP/doc/index.html"
+  art rm doc-link >/dev/null
   assert_eq "artifact: a slug cannot switch between a stored page and a linked file" \
     "$(
       art publish "$ART_TMP/untitled.html" --slug site 2>/dev/null
