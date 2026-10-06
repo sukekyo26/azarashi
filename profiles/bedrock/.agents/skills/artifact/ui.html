@@ -100,6 +100,9 @@
     border: 0; border-radius: 5px; padding: 0.05rem 0.45rem;
   }
   .tag:hover { text-decoration: underline; }
+  .kind { color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 0 0.4rem; }
+  .missing { color: var(--danger); }
+  li:has(.missing) a.title { color: var(--muted); text-decoration: line-through; }
   .actions { position: relative; z-index: 1; display: flex; gap: 0.15rem; }
   .icon-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; height: 34px; min-width: 34px; padding-inline: 0.5rem;
@@ -143,7 +146,7 @@
   <div class="toolbar">
     <label class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input type="search" id="q" placeholder="タイトル・説明・slug を検索" aria-label="検索" autocomplete="off">
+      <input type="search" id="q" placeholder="タイトル・説明・slug・パスを検索" aria-label="検索" autocomplete="off">
       <kbd aria-hidden="true">/</kbd>
     </label>
     <div class="filters">
@@ -157,7 +160,7 @@
     <div class="state" id="empty" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 0v5h5"/></svg>
       <strong>まだページがありません</strong>
-      <p>エージェントに「ページにして」と頼むか、<code>artifacts.mjs publish &lt;file.html&gt;</code> で追加できます。</p>
+      <p>エージェントに「ページにして」と頼むか、<code>artifacts.mjs publish &lt;file.html&gt;</code> で追加できます。既存の HTML は <code>--link</code> を付けると、コピーせずその場所のまま表示できます。</p>
     </div>
     <div class="state" id="nomatch" hidden>
       <strong>条件に合うページがありません</strong>
@@ -176,9 +179,9 @@
       <a class="icon-btn download" title="ダウンロード">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
       </a>
-      <button type="button" class="icon-btn delete" title="削除">
+      <button type="button" class="icon-btn delete">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 12h10l1-12M9 7V4h6v3"/></svg>
-        <span class="label">削除</span>
+        <span class="label"></span>
       </button>
     </div>
   </li>
@@ -278,12 +281,26 @@
     time.dateTime = a.updatedAt;
     time.textContent = ago(a.updatedAt);
     time.title = `更新 ${fmt(a.updatedAt)}`;
+    // リンクは登録した場所のファイルを表示する。消えていれば開けないことを示す
+    if (a.path) {
+      const kind = document.createElement('span');
+      kind.className = 'kind';
+      kind.textContent = 'リンク';
+      const path = document.createElement('span');
+      path.className = a.missing ? 'path missing' : 'path';
+      path.textContent = a.missing ? `${a.path}（ファイルが見つかりません）` : a.path;
+      li.querySelector('.meta').append(kind, path);
+    }
     const dl = li.querySelector('.download');
     dl.href = `/api/artifacts/${a.slug}/download`;
     dl.download = `${a.slug}.html`;
     dl.setAttribute('aria-label', `${a.title} をダウンロード`);
+    if (a.missing) {
+      link.removeAttribute('href');
+      dl.hidden = true;
+    }
     const del = li.querySelector('.delete');
-    del.setAttribute('aria-label', `${a.title} を削除`);
+    disarm(a, del);
     del.addEventListener('click', () => remove(a, del));
     del.addEventListener('blur', () => disarm(a, del));
     return li;
@@ -293,36 +310,40 @@
     const q = $('q').value.trim().toLowerCase();
     renderChips();
     const shown = items.filter((a) => (!project || (a.project ?? NONE) === project)
-      && (!q || [a.title, a.description, a.slug, a.project].join(' ').toLowerCase().includes(q)));
+      && (!q || [a.title, a.description, a.slug, a.project, a.path].join(' ').toLowerCase().includes(q)));
     $('count').textContent = shown.length === items.length ? `${items.length} 件` : `${shown.length} / ${items.length} 件`;
     $('empty').hidden = items.length > 0;
     $('nomatch').hidden = items.length === 0 || shown.length > 0;
     $('list').replaceChildren(...shown.map(row));
   }
 
+  // リンクを消しても元のファイルは残るので、「削除」ではなく「登録解除」と書く
+  const verb = (a) => (a.path ? '登録解除' : '削除');
+
   function disarm(a, btn) {
     btn.classList.remove('armed');
-    btn.querySelector('.label').textContent = '削除';
-    btn.setAttribute('aria-label', `${a.title} を削除`);
+    btn.title = verb(a);
+    btn.querySelector('.label').textContent = verb(a);
+    btn.setAttribute('aria-label', `${a.title} を${verb(a)}`);
   }
 
   // 1 回目のクリックで確認状態にし、2 回目で削除する
   async function remove(a, btn) {
     if (!btn.classList.contains('armed')) {
       btn.classList.add('armed');
-      btn.querySelector('.label').textContent = '本当に削除';
-      btn.setAttribute('aria-label', `${a.title} を本当に削除`);
+      btn.querySelector('.label').textContent = `本当に${verb(a)}`;
+      btn.setAttribute('aria-label', `${a.title} を本当に${verb(a)}`);
       return;
     }
     let res;
     try {
       res = await api(`/api/artifacts/${a.slug}`, { method: 'DELETE' });
     } catch (e) {
-      showError(`「${a.title}」を削除できませんでした（${e.message}）。サーバーが止まっていれば artifacts.mjs serve で起動してください。`);
+      showError(`「${a.title}」を${verb(a)}できませんでした（${e.message}）。サーバーが止まっていれば artifacts.mjs serve で起動してください。`);
       return;
     }
     if (!res.ok && res.status !== 404) {
-      showError(`「${a.title}」を削除できませんでした（HTTP ${res.status}）。`);
+      showError(`「${a.title}」を${verb(a)}できませんでした（HTTP ${res.status}）。`);
       return;
     }
     showError('');

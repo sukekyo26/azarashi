@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 // Artifacts の代わりに、単一 HTML ページを保存して 127.0.0.1 のローカルサーバーで配信する。
 // 保存先は ARTIFACTS_DIR（既定 ~/.local/share/artifacts/<slug>/{index.html,meta.json}）。
+// meta.json に path を持つエントリはリンクで、index.html を持たず登録した絶対パスのファイルを毎回読む。
 // サーバーは保存先を毎回読むので、CLI とサーバーの間に受け渡しはない。
 import { execFileSync, spawn } from 'node:child_process';
 import {
-  accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync,
+  accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync,
+  writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
-import { basename, dirname, extname, join } from 'node:path';
+import {
+  basename, dirname, extname, join, resolve, sep,
+} from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -27,12 +31,14 @@ const ORIGINS = new Set([...HOSTS].map((h) => `http://${h}`));
 const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-forms allow-modals allow-downloads';
 
 const USAGE = `usage: artifacts.mjs <command>
-  publish <file.html> [--slug s] [--title t] [--description d]
+  publish <file.html> [--link] [--slug s] [--title t] [--description d]
                  store the page (same slug overwrites) and print its URL;
                  body-only HTML (no doctype/html/head/body/title) is wrapped in template.html;
-                 a new slug is also opened in the browser ($BROWSER, wslview, xdg-open)
-  list           list stored pages, newest first (updated<TAB>slug<TAB>title)
-  rm <slug>...   delete pages
+                 a new slug is also opened in the browser ($BROWSER, wslview, xdg-open);
+                 --link registers the file in place instead of copying it: it is read on every request,
+                 and files under its directory are served for its relative references
+  list           list pages, newest first (updated<TAB>slug<TAB>title<TAB>linked path)
+  rm <slug>...   delete pages (a linked file itself is left untouched)
   serve          run the server in the foreground
   stop           stop the background server`;
 
@@ -50,11 +56,60 @@ function readMeta(slug) {
   }
 }
 
+function readText(file) {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+const isLink = (meta) => typeof meta?.path === 'string';
+
+// <slug>/<rest> の実ファイル。rest はパーセントエンコードされたままの URL パス。
+// 保存したページは index.html だけ。リンクは登録ファイルと、相対参照の資材としてそのディレクトリの配下を返す。
+// ディレクトリの外（.. や外を指す symlink）と、ドットで始まる要素（.git・.env 等）は返さない
+function resolveFile(meta, slug, rest) {
+  if (!rest) return isLink(meta) ? meta.path : join(ROOT, slug, 'index.html');
+  if (!isLink(meta)) return null;
+  try {
+    const parts = rest.split('/').map(decodeURIComponent);
+    if (parts.some((p) => p === '' || p.startsWith('.'))) return null;
+    const base = realpathSync(dirname(meta.path));
+    const file = realpathSync(join(base, ...parts));
+    return file.startsWith(base + sep) ? file : null;
+  } catch {
+    return null;
+  }
+}
+
+// ライブリロードで比べる版。保存したページは公開日時、リンクはファイルの更新日時（無ければ空）
+function versionOf(meta, file) {
+  if (!isLink(meta)) return meta.updatedAt;
+  try {
+    return statSync(file).mtime.toISOString();
+  } catch {
+    return '';
+  }
+}
+
 function listArtifacts() {
   if (!existsSync(ROOT)) return [];
   return readdirSync(ROOT)
     .filter((slug) => SLUG_RE.test(slug))
-    .map((slug) => ({ slug, ...readMeta(slug) }))
+    .map((slug) => {
+      const meta = readMeta(slug);
+      if (!isLink(meta)) return { slug, ...meta };
+      // リンクのタイトルと更新日時はファイルから取る。読めなければ登録時の値で残し、missing を付ける
+      const html = readText(meta.path);
+      return {
+        slug,
+        ...meta,
+        title: meta.title ?? (titleOf(html ?? '') || slug),
+        updatedAt: (html !== null && versionOf(meta, meta.path)) || meta.updatedAt,
+        missing: html === null,
+      };
+    })
     // meta.json が無い・壊れたエントリは除き、1 件のために一覧全体を落とさない
     .filter((a) => typeof a.updatedAt === 'string')
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -93,10 +148,10 @@ function wrapFragment(html, title) {
 }
 
 // 生成元のプロジェクト名。別名で clone しても揃うよう origin の URL（https・scp 形式・パス）から取る。
-// origin が無ければリポジトリのディレクトリ名、git の外なら cwd のディレクトリ名にする。
+// origin が無ければリポジトリのディレクトリ名、git の外なら dir のディレクトリ名にする。
 // worktree でも元のリポジトリにまとまるよう、show-toplevel ではなく共通の .git から辿る
-function projectName() {
-  const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+function projectName(dir) {
+  const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   try {
     const name = git('remote', 'get-url', 'origin').replace(/\/+$/, '').split(/[/:]/).pop().replace(/\.git$/, '');
     if (name) return name;
@@ -107,7 +162,7 @@ function projectName() {
     const common = git('rev-parse', '--path-format=absolute', '--git-common-dir');
     return basename(basename(common) === '.git' ? dirname(common) : common);
   } catch {
-    return basename(process.cwd());
+    return basename(dir);
   }
 }
 
@@ -121,21 +176,31 @@ async function publish(file, opts) {
   }
   const slug = opts.slug ?? slugFromFile(file);
   if (!SLUG_RE.test(slug)) fail(`invalid slug "${slug}": use lowercase letters, digits and hyphens via --slug`);
+  const prev = readMeta(slug);
+  if (prev && isLink(prev) !== Boolean(opts.link)) {
+    fail(`"${slug}" is ${isLink(prev) ? 'a linked file' : 'a stored page'}; run "artifacts.mjs rm ${slug}" first or use another --slug`);
+  }
+  const path = opts.link ? resolve(file) : undefined;
+  // リンクはディレクトリの配下も配信するので、ホームやルートを丸ごと公開しない
+  if (path && [sep, homedir()].includes(dirname(path))) {
+    fail(`${path} would expose all of ${dirname(path)}; move it into a directory of its own and link it there`);
+  }
   // サーバーを確かめてから書く。失敗した publish が保存先にページを残さないように
   await ensureServer();
   const dir = join(ROOT, slug);
   mkdirSync(dir, { recursive: true });
-  const prev = readMeta(slug);
   const now = new Date().toISOString();
   const meta = {
-    title: opts.title ?? (titleOf(html) || prev?.title || slug),
+    path,
+    // リンクのタイトルは毎回ファイルから取るので、--title で固定したときだけ記録する
+    title: path ? opts.title : opts.title ?? (titleOf(html) || prev?.title || slug),
     description: opts.description ?? prev?.description ?? '',
     // ルート（/）では名前が空になる。空は記録せず「記録なし」に入れる（管理画面の「すべて」の値 '' と衝突するため）
-    project: projectName() || undefined,
+    project: projectName(path ? dirname(path) : process.cwd()) || undefined,
     createdAt: prev?.createdAt ?? now,
     updatedAt: now,
   };
-  writeAtomic(join(dir, 'index.html'), wrapFragment(html, meta.title));
+  if (!path) writeAtomic(join(dir, 'index.html'), wrapFragment(html, meta.title));
   writeAtomic(join(dir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
   return { slug, created: !prev };
 }
@@ -185,24 +250,71 @@ function withHomeLink(page) {
   return page.slice(0, at) + HOME_LINK + page.slice(at);
 }
 
+// リンクのディレクトリから資材として返すファイルの型。登録ファイル自身は拡張子によらず HTML として返す
+const TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json',
+  '.map': 'application/json',
+  '.txt': 'text/plain; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+  '.wasm': 'application/wasm',
+};
+
+// LIMIT: 資材も丸ごと読んでから返す。大きな動画などを置くなら stream と Range 対応に替える
+function servePage(res, slug, rest) {
+  const meta = readMeta(slug);
+  const file = meta && resolveFile(meta, slug, rest);
+  if (!file) return send(res, 404, 'not found');
+  // 版は本文より先に取る。間に変わっても、取りこぼさず再読み込みが 1 回余分に起きるだけで済む
+  const version = versionOf(meta, file);
+  let body;
+  try {
+    body = readFileSync(file);
+  } catch {
+    return send(res, 404, 'not found');
+  }
+  const type = rest ? TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream' : TYPES['.html'];
+  // 資材も sandbox で返す。直接開いた SVG や HTML が 127.0.0.1 の origin で動き、管理 API を叩けないように
+  const headers = { 'content-type': type, 'content-security-policy': PAGE_CSP, 'x-content-type-options': 'nosniff' };
+  if (type !== TYPES['.html']) return send(res, 200, body, headers);
+  let page = body.toString('utf8');
+  // 保存したページは公開時に包んである。リンクはファイルが変わり続けるので配信時に包む
+  if (isLink(meta)) page = wrapFragment(page, (!rest && meta.title) || titleOf(page) || slug);
+  return send(res, 200, withReloader(withHomeLink(page), slug, rest, version), headers);
+}
+
 function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...headers });
   res.end(body);
 }
 
-// 公開し直したら開いているタブを再読み込みさせるスクリプトを、配信時にだけ末尾へ足す。
-// 読み込んだ版を since に埋め込むので、接続前に公開し直されても取りこぼさない。
-function withReloader(page, slug) {
-  const since = encodeURIComponent(readMeta(slug)?.updatedAt ?? '');
+// 公開し直したら（リンクはファイルを保存したら）開いているタブを再読み込みさせるスクリプトを、配信時にだけ末尾へ足す。
+// 読み込んだ版を since に埋め込むので、接続前に変わっても取りこぼさない。
+function withReloader(page, slug, rest, version) {
+  // rest には ' が残り得るので、文字列リテラルは JSON.stringify で作る
+  const url = JSON.stringify(`/api/events/${slug}${rest ? `/${rest}` : ''}?since=${encodeURIComponent(version)}`);
   // 合図を受けたら購読を閉じてから読み直す。読み直しが遅いと、再接続で合図がもう一度届くため
-  return `${page}\n<script>{const es = new EventSource('/api/events/${slug}?since=${since}');`
+  return `${page}\n<script>{const es = new EventSource(${url});`
     + "es.addEventListener('reload', () => { es.close(); location.reload(); });}</script>\n";
 }
 
 // ページは sandbox（opaque origin、Origin: null）から購読するので、CORS は null にだけ開ける。
 // null は他サイトの sandbox iframe からも名乗れるため、合図には更新日時も含めず「変わった」以外を返さない。
-// LIMIT: 接続ごとに 1 秒間隔で meta.json を読む。同時に開くタブが数十を超えるなら fs.watch に替える
-function watch(req, res, slug, since) {
+// LIMIT: 接続ごとに 1 秒間隔で meta.json とファイルを stat する。同時に開くタブが数十を超えるなら fs.watch に替える
+function watch(req, res, slug, rest, since) {
   res.writeHead(200, {
     'content-type': 'text/event-stream', 'cache-control': 'no-store', 'access-control-allow-origin': 'null',
   });
@@ -211,7 +323,8 @@ function watch(req, res, slug, since) {
   req.on('close', () => clearInterval(timer));
   check();
   function check() {
-    const now = readMeta(slug)?.updatedAt ?? '';
+    const meta = readMeta(slug);
+    const now = meta ? versionOf(meta, resolveFile(meta, slug, rest)) : '';
     if (now === since) return;
     clearInterval(timer);
     res.end('event: reload\ndata: changed\n\n');
@@ -236,14 +349,15 @@ function handle(req, res, ui) {
     return send(res, 200, JSON.stringify({ app: APP, pid: process.pid, root: ROOT }), json);
   }
   if (req.method === 'GET' && pathname === '/api/artifacts') return send(res, 200, JSON.stringify(listArtifacts()), json);
-  if (req.method === 'GET' && (m = pathname.match(/^\/api\/events\/([^/]+)$/)) && SLUG_RE.test(m[1])) {
-    return watch(req, res, m[1], searchParams.get('since') ?? '');
+  if (req.method === 'GET' && (m = pathname.match(/^\/api\/events\/([^/]+)(?:\/(.+))?$/)) && SLUG_RE.test(m[1])) {
+    return watch(req, res, m[1], m[2] ?? '', searchParams.get('since') ?? '');
   }
   if (req.method === 'GET' && (m = pathname.match(/^\/api\/artifacts\/([^/]+)\/download$/)) && SLUG_RE.test(m[1])) {
-    // 保存したままの HTML を返す。配信時に差し込むものは含めず、1 ファイルで完結したページとして渡す
+    // 保存したまま（リンクはファイルのまま）の HTML を返す。配信時に差し込むものは含めず、1 ファイルで完結したページとして渡す
+    const meta = readMeta(m[1]);
     let page;
     try {
-      page = readFileSync(join(ROOT, m[1], 'index.html'));
+      page = readFileSync(resolveFile(meta, m[1], ''));
     } catch {
       return send(res, 404, 'not found');
     }
@@ -261,15 +375,9 @@ function handle(req, res, ui) {
     }
     return send(res, 204, '');
   }
-  if (req.method === 'GET' && (m = pathname.match(/^\/a\/([^/]+)(\/?)$/)) && SLUG_RE.test(m[1])) {
+  if (req.method === 'GET' && (m = pathname.match(/^\/a\/([^/]+)(?:(\/)(.*))?$/)) && SLUG_RE.test(m[1])) {
     if (!m[2]) return send(res, 301, '', { location: `/a/${m[1]}/` });
-    let page;
-    try {
-      page = readFileSync(join(ROOT, m[1], 'index.html'));
-    } catch {
-      return send(res, 404, 'not found');
-    }
-    return send(res, 200, withReloader(withHomeLink(page.toString('utf8')), m[1]), { ...html, 'content-security-policy': PAGE_CSP });
+    return servePage(res, m[1], m[3]);
   }
   return send(res, 404, 'not found');
 }
@@ -347,7 +455,9 @@ async function main() {
   }
   const { positionals, values } = parseArgs({
     allowPositionals: true,
-    options: { slug: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' } },
+    options: {
+      link: { type: 'boolean' }, slug: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' },
+    },
   });
   const [cmd, ...args] = positionals;
   switch (cmd) {
@@ -360,7 +470,7 @@ async function main() {
       break;
     }
     case 'list':
-      for (const a of listArtifacts()) console.log(`${localTime(a.updatedAt)}\t${a.slug}\t${a.title}`);
+      for (const a of listArtifacts()) console.log(`${localTime(a.updatedAt)}\t${a.slug}\t${a.title}\t${a.path ?? ''}`);
       break;
     case 'rm':
       if (args.length === 0) fail(USAGE);

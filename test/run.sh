@@ -1038,7 +1038,7 @@ RECORDER
   assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
     "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "$ART_URL/a/my-demo/"
   assert_eq "artifact: a first publish opens the page in \$BROWSER" "$(art_opened)" "$ART_URL/a/my-demo/"
-  assert_eq "artifact: list shows the slug and the <title>" "$(art list | cut -f2-)" "$(printf 'my-demo\tDemo Page')"
+  assert_eq "artifact: list shows the slug, the <title> and no linked path" "$(art list | cut -f2-)" "$(printf 'my-demo\tDemo Page\t')"
   mkdir -p "$ART_TMP/store/no-meta" "$ART_TMP/store/bad-json" "$ART_TMP/store/bad-time"
   printf '{bad' >"$ART_TMP/store/bad-json/meta.json"
   printf '{"title":"t","updatedAt":12345}' >"$ART_TMP/store/bad-time/meta.json"
@@ -1160,8 +1160,9 @@ RECORDER
     "$(http_code -H "Host: localhost:$ART_PORT" "$ART_URL/")" 200
   # live reload: the served page subscribes with the version it was rendered from
   ART_NOW=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
+  ART_SINCE=$(node -p 'encodeURIComponent(process.argv[1])' "$ART_NOW")
   expect_true "artifact: a served page subscribes to reloads with its own version" \
-    sh -c "curl -s '$ART_URL/a/my-demo/' | grep -qF \"new EventSource('/api/events/my-demo?since=\$(node -p 'encodeURIComponent(process.argv[1])' '$ART_NOW')')\""
+    sh -c "curl -s '$ART_URL/a/my-demo/' | grep -qF 'new EventSource(\"/api/events/my-demo?since=$ART_SINCE\")'"
   ART_SSE=$(curl -s -D - -N --max-time 3 "$ART_URL/api/events/my-demo?since=stale")
   assert_eq "artifact: a stale version gets a bare reload event, with CORS only for the sandboxed page (null)" \
     "$(printf '%s' "$ART_SSE" | grep -ciE '^(access-control-allow-origin: null|event: reload|data: changed)')" 3
@@ -1182,6 +1183,58 @@ RECORDER
     "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo")|$(art list | cut -f2)" "204|untitled"
   assert_eq "artifact: DELETE of a page that is already gone, or of a bad slug, is 404" \
     "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo") $(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/Bad_Slug")" "404 404"
+  # --link: the file stays where it is and is read on every request; its directory serves the relative references
+  mkdir -p "$ART_TMP/site/sub" "$ART_TMP/site/.git"
+  printf '<h1>Linked v1</h1><link rel="stylesheet" href="s.css">\n' >"$ART_TMP/site/index.html"
+  printf 'p{}' >"$ART_TMP/site/s.css"
+  printf '<title>Sub</title><p>sub</p>\n' >"$ART_TMP/site/sub/p.html"
+  printf 'secret' >"$ART_TMP/site/.git/config"
+  printf 'outside' >"$ART_TMP/outside.txt"
+  ln -s "$ART_TMP/outside.txt" "$ART_TMP/site/escape.txt"
+  ART_LINK="$ART_URL/a/site"
+  # run from this repository: the project must still come from the file's directory
+  assert_eq "artifact: --link stores only meta.json with the path, and the project of the file's directory" \
+    "$(art publish "$ART_TMP/site/index.html" --link --slug site)|$(ls "$ART_TMP/store/site")|$(jq -r '[.path, .project] | @tsv' "$ART_TMP/store/site/meta.json")" \
+    "$ART_LINK/|meta.json|$(printf '%s\tsite' "$ART_TMP/site/index.html")"
+  assert_eq "artifact: list shows a linked file's title from the file, and its path" \
+    "$(art list | grep -F "$ART_TMP/site" | cut -f2-)" "$(printf 'site\tLinked v1\t%s' "$ART_TMP/site/index.html")"
+  printf '<h1>Linked v2</h1>\n' >"$ART_TMP/site/index.html"
+  expect_true "artifact: a linked file is read on every request and wrapped in the template when body-only" \
+    sh -c "curl -s '$ART_LINK/' | grep -q 'local-artifacts template' && curl -s '$ART_LINK/' | grep -qF '<title>Linked v2</title>'"
+  assert_eq "artifact: a linked file's relative references are served with their type, sandboxed and nosniff" \
+    "$(curl -s -D - -o /dev/null "$ART_LINK/s.css" | grep -ciE '^(content-type: text/css|content-security-policy: sandbox|x-content-type-options: nosniff)')" 3
+  expect_true "artifact: an HTML page under a linked directory gets the Home link and watches its own file" \
+    sh -c "curl -s '$ART_LINK/sub/p.html' | grep -qF '<style>:where(.artifact-home)' &&
+      curl -s '$ART_LINK/sub/p.html' | grep -qF 'new EventSource(\"/api/events/site/sub/p.html?since='"
+  assert_eq "artifact: dot paths, .., escaping symlinks, directories and a stored page's subpaths are 404" \
+    "$(for p in site/.git/config site/%2e%2e/outside.txt site/..%2Foutside.txt site/escape.txt site/sub/ site/sub untitled/index.html; do
+      printf '%s\n' "$(http_code --path-as-is "$ART_URL/a/$p")"
+    done | paste -sd' ' -)" "404 404 404 404 404 404 404"
+  ART_MTIME=$(curl -s "$ART_LINK/" | grep -o 'since=[^"]*' | cut -d= -f2)
+  curl -s -N --max-time 4 "$ART_URL/api/events/site?since=$ART_MTIME" >"$ART_TMP/sse-link.out" &
+  sleep 0.3
+  printf '<h1>Linked v3</h1>\n' >"$ART_TMP/site/index.html"
+  wait $!
+  expect_true "artifact: saving a linked file notifies its open pages" grep -q '^event: reload' "$ART_TMP/sse-link.out"
+  curl -s -o "$ART_TMP/dl-link.html" "$ART_URL/api/artifacts/site/download"
+  expect_true "artifact: download of a linked file returns the file as is" cmp -s "$ART_TMP/dl-link.html" "$ART_TMP/site/index.html"
+  assert_eq "artifact: a slug cannot switch between a stored page and a linked file" \
+    "$(
+      art publish "$ART_TMP/untitled.html" --slug site 2>/dev/null
+      echo $?
+    ) $(
+      art publish "$ART_TMP/untitled.html" --slug untitled --link 2>/dev/null
+      echo $?
+    )" "1 1"
+  expect_false "artifact: a file directly under \$HOME cannot be linked (its whole directory would be served)" \
+    sh -c "HOME='$ART_TMP' ARTIFACTS_DIR='$ART_TMP/store' ARTIFACTS_PORT='$ART_PORT' node '$ART' publish '$ART_TMP/outside.txt' --link 2>/dev/null"
+  mv "$ART_TMP/site/index.html" "$ART_TMP/site/gone.html"
+  assert_eq "artifact: a linked file that is gone is listed as missing, and its page and download are 404" \
+    "$(curl -s "$ART_URL/api/artifacts" | jq -r '.[] | select(.slug == "site") | .missing') $(http_code "$ART_LINK/") $(http_code "$ART_URL/api/artifacts/site/download")" \
+    "true 404 404"
+  mv "$ART_TMP/site/gone.html" "$ART_TMP/site/index.html"
+  art rm site
+  expect_true "artifact: rm of a linked file leaves the file itself" test -f "$ART_TMP/site/index.html"
   # in a headless browser (skipped without Chrome or Node's WebSocket)
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
