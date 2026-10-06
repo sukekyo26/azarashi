@@ -1109,6 +1109,12 @@ RECORDER
   expect_true "artifact: the fragment is inserted verbatim" \
     node -e 'const fs = require("node:fs"); process.exit(fs.readFileSync(process.argv[1], "utf8").includes(fs.readFileSync(process.argv[2], "utf8")) ? 0 : 1)' \
     "$ART_TMP/store/frag/index.html" "$ART_TMP/frag.html"
+  printf '<h1>Sales</h1>\n<svg viewBox="0 0 1 1"><title>Bar chart</title></svg>\n' >"$ART_TMP/svg.html"
+  art publish "$ART_TMP/svg.html" >/dev/null
+  assert_eq "artifact: an SVG <title> neither stops the wrap nor becomes the page title" \
+    "$(grep -q 'local-artifacts template' "$ART_TMP/store/svg/index.html" && echo wrapped)|$(jq -r .title "$ART_TMP/store/svg/meta.json")" \
+    'wrapped|Sales'
+  art rm svg >/dev/null
   art rm frag
   expect_false "artifact: an invalid slug is rejected" \
     sh -c "ARTIFACTS_DIR='$ART_TMP/store' '$ART_RUNTIME' '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
