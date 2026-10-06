@@ -1216,10 +1216,11 @@ RECORDER
     echo "rc=$?"
   )
   _art_left=$(jq -r '[.publishedFrom, .favorite, .description] | @tsv' "$ART_TMP/store/my-demo/meta.json")
+  _art_created=$(jq -r .createdAt "$ART_TMP/store/my-demo/meta.json")
   (cd "$ART_TMP" && art publish "$ART_TMP/My Demo.html" --force >/dev/null)
   assert_eq "artifact: a slug published from another project is refused unless --force, which starts the page afresh" \
-    "$_art_refused|$_art_left|$(jq -r '[.publishedFrom, .project, has("favorite"), .description] | @tsv' "$ART_TMP/store/my-demo/meta.json")" \
-    "$(printf '"my-demo" was published from project %s; use another --slug, or add --force to replace that page\nrc=1|%s\ttrue\trepo page|%s\t%s\tfalse\t' "$_art_owner" "$_art_owner" "$(basename "$ART_TMP")" "$(basename "$ART_TMP")")"
+    "$_art_refused|$_art_left|$(jq -r --arg c "$_art_created" '[.publishedFrom, .project, has("favorite"), .description, .createdAt != $c] | @tsv' "$ART_TMP/store/my-demo/meta.json")" \
+    "$(printf '"my-demo" was published from project %s; use another --slug, or add --force to replace that page\nrc=1|%s\ttrue\trepo page|%s\t%s\tfalse\t\ttrue' "$_art_owner" "$_art_owner" "$(basename "$ART_TMP")" "$(basename "$ART_TMP")")"
   assert_eq "artifact: DELETE from a foreign origin is refused" \
     "$(http_code -X DELETE -H 'Origin: http://evil.example' "$ART_URL/api/artifacts/my-demo")" 403
   assert_eq "artifact: DELETE from a sandboxed page (Origin: null) is refused" \
