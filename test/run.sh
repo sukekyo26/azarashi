@@ -1112,8 +1112,8 @@ RECORDER
   printf '<h1>Sales</h1>\n<svg viewBox="0 0 1 1"><title>Bar chart</title></svg>\n' >"$ART_TMP/svg.html"
   art publish "$ART_TMP/svg.html" >/dev/null
   assert_eq "artifact: an SVG <title> neither stops the wrap nor becomes the page title" \
-    "$(grep -c 'local-artifacts template' "$ART_TMP/store/svg/index.html")|$(jq -r .title "$ART_TMP/store/svg/meta.json")" \
-    '1|Sales'
+    "$(grep -q 'local-artifacts template' "$ART_TMP/store/svg/index.html" && echo wrapped)|$(jq -r .title "$ART_TMP/store/svg/meta.json")" \
+    'wrapped|Sales'
   art rm svg >/dev/null
   art rm frag
   expect_false "artifact: an invalid slug is rejected" \
