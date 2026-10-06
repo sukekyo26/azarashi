@@ -145,9 +145,14 @@ function slugFromFile(file) {
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
 
+// SVG の <title> は図の説明なので、文書のタイトルにも文書の枠の判定にも使わない
+// LIMIT: 入れ子の <svg> は内側の </svg> で切れる。入れ子の図で誤判定が出たら HTML パーサに替える
+const outsideSvg = (html) => html.replace(/<svg[\s>][\s\S]*?<\/svg>/gi, '');
+
 // <title>、なければ最初の <h1> の中身をプレーンテキストにして返す（meta.json と管理画面はテキストで扱う）
 function titleOf(html) {
-  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) ?? html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const s = outsideSvg(html);
+  const m = s.match(/<title[^>]*>([\s\S]*?)<\/title>/i) ?? s.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
   if (!m) return '';
   return m[1].replace(/<[^>]*>/g, '').replace(/&(amp|lt|gt|quot|#39);/g, (_, e) => ENTITIES[e])
     .replace(/\s+/g, ' ').trim();
@@ -158,7 +163,7 @@ const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => `&${Object.keys(ENTITIES)
 // 文書の枠（<!doctype> <html> <head> <body> <title>）を持たない入力は本文だけの断片とみなし、
 // 同梱の雛形で包む。包んだ結果を保存するので、雛形を後で変えても公開済みのページは変わらない。
 function wrapFragment(html, title) {
-  if (/<!doctype|<(html|head|body|title)[\s>]/i.test(html)) return html;
+  if (/<!doctype|<(html|head|body|title)[\s>]/i.test(outsideSvg(html))) return html;
   const template = readFileSync(join(dirname(SCRIPT), 'template.html'), 'utf8');
   // 置換文字列の $& などを解釈させないよう関数で渡す
   return template.replace('{{title}}', () => escapeHtml(title)).replace('{{content}}', () => html);
