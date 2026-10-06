@@ -1376,8 +1376,8 @@ RECORDER
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
     # the page shows version 1, then version 2 once republished, without a manual reload
-    assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in the frame" \
-      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true"
+    assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in a frame that allows clipboard writes and fullscreen" \
+      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true,true|true"
     art rm live
     # newest-first list | first row's download link and its new-tab link to the page alone | rows, pressed chip and URL after clicking a project tag |
     # "全プロジェクト" chip clears the URL and is pressed | filtered rows | search in the URL | restored from it | first click only arms | row still there |
