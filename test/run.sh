@@ -1392,6 +1392,19 @@ STUB
       PATH="$ART_TMP/rt-none" "$(dirname "$ART")/artifacts.sh" list 2>&1
       echo "rc=$?"
     )" "$(printf 'artifacts.sh: neither bun nor node is installed; install one of them (bun starts faster) and run again\nrc=127')"
+  # a copy of the skill has newer mtimes, like a skill updated under a running server
+  mkdir -p "$ART_TMP/skill"
+  for _f in artifacts.mjs ui.html template.html; do cp "$(dirname "$ART")/$_f" "$ART_TMP/skill/"; done
+  printf '<h1>Restart</h1>\n' >"$ART_TMP/restart.html"
+  art_pid() { curl -s "$ART_URL/api/health" | jq -r .pid; }
+  art_copy() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART_TMP/skill/artifacts.mjs" "$@"; }
+  _art_p0=$(art_pid)
+  art_copy publish "$ART_TMP/restart.html" >/dev/null
+  _art_p1=$(art_pid)
+  art_copy publish "$ART_TMP/restart.html" >/dev/null
+  assert_eq "artifact: publish restarts a server running other code, and keeps one running the same code" \
+    "$([ "$_art_p0" != "$_art_p1" ] && echo restarted)|$([ "$_art_p1" = "$(art_pid)" ] && echo kept)" "restarted|kept"
+  art rm restart >/dev/null
   art stop >/dev/null
   _art_up=1
   for _i in 1 2 3 4 5 6 7 8 9 10; do

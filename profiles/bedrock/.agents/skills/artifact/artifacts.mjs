@@ -18,6 +18,9 @@ import { parseArgs } from 'node:util';
 
 const APP = 'local-artifacts';
 const SCRIPT = fileURLToPath(import.meta.url);
+// サーバーが動かしているコードの版。publish 側と食い違えばサーバーを起動し直す（ensureServer）。
+// template.html は publish とリクエストのたびに読むので含めない
+const BUILD = ['artifacts.mjs', 'ui.html'].map((f) => statSync(join(dirname(SCRIPT), f)).mtimeMs).join(':');
 const ROOT = process.env.ARTIFACTS_DIR
   || join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'artifacts');
 const PORT = Number(process.env.ARTIFACTS_PORT || 4317);
@@ -31,7 +34,7 @@ const ORIGINS = new Set([...HOSTS].map((h) => `http://${h}`));
 // ページは opaque origin で動かし、ページのスクリプトから管理 API を叩けないようにする
 const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-forms allow-modals allow-downloads';
 
-const USAGE = `usage: artifacts.mjs <command>
+const USAGE = `usage: artifacts.sh <command>
   publish <file.html> [--link] [--slug s] [--title t] [--description d]
                  store the page (same slug overwrites) and print its URL;
                  body-only HTML (no doctype/html/head/body/title) is wrapped in template.html;
@@ -280,7 +283,7 @@ function prepare(file, opts, cwd) {
   const prev = readMeta(slug);
   if (prev && isLink(prev) !== Boolean(opts.link)) {
     fail(
-      `"${slug}" is ${isLink(prev) ? 'a linked file' : 'a stored page'}; run "artifacts.mjs rm ${slug}" first or use another --slug`,
+      `"${slug}" is ${isLink(prev) ? 'a linked file' : 'a stored page'}; run "artifacts.sh rm ${slug}" first or use another --slug`,
       `URL 名「${slug}」は${isLink(prev) ? 'リンク' : 'アーティファクト'}で使われています。別の URL 名を入力してください`,
     );
   }
@@ -343,7 +346,7 @@ function openBrowser(url) {
 }
 
 function remove(slug) {
-  if (!SLUG_RE.test(slug) || !readMeta(slug)) fail(`no artifact "${slug}" (see: artifacts.mjs list)`);
+  if (!SLUG_RE.test(slug) || !readMeta(slug)) fail(`no artifact "${slug}" (see: artifacts.sh list)`);
   rmSync(join(ROOT, slug), { recursive: true, force: true });
 }
 
@@ -532,7 +535,7 @@ async function handle(req, res, ui) {
   let m;
   if (req.method === 'GET' && pathname === '/') return send(res, 200, ui, html);
   if (req.method === 'GET' && pathname === '/api/health') {
-    return send(res, 200, JSON.stringify({ app: APP, pid: process.pid, root: ROOT }), json);
+    return send(res, 200, JSON.stringify({ app: APP, pid: process.pid, root: ROOT, build: BUILD, runtime: process.execPath }), json);
   }
   if (req.method === 'GET' && pathname === '/api/artifacts') return send(res, 200, JSON.stringify(listArtifacts()), json);
   if (req.method === 'GET' && (m = pathname.match(/^\/api\/events\/([^/]+)(?:\/(.+))?$/)) && SLUG_RE.test(m[1])) {
@@ -626,19 +629,30 @@ async function probe() {
   return body?.app === APP ? { state: 'ours', ...body } : { state: 'other' };
 }
 
+// 起動や終了は 100 ms かからないので、細かく確かめて待ちすぎない（上限は 20 ms × 150 回 = 3 秒）
+async function waitWhile(p, cond) {
+  for (let i = 0; i < 150 && cond(p); i++) {
+    await new Promise((r) => setTimeout(r, 20));
+    p = await probe();
+  }
+  return p;
+}
+
 async function ensureServer() {
   let p = await probe();
+  // スキルの更新や bun の出し入れの後も、起動したときのコードとランタイムのままのサーバーを使い続けない
+  if (p.state === 'ours' && p.root === ROOT && (p.build !== BUILD || p.runtime !== process.execPath)) {
+    terminate(p.pid);
+    p = await waitWhile(p, (q) => q.state === 'ours');
+    if (p.state === 'ours') fail(`the outdated server (pid ${p.pid}) did not stop; run "artifacts.sh stop" and publish again`);
+  }
   if (p.state === 'down') {
     spawn(process.execPath, [SCRIPT, 'serve'], { detached: true, stdio: 'ignore' }).unref();
-    // 起動は 100 ms かからないので、細かく確かめて待ちすぎない（上限は 20 ms × 150 回 = 3 秒）
-    for (let i = 0; i < 150 && p.state === 'down'; i++) {
-      await new Promise((r) => setTimeout(r, 20));
-      p = await probe();
-    }
+    p = await waitWhile(p, (q) => q.state === 'down');
   }
   if (p.state === 'other') fail(`port ${PORT} is used by another program; set ARTIFACTS_PORT to a free port`);
   if (p.state === 'down') fail(`the server did not start; run '${process.execPath}' '${SCRIPT}' serve to see the error`);
-  if (p.root !== ROOT) fail(`the server on port ${PORT} serves ${p.root}; run "artifacts.mjs stop" and publish again`);
+  if (p.root !== ROOT) fail(`the server on port ${PORT} serves ${p.root}; run "artifacts.sh stop" and publish again`);
 }
 
 async function stop() {
@@ -647,13 +661,17 @@ async function stop() {
     console.log('server is not running');
     return;
   }
+  terminate(p.pid);
+  console.log(`stopped server (pid ${p.pid})`);
+}
+
+function terminate(pid) {
   try {
-    process.kill(p.pid, 'SIGTERM');
+    process.kill(pid, 'SIGTERM');
   } catch (e) {
     // probe と kill の間に自分で終了していれば、止まっている状態なので成功扱い
     if (e.code !== 'ESRCH') throw e;
   }
-  console.log(`stopped server (pid ${p.pid})`);
 }
 
 function localTime(iso) {
