@@ -250,7 +250,8 @@ async function reload({ send, evaluate }) {
     out.push(await evaluate("new URL(document.getElementById('frame').src).search === '?raw'"));
     // the frame lets the page write to the clipboard and go fullscreen. The page reports its own policy to the frame
     // until someone listens, since it may load before the listener is attached
-    writeFileSync(join(dir, 'perm.html'), "<title>Perm</title><script>setInterval(() => parent.postMessage(['clipboard-write', 'fullscreen'].map((f) => document.featurePolicy.allowsFeature(f)).join(), '*'), 100)</script>");
+    // permissionsPolicy is the standard name; Chrome still ships it as featurePolicy. Without either, say so instead of a false "denied"
+    writeFileSync(join(dir, 'perm.html'), "<title>Perm</title><script>const policy = document.permissionsPolicy ?? document.featurePolicy; setInterval(() => parent.postMessage(policy ? ['clipboard-write', 'fullscreen'].map((f) => policy.allowsFeature(f)).join() : 'no policy API', '*'), 100)</script>");
     execFileSync(process.execPath, [art, 'publish', join(dir, 'perm.html'), '--slug', 'perm'], { stdio: 'ignore' });
     await send('Page.navigate', { url: `${base}/a/perm/` });
     out.push(await until(() => evaluate("new Promise((r) => { addEventListener('message', (e) => r(e.data), { once: true }); setTimeout(() => r(null), 500); })"), 'the page permissions'));
