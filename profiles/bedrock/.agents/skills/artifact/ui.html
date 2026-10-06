@@ -8,32 +8,35 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap">
+<script>
+  // 保存したテーマを描画前に当て、読み込み時に OS の配色で一瞬光らないようにする
+  try {
+    const theme = localStorage.getItem('artifacts.theme');
+    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  } catch {
+    // 保存先を使えなければ OS に合わせる
+  }
+</script>
 <style>
   /* 管理画面（/）とページの外枠（/a/<slug>/）を兼ねる。共通の見出しバーの下に、一覧か iframe のどちらかを出す */
+  /* 色はライトとダークを light-dark() で並べて持つ。テーマは color-scheme で決まり、選んだテーマは data-theme で上書きする */
   :root {
-    --bg: #f6f7f9; --panel: #fff; --subtle: #f0f2f5; --hover: #f8f9fb; --fg: #0d1220; --muted: #5a6273; --faint: #8b93a3;
-    --line: #e5e8ee; --accent: #5753e0; --accent-2: #a64df0; --accent-soft: #eeedff; --on-accent: #fff;
-    --good: #16a36a; --danger: #d23b3b; --danger-soft: #fdecec; --scrim: rgb(13 18 32 / 0.4);
-    --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06);
-    --shadow: 0 1px 2px rgb(16 24 40 / 0.04), 0 10px 30px -14px rgb(16 24 40 / 0.16);
-    /* 行のアイコンとプロジェクトの色の彩度・明度。色相（--h）はプロジェクト名から行・チップごとに決める */
-    --glyph-bg-sl: 85% 95%; --glyph-fg-sl: 55% 40%;
+    --bg: light-dark(#f6f7f9, #0a0b10); --panel: light-dark(#fff, #111319); --subtle: light-dark(#f0f2f5, #171a22);
+    --hover: light-dark(#f8f9fb, #151821); --fg: light-dark(#0d1220, #e8eaf0); --muted: light-dark(#5a6273, #9ba2b3);
+    --faint: light-dark(#8b93a3, #6a7285); --line: light-dark(#e5e8ee, #232733);
+    --accent: light-dark(#5753e0, #8e8cfb); --accent-2: light-dark(#a64df0, #c58afc); --accent-soft: light-dark(#eeedff, #1e1e3c);
+    --on-accent: light-dark(#fff, #0a0b10); --good: light-dark(#16a36a, #3fcf8e); --star: light-dark(#e0a100, #f5c542);
+    --danger: light-dark(#d23b3b, #f48a8a); --danger-soft: light-dark(#fdecec, #3a1c1f);
+    --scrim: light-dark(rgb(13 18 32 / 0.4), rgb(0 0 0 / 0.6));
+    --shadow-sm: 0 1px 2px light-dark(rgb(16 24 40 / 0.06), rgb(0 0 0 / 0.4));
+    --shadow: 0 1px 2px light-dark(rgb(16 24 40 / 0.04), rgb(0 0 0 / 0.3)), 0 10px 30px -14px light-dark(rgb(16 24 40 / 0.16), rgb(0 0 0 / 0.7));
     --body: "Geist", system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
     --mono: "Geist Mono", ui-monospace, Menlo, Consolas, monospace;
     --bar: 3.5rem;
-    color-scheme: light;
+    color-scheme: light dark;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0a0b10; --panel: #111319; --subtle: #171a22; --hover: #151821; --fg: #e8eaf0; --muted: #9ba2b3; --faint: #6a7285;
-      --line: #232733; --accent: #8e8cfb; --accent-2: #c58afc; --accent-soft: #1e1e3c; --on-accent: #0a0b10;
-      --good: #3fcf8e; --danger: #f48a8a; --danger-soft: #3a1c1f; --scrim: rgb(0 0 0 / 0.6);
-      --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-      --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -16px rgb(0 0 0 / 0.7);
-      --glyph-bg-sl: 35% 17%; --glyph-fg-sl: 80% 76%;
-      color-scheme: dark;
-    }
-  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.55 var(--body); -webkit-font-smoothing: antialiased; }
@@ -59,6 +62,11 @@
   .brand svg { width: 26px; height: 26px; flex: none; filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--accent) 35%, transparent)); }
   .bar-end { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; flex: none; }
   .frame-actions { display: flex; gap: 0.15rem; }
+  .theme { display: inline-flex; gap: 1px; padding: 2px; background: var(--subtle); border: 1px solid var(--line); border-radius: 9px; }
+  .theme button { display: grid; place-items: center; width: 26px; height: 24px; padding: 0; color: var(--faint); background: none; border: 0; border-radius: 6px; }
+  .theme button:hover { color: var(--fg); }
+  .theme button[aria-pressed="true"] { color: var(--fg); background: var(--panel); box-shadow: var(--shadow-sm), 0 0 0 1px var(--line); }
+  .theme svg { width: 14px; height: 14px; }
   .frame-nav { display: flex; align-items: center; gap: 0.15rem; padding-left: 0.6rem; margin-left: 0.15rem; border-left: 1px solid var(--line); }
   .frame-nav a[aria-disabled="true"] { opacity: 0.35; pointer-events: none; }
   .frame-pos { min-width: 3.5rem; text-align: center; font: 0.72rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
@@ -140,12 +148,17 @@
   .chip.project::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--glyph-fg); }
   .chip .n { font: 0.68rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
   .chip.none { border-style: dashed; }
+  .chip.fav { flex: none; }
+  .chip.fav svg { width: 13px; height: 13px; color: var(--star); }
+  .chip.fav[aria-pressed="true"] svg { fill: currentColor; }
   .chip[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
   .chip[aria-pressed="true"] .n { color: inherit; opacity: 0.65; }
   .count { margin-left: auto; flex: none; font: 0.74rem/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
 
   /* var(--h) は宣言した要素で解決されるので、色は --h を持つ要素の上で組み立てる */
-  li, .chip.project { --glyph-bg: hsl(var(--h) var(--glyph-bg-sl)); --glyph-fg: hsl(var(--h) var(--glyph-fg-sl)); }
+  li, .chip.project {
+    --glyph-bg: light-dark(hsl(var(--h) 85% 95%), hsl(var(--h) 35% 17%)); --glyph-fg: light-dark(hsl(var(--h) 55% 40%), hsl(var(--h) 80% 76%));
+  }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
   /* 行は subgrid で列を共有し、タグ・URL 名・時刻・操作の位置を行どうしでそろえる */
   ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: auto auto minmax(0, 1fr) repeat(4, auto); }
@@ -214,6 +227,9 @@
   .icon-btn:hover { background: var(--subtle); color: var(--fg); }
   .icon-btn:disabled { opacity: 0.35; cursor: default; background: transparent; color: var(--muted); }
   .delete:hover { color: var(--danger); }
+  .star:hover { color: var(--star); }
+  .star[aria-pressed="true"] { color: var(--star); }
+  .star[aria-pressed="true"] svg { fill: currentColor; }
   .copy .done, .copy.copied > svg { display: none; }
   .copy.copied .done { display: block; color: var(--good); }
   .delete .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -353,6 +369,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6m0-6-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
         </a>
       </span>
+      <div class="theme" role="group" aria-label="テーマ">
+        <button type="button" data-theme-choice="light" title="ライト" aria-label="ライト"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4V2m0 20v-2m8-8h2M2 12h2m13.7-5.7 1.4-1.4M4.9 19.1l1.4-1.4m11.4 0 1.4 1.4M4.9 4.9l1.4 1.4M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg></button>
+        <button type="button" data-theme-choice="dark" title="ダーク" aria-label="ダーク"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/></svg></button>
+        <button type="button" data-theme-choice="system" title="OS に合わせる" aria-label="OS に合わせる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H4zM9 20h6m-3-4v4"/></svg></button>
+      </div>
       <span class="server" id="server" role="status"></span>
     </div>
   </div>
@@ -377,6 +398,7 @@
       </button>
     </div>
     <div class="filters">
+      <button type="button" class="chip fav" id="fav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>お気に入り<span class="n"></span></button>
       <div class="chips" id="chips" role="group" aria-label="プロジェクト"></div>
       <span class="count" id="count"></span>
       <label class="sort"><span class="sr-only">並び順</span>
@@ -423,7 +445,7 @@
     </div>
   </nav>
   <p class="keys" aria-hidden="true">
-    <span><kbd>↑</kbd><kbd>↓</kbd>移動</span><span><kbd>Enter</kbd>開く</span><span><kbd>x</kbd>選択</span>
+    <span><kbd>↑</kbd><kbd>↓</kbd>移動</span><span><kbd>Enter</kbd>開く</span><span><kbd>x</kbd>選択</span><span><kbd>f</kbd>お気に入り</span>
     <span><kbd>←</kbd><kbd>→</kbd>ページ</span><span><kbd>/</kbd>検索</span>
   </p>
   <div class="bulk" id="bulk" role="region" aria-label="選択した項目の操作" hidden>
@@ -512,6 +534,9 @@
     <span class="slug"></span>
     <time></time>
     <div class="actions">
+      <button type="button" class="icon-btn star">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>
+      </button>
       <button type="button" class="icon-btn copy" title="パスをコピー" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 9h10v11H9zM5 15V4h10"/></svg>
         <span class="done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
@@ -561,9 +586,10 @@
       q: p.get('q') ?? '',
       sort: Object.hasOwn(SORTS, p.get('sort')) ? p.get('sort') : 'updated',
       page: Math.max(1, Number.parseInt(p.get('page'), 10) || 1),
+      fav: p.get('fav') === '1',
     };
   }
-  let { tab, project, sort, page } = readState(location.search);
+  let { tab, project, sort, page, fav } = readState(location.search);
   // 選択した slug。絞り込みやタブを変えたら解除する（見えない項目を消さないように）。ページをまたいだ選択は残す
   const selected = new Set();
   // LIMIT: 一覧の変化と接続の回復は 3 秒ごとの取り直しで拾う。件数が数百を超えて重くなったら SSE で変化だけを通知する
@@ -616,7 +642,8 @@
   function syncUrl() {
     const url = new URL(location.href);
     const state = {
-      tab: tab === 'links' ? tab : '', project, q: $('q').value.trim(), sort: sort === 'updated' ? '' : sort, page: page > 1 ? String(page) : '',
+      tab: tab === 'links' ? tab : '', fav: fav ? '1' : '', project, q: $('q').value.trim(), sort: sort === 'updated' ? '' : sort,
+      page: page > 1 ? String(page) : '',
     };
     for (const [name, value] of Object.entries(state)) {
       if (value) url.searchParams.set(name, value);
@@ -633,7 +660,8 @@
   // 一覧に出す項目を、タブ・プロジェクト・検索語・並び順に従って並べる。一覧とページ表示中の前後移動で共通
   function arrange(state) {
     const q = state.q.trim().toLowerCase();
-    const shown = items.filter((a) => inTab(a, state.tab) && (!state.project || (a.project ?? NONE) === state.project)
+    const shown = items.filter((a) => inTab(a, state.tab) && (!state.fav || a.favorite)
+      && (!state.project || (a.project ?? NONE) === state.project)
       && (!q || [a.title, a.description, a.slug, a.project, a.path].join(' ').toLowerCase().includes(q)));
     return SORTS[state.sort] ? shown.sort(SORTS[state.sort]) : shown;
   }
@@ -758,6 +786,8 @@
     const chips = [chip('すべて', '', list.length), ...names.map((name) => chip(name, name, counts.get(name), 'project'))];
     if (counts.has(NONE)) chips.push(chip('記録なし', NONE, counts.get(NONE), 'none'));
     $('chips').replaceChildren(...chips);
+    $('fav').setAttribute('aria-pressed', String(fav));
+    $('fav').querySelector('.n').textContent = list.filter((a) => a.favorite).length;
   }
 
   // 最小の表示件数に収まるなら、件数を切り替えても変わらないのでページ送りごと隠す
@@ -815,11 +845,11 @@
     li.querySelector('.slug').textContent = `/a/${a.slug}/`;
     li.querySelector('.slug').title = `URL 名: ${a.slug}`;
     // 作成順で並べたときは作成日時を出す
-    const [when, label] = sort === 'created' && a.createdAt ? [a.createdAt, '作成'] : [a.updatedAt, '更新'];
+    const when = sort === 'created' && a.createdAt ? a.createdAt : a.updatedAt;
     const time = li.querySelector('time');
     time.dateTime = when;
     time.textContent = ago(when);
-    time.title = `${label} ${fmt(when)}`;
+    time.title = [a.createdAt && `${a.path ? '登録' : '作成'} ${fmt(a.createdAt)}`, `更新 ${fmt(a.updatedAt)}`].filter(Boolean).join('\n');
     // リンクは登録した場所のファイルを表示する。消えていれば開けないことを示す
     if (a.path) {
       const path = document.createElement('span');
@@ -832,6 +862,11 @@
       copy.setAttribute('aria-label', `${a.title} のパスをコピー`);
       copy.addEventListener('click', () => copyPath(a.path, copy));
     }
+    const star = li.querySelector('.star');
+    star.setAttribute('aria-pressed', String(Boolean(a.favorite)));
+    star.title = a.favorite ? 'お気に入りから外す' : 'お気に入りに追加';
+    star.setAttribute('aria-label', `${a.title} を${star.title}`);
+    star.addEventListener('click', () => toggleFavorite(a));
     const edit = li.querySelector('.edit');
     edit.setAttribute('aria-label', `${a.title} を編集`);
     edit.addEventListener('click', () => openEdit(a));
@@ -854,13 +889,14 @@
     return li;
   }
 
-  // 行にマウスを止めると縮小プレビューを出す。タッチでは出さない（タップは開く操作なので）
+  // 行にしばらくマウスを止めたときだけ縮小プレビューを出す（通りがかりで出さない）。タッチでは出さない（タップは開く操作なので）
+  const PREVIEW_DELAY_MS = 2000;
   let previewTimer;
 
   function schedulePreview(e, a, li) {
     if (e.pointerType !== 'mouse' || a.missing) return;
     clearTimeout(previewTimer);
-    previewTimer = setTimeout(() => showPreview(a, li), 400);
+    previewTimer = setTimeout(() => showPreview(a, li), PREVIEW_DELAY_MS);
   }
 
   function showPreview(a, li) {
@@ -881,6 +917,36 @@
     if ($('preview').hidden) return;
     $('preview').hidden = true;
     $('preview').querySelector('iframe').src = 'about:blank';
+  }
+
+  async function toggleFavorite(a) {
+    try {
+      const res = await api(`/api/artifacts/${a.slug}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ favorite: !a.favorite }),
+      });
+      if (!res.ok) throw new Error(`${await res.text()}（HTTP ${res.status}）`);
+    } catch (e) {
+      showError(`お気に入りを変更できませんでした（${e.message}）。`);
+      return;
+    }
+    toast(a.favorite ? `「${a.title}」をお気に入りから外しました` : `「${a.title}」をお気に入りに追加しました`);
+    await load();
+  }
+
+  const THEME_KEY = 'artifacts.theme';
+
+  function setTheme(choice) {
+    if (choice === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = choice;
+    try {
+      if (choice === 'system') localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, choice);
+    } catch {
+      // 保存できなくても、この表示には効く
+    }
+    for (const b of document.querySelectorAll('[data-theme-choice]')) b.setAttribute('aria-pressed', String(b.dataset.themeChoice === choice));
   }
 
   async function copyPath(path, btn) {
@@ -945,7 +1011,7 @@
     $('add-open').hidden = tab !== 'links';
     const list = items.filter((a) => inTab(a));
     renderChips(list);
-    const shown = arrange({ tab, project, q: $('q').value, sort });
+    const shown = arrange({ tab, fav, project, q: $('q').value, sort });
     $('sort').value = sort;
     // 別の場所で消えた項目は選択から外す
     for (const slug of selected) if (!list.some((a) => a.slug === slug)) selected.delete(slug);
@@ -1110,6 +1176,10 @@
         if (e.target === d) d.close();
       });
     }
+    $('fav').addEventListener('click', () => {
+      fav = !fav;
+      refilter();
+    });
     $('sort').addEventListener('change', () => {
       sort = $('sort').value;
       refilter();
@@ -1156,6 +1226,7 @@
       ArrowDown: () => moveRow(1),
       ArrowUp: () => moveRow(-1),
       x: () => currentRow()?.querySelector('.sel').click(),
+      f: () => currentRow()?.querySelector('.star').click(),
       ArrowLeft: () => !$('prev').disabled && goPage(page - 1),
       ArrowRight: () => !$('next').disabled && goPage(page + 1),
     };
@@ -1167,6 +1238,8 @@
       action();
     });
   }
+  for (const b of document.querySelectorAll('[data-theme-choice]')) b.addEventListener('click', () => setTheme(b.dataset.themeChoice));
+  setTheme(document.documentElement.dataset.theme ?? 'system');
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
   setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
   load();

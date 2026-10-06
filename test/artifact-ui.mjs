@@ -59,12 +59,12 @@ async function manage({ send, evaluate }) {
   out.push(await evaluate(`(() => {
     const tag = document.querySelector('#list li .tag');
     tag.click();
-    const pressed = document.querySelector('.chip[aria-pressed="true"]').firstChild.textContent;
+    const pressed = document.querySelector('#chips .chip[aria-pressed="true"]').firstChild.textContent;
     return [document.querySelectorAll('#list li').length, pressed === tag.textContent,
       new URLSearchParams(location.search).get('project') === tag.textContent].join(' ');
   })()`));
-  await evaluate("document.querySelector('.chip').click()");
-  out.push(await evaluate("location.search === '' && document.querySelector('.chip').getAttribute('aria-pressed')"));
+  await evaluate("document.querySelector('#chips .chip').click()");
+  out.push(await evaluate("location.search === '' && document.querySelector('#chips .chip').getAttribute('aria-pressed')"));
   await filter('untitled');
   out.push(await rows());
   // the search is kept in the URL and restored from it
@@ -135,7 +135,7 @@ async function extras({ send, evaluate }) {
     const list = JSON.stringify([
       { slug: 'b', title: 'Beta', description: '', createdAt: at(3), updatedAt: at(9) },
       { slug: 'a', title: 'Alpha', description: 'old', createdAt: at(1), updatedAt: at(8) },
-      { slug: 'c', title: 'Gamma', description: '', createdAt: at(5), updatedAt: at(7) },
+      { slug: 'c', title: 'Gamma', description: '', createdAt: at(5), updatedAt: at(7), favorite: true },
       { slug: 'l', title: 'Linked', description: '', path: '/tmp/x/l.html', createdAt: at(1), updatedAt: at(1) },
     ]);
     window.fetch = (url, init = {}) => {
@@ -163,6 +163,14 @@ async function extras({ send, evaluate }) {
   out.push(`${await titles()} ${await evaluate("new URLSearchParams(location.search).get('sort')")}`);
   await sortBy('title');
   out.push(await titles());
+  // the ★ chip narrows to favourites (kept in the URL); a row's star sends the change
+  await evaluate("document.getElementById('fav').click()");
+  out.push(`${await titles()} ${await evaluate("new URLSearchParams(location.search).get('fav')")}`);
+  await evaluate("document.getElementById('fav').click()");
+  await evaluate("document.querySelector('#list li .star').click()");
+  out.push(await until(() => evaluate("calls.splice(0).join(',')"), 'the favourite'));
+  // the time's tooltip has both the creation and the update
+  out.push(await evaluate("document.querySelector('#list li time').title.split('\\n').map((l) => l.split(' ')[0]).join(' ')"));
   // ↓ moves through the rows by focusing their titles, x selects the focused row
   await key('ArrowDown');
   await key('ArrowDown');
@@ -198,6 +206,11 @@ async function extras({ send, evaluate }) {
   await evaluate("document.querySelector('#list li .copy').click()");
   out.push(await until(() => evaluate("calls.join(',')"), 'the copy'));
   out.push(await evaluate("document.getElementById('toasts').textContent.includes('パスをコピーしました')"));
+  // the theme switch overrides the OS setting and is remembered; "OS に合わせる" drops the override
+  await evaluate("document.querySelector('[data-theme-choice=dark]').click()");
+  out.push(await evaluate("[document.documentElement.dataset.theme, getComputedStyle(document.body).backgroundColor, localStorage.getItem('artifacts.theme')].join(' ')"));
+  await evaluate("document.querySelector('[data-theme-choice=system]').click()");
+  out.push(await evaluate("String(document.documentElement.dataset.theme)"));
   // a page opened from the list steps to its neighbours in that list's order, and the logo returns to that list
   await evaluate("sessionStorage.setItem('artifacts.list', '?sort=title')");
   await send('Page.navigate', { url: `${base}/a/b/` });

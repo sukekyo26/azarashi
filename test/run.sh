@@ -1174,6 +1174,9 @@ RECORDER
     "$(curl -s -X PATCH -H 'content-type: application/json' -H "$ART_ORIGIN" -d '{"slug":"renamed","title":"T","project":"p"}' "$ART_URL/api/artifacts/my-demo")|$(jq -r '[.title, .project] | @tsv' "$ART_TMP/store/renamed/meta.json")|$(test -e "$ART_TMP/store/my-demo" && echo left || echo moved) $(art_patch -H "$ART_ORIGIN" -d '{"slug":"untitled"}' "$ART_URL/api/artifacts/renamed") $(art_patch -H "$ART_ORIGIN" -d '{"slug":"Bad Slug"}' "$ART_URL/api/artifacts/renamed")" \
     "{\"slug\":\"renamed\"}|$(printf 'T\tp')|moved 409 400"
   art_patch -H "$ART_ORIGIN" -d '{"slug":"my-demo","title":"","project":""}' "$ART_URL/api/artifacts/renamed" >/dev/null
+  assert_eq "artifact: PATCH marks a favourite, unmarking drops the key, and a non-boolean is 400" \
+    "$(art_patch -H "$ART_ORIGIN" -d '{"favorite":true}' "$ART_URL/api/artifacts/my-demo") $(jq .favorite "$ART_TMP/store/my-demo/meta.json") $(art_patch -H "$ART_ORIGIN" -d '{"favorite":false}' "$ART_URL/api/artifacts/my-demo") $(jq 'has("favorite")' "$ART_TMP/store/my-demo/meta.json") $(art_patch -H "$ART_ORIGIN" -d '{"favorite":"yes"}' "$ART_URL/api/artifacts/my-demo")" \
+    "200 true 200 false 400"
   assert_eq "artifact: clearing the title restores the page's own <title>, clearing the project drops it" \
     "$(jq -r '[.title, has("project")] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'Demo Page\tfalse')"
   assert_eq "artifact: DELETE from a foreign origin is refused" \
@@ -1324,9 +1327,9 @@ RECORDER
     assert_eq "artifact: the management page lists, filters, deletes with a confirming second click, adds links in a modal and pages" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" manage)" \
       "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html /a/my-demo/?raw _blank|2 true true|true|1|untitled|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false|true|true|add-path false|true|10 1 / 3 false|10 2 / 3 false|2|20 1 / 2 false 20 true"
-    assert_eq "artifact: the management page sorts, moves by keyboard, deletes in bulk, previews, edits in a modal, copies paths and notifies; a page steps to its neighbours" \
+    assert_eq "artifact: the management page sorts, filters favourites, switches themes, moves by keyboard, deletes in bulk, previews, edits in a modal, copies paths and notifies; a page steps to its neighbours" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" extras)" \
-      "Beta,Alpha,Gamma|Gamma,Beta,Alpha created|Alpha,Beta,Gamma|Beta|1 件を選択中|2 件を選択中|本当に 2 件を削除|DELETE /api/artifacts/a,DELETE /api/artifacts/b|/a/a/?raw|true|true old|PATCH /api/artifacts/a {\"description\":\"new\"}|true|true|copy /tmp/x/l.html|true|/a/a/ /a/c/ 2 / 3 /?sort=title"
+      "Beta,Alpha,Gamma|Gamma,Beta,Alpha created|Alpha,Beta,Gamma|Gamma 1|PATCH /api/artifacts/a {\"favorite\":true}|作成 更新|Beta|1 件を選択中|2 件を選択中|本当に 2 件を削除|DELETE /api/artifacts/a,DELETE /api/artifacts/b|/a/a/?raw|true|true old|PATCH /api/artifacts/a {\"description\":\"new\"}|true|true|copy /tmp/x/l.html|true|dark rgb(10, 11, 16) dark|undefined|/a/a/ /a/c/ 2 / 3 /?sort=title"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
     printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'

@@ -446,7 +446,7 @@ async function addLink(req, res) {
   return send(res, entry.created ? 201 : 200, JSON.stringify({ slug: entry.slug }), { 'content-type': 'application/json' });
 }
 
-// 管理画面からの編集。送られた項目（タイトル・説明・プロジェクト・URL 名）だけを書き換える。
+// 管理画面からの編集。送られた項目（タイトル・説明・プロジェクト・URL 名・お気に入り）だけを書き換える。
 // 版（updatedAt）は変えないので、並び順も開いているタブの再読み込みも動かない
 async function editArtifact(req, res, slug) {
   const input = await readJson(req, res);
@@ -457,8 +457,11 @@ async function editArtifact(req, res, slug) {
   if (['title', 'description', 'project', 'slug'].some((k) => has(k) && typeof input[k] !== 'string')) {
     return send(res, 400, 'タイトル・説明・プロジェクト・URL 名は文字列で送ってください');
   }
+  if (has('favorite') && typeof input.favorite !== 'boolean') return send(res, 400, 'お気に入りは true か false で送ってください');
   const next = { ...meta };
   if (has('description')) next.description = input.description.trim();
+  // 外したときは記録から消す
+  if (has('favorite')) next.favorite = input.favorite || undefined;
   // 空にしたタイトルは、リンクならファイルから取り直し、保存したページなら HTML の <title> か slug に戻す
   if (has('title')) {
     next.title = input.title.trim()
