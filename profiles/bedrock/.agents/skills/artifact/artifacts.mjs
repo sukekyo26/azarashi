@@ -35,8 +35,9 @@ const ORIGINS = new Set([...HOSTS].map((h) => `http://${h}`));
 const PAGE_CSP = 'sandbox allow-scripts allow-popups allow-forms allow-modals allow-downloads';
 
 const USAGE = `usage: artifacts.sh <command>
-  publish <file.html> [--link] [--slug s] [--title t] [--description d]
-                 store the page (same slug overwrites) and print its URL;
+  publish <file.html> [--link] [--slug s] [--title t] [--description d] [--force]
+                 store the page and print its URL; the same slug from the same project overwrites it,
+                 and a slug published from another project is refused unless --force;
                  body-only HTML (no doctype/html/head/body/title) is wrapped in template.html;
                  a new slug is also opened in the browser ($BROWSER, wslview, xdg-open);
                  --link registers the file in place instead of copying it: it is read on every request,
@@ -290,19 +291,31 @@ function prepare(file, opts, cwd) {
     );
   }
   const now = new Date().toISOString();
+  // ルート（/）では名前が空になる。空は記録せず「記録なし」に入れる（管理画面の「すべて」の値 '' と衝突するため）
+  const from = projectName(path ? dirname(path) : cwd) || undefined;
+  // 保存したページは、別のプロジェクトから同じ slug で公開されても黙って上書きしない（test-report のような slug は重なりやすい）。
+  // 持ち主は公開した場所のプロジェクトで、画面で変えられる表示用の project とは別に記録する。記録の無い古いページは project で見るが、
+  // 画面で編集された project は公開した場所を表さないので持ち主にしない
+  const owner = path ? undefined : prev?.publishedFrom ?? (prev?.projectEdited ? undefined : prev?.project);
+  const replacing = Boolean(owner) && owner !== from;
+  if (replacing && !opts.force) {
+    fail(`"${slug}" was published from project ${owner}; use another --slug, or add --force to replace that page`);
+  }
+  // --force で別のプロジェクトのページを置き換えたら、そのページの説明・お気に入り・編集は引き継がない
+  const base = replacing ? undefined : prev;
   // 管理画面で付けたお気に入りと、画面で編集したタイトル・プロジェクトは公開し直しても保つ。タイトルは --title が優先する
-  const keepTitle = !opts.title && prev?.titleEdited;
+  const keepTitle = !opts.title && base?.titleEdited;
   const meta = {
     path,
     // リンクのタイトルは毎回ファイルから取るので、--title か画面で固定したときだけ記録する
-    title: opts.title ?? (path || keepTitle ? prev?.title : titleOf(html) || prev?.title || slug),
+    title: opts.title ?? (path || keepTitle ? base?.title : titleOf(html) || base?.title || slug),
     titleEdited: keepTitle || undefined,
-    description: opts.description ?? prev?.description ?? '',
-    // ルート（/）では名前が空になる。空は記録せず「記録なし」に入れる（管理画面の「すべて」の値 '' と衝突するため）
-    project: prev?.projectEdited ? prev.project : projectName(path ? dirname(path) : cwd) || undefined,
-    projectEdited: prev?.projectEdited,
-    favorite: prev?.favorite,
-    createdAt: prev?.createdAt ?? now,
+    description: opts.description ?? base?.description ?? '',
+    project: base?.projectEdited ? base.project : from,
+    projectEdited: base?.projectEdited,
+    publishedFrom: path ? undefined : from,
+    favorite: base?.favorite,
+    createdAt: base?.createdAt ?? now,
     updatedAt: now,
   };
   return {
@@ -740,6 +753,7 @@ async function main() {
     allowPositionals: true,
     options: {
       link: { type: 'boolean' }, slug: { type: 'string' }, title: { type: 'string' }, description: { type: 'string' },
+      force: { type: 'boolean' },
     },
   });
   // 空のタイトルは「付けない」と区別できず、一覧が空欄になるだけなので受け付けない
