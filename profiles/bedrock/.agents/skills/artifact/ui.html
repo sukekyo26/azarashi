@@ -21,15 +21,15 @@
   /* 管理画面（/）とページの外枠（/a/<slug>/）を兼ねる。共通の見出しバーの下に、一覧か iframe のどちらかを出す */
   /* 色はライトとダークを light-dark() で並べて持つ。テーマは color-scheme で決まり、選んだテーマは data-theme で上書きする */
   :root {
-    --bg: light-dark(#f6f7f9, #0a0b10); --panel: light-dark(#fff, #111319); --subtle: light-dark(#f0f2f5, #171a22);
-    --hover: light-dark(#f8f9fb, #151821); --fg: light-dark(#0d1220, #e8eaf0); --muted: light-dark(#5a6273, #9ba2b3);
-    --faint: light-dark(#8b93a3, #6a7285); --line: light-dark(#e5e8ee, #232733);
-    --accent: light-dark(#5753e0, #8e8cfb); --accent-2: light-dark(#a64df0, #c58afc); --accent-soft: light-dark(#eeedff, #1e1e3c);
-    --on-accent: light-dark(#fff, #0a0b10); --good: light-dark(#16a36a, #3fcf8e); --star: light-dark(#e0a100, #f5c542);
-    --danger: light-dark(#d23b3b, #f48a8a); --danger-soft: light-dark(#fdecec, #3a1c1f);
+    --bg: light-dark(#f6f7f9, #17191f); --panel: light-dark(#fff, #20232b); --subtle: light-dark(#f0f2f5, #282b34);
+    --hover: light-dark(#f8f9fb, #272a33); --fg: light-dark(#0d1220, #eef0f4); --muted: light-dark(#5a6273, #b0b6c4);
+    --faint: light-dark(#8b93a3, #868ea0); --line: light-dark(#e5e8ee, #353945);
+    --accent: light-dark(#5753e0, #8e8cfb); --accent-2: light-dark(#a64df0, #c58afc); --accent-soft: light-dark(#eeedff, #2e2d58);
+    --on-accent: light-dark(#fff, #17191f); --good: light-dark(#16a36a, #3fcf8e); --star: light-dark(#e0a100, #f5c542);
+    --danger: light-dark(#d23b3b, #f48a8a); --danger-soft: light-dark(#fdecec, #4a2529);
     --scrim: light-dark(rgb(13 18 32 / 0.4), rgb(0 0 0 / 0.6));
-    --shadow-sm: 0 1px 2px light-dark(rgb(16 24 40 / 0.06), rgb(0 0 0 / 0.4));
-    --shadow: 0 1px 2px light-dark(rgb(16 24 40 / 0.04), rgb(0 0 0 / 0.3)), 0 10px 30px -14px light-dark(rgb(16 24 40 / 0.16), rgb(0 0 0 / 0.7));
+    --shadow-sm: 0 1px 2px light-dark(rgb(16 24 40 / 0.06), rgb(0 0 0 / 0.3));
+    --shadow: 0 1px 2px light-dark(rgb(16 24 40 / 0.04), rgb(0 0 0 / 0.3)), 0 10px 30px -14px light-dark(rgb(16 24 40 / 0.16), rgb(0 0 0 / 0.5));
     --body: "Geist", system-ui, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
     --mono: "Geist Mono", ui-monospace, Menlo, Consolas, monospace;
     --bar: 3.5rem;
@@ -157,7 +157,7 @@
 
   /* var(--h) は宣言した要素で解決されるので、色は --h を持つ要素の上で組み立てる */
   li, .chip.project {
-    --glyph-bg: light-dark(hsl(var(--h) 85% 95%), hsl(var(--h) 35% 17%)); --glyph-fg: light-dark(hsl(var(--h) 55% 40%), hsl(var(--h) 80% 76%));
+    --glyph-bg: light-dark(hsl(var(--h) 85% 95%), hsl(var(--h) 30% 24%)); --glyph-fg: light-dark(hsl(var(--h) 55% 40%), hsl(var(--h) 80% 76%));
   }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
   /* 行は subgrid で列を共有し、タグ・URL 名・時刻・操作の位置を行どうしでそろえる */
