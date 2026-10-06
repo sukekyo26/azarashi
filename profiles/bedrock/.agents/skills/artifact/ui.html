@@ -319,9 +319,9 @@
   const inTab = (a, t = tab) => Boolean(a.path) === (t === 'links');
   // 生成元を記録する前のページ。project はディレクトリ名で / を含まないので衝突しない
   const NONE = '/';
-  const SIZES = [10, 20, 100];
+  const SIZES = [10, 20, 50, 100];
   const SIZE_KEY = 'artifacts.pageSize';
-  let size = 20;
+  let size = SIZES[0];
   let page = 1;
   // 表示件数は閲覧者の好みとしてブラウザに残す。保存できない環境では既定値で動く
   try {

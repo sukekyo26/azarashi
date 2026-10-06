@@ -96,13 +96,13 @@ async function manage({ send, evaluate }) {
   })()`));
   await evaluate("document.querySelector('.tabs [data-tab=pages]').click()");
   out.push(await evaluate("document.getElementById('add-open').hidden"));
-  // paging over 25 rows: 20 a page by default, then the next page, then 10 a page (remembered in the browser)
+  // paging over 25 rows: 10 a page by default, then the next page, then 20 a page (remembered in the browser)
   const pager = () => evaluate("[document.querySelectorAll('#list li').length, document.getElementById('pageno').textContent, document.getElementById('next').disabled].join(' ')");
   await evaluate("items = Array.from({ length: 25 }, (_, i) => ({ slug: `p${i}`, title: `P${i}`, description: '', updatedAt: new Date().toISOString() })); render()");
   out.push(await pager());
   await evaluate("document.getElementById('next').click()");
   out.push(await pager());
-  await evaluate("[...document.querySelectorAll('#sizes button')].find((b) => b.textContent === '10').click()");
+  await evaluate("[...document.querySelectorAll('#sizes button')].find((b) => b.textContent === '20').click()");
   out.push(`${await pager()} ${await evaluate("localStorage.getItem('artifacts.pageSize')")}`);
   return out;
 }

@@ -1299,11 +1299,11 @@ RECORDER
     # rows after the second click | store after it | error shown when DELETE cannot
     # reach the server | row kept | server indicator down | empty state once all are gone | indicator up again
     # | add modal open with the path focused, closed by cancel | add button hidden on the pages tab |
-    # 25 rows paged: default 20 a page, page 2, then 10 a page remembered
+    # 25 rows paged: default 10 a page, page 2, then 20 a page remembered
     art publish "$ART_TMP/My Demo.html" >/dev/null
     assert_eq "artifact: the management page lists, filters, deletes with a confirming second click, adds links in a modal and pages" \
       "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" manage)" \
-      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html|2 true true|true|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false|add-path false|true|20 1 / 2 false|5 2 / 2 true|10 1 / 3 false 10"
+      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html|2 true true|true|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false|add-path false|true|10 1 / 3 false|10 2 / 3 false|20 1 / 2 false 20"
     art publish "$ART_TMP/untitled.html" >/dev/null
   else
     printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'
