@@ -279,9 +279,10 @@ export const css = `<style>
   .dg .edge.good { stroke: var(--good); }
   .dg .edge.warn { stroke: var(--warn); }
   .dg .edge.bad { stroke: var(--bad); }
-  .dg .mk-fill { fill: var(--muted); }
-  .dg .mk-hollow { fill: var(--bg); stroke: var(--muted); stroke-width: 1.2; }
-  .dg .mk-line { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+  /* 線の端の記号は線と同じ色（context-stroke）。解釈できない環境では直前の --muted が残る */
+  .dg .mk-fill { fill: var(--muted); fill: context-stroke; }
+  .dg .mk-hollow { fill: var(--bg); stroke: var(--muted); stroke: context-stroke; stroke-width: 1.2; }
+  .dg .mk-line { fill: none; stroke: var(--muted); stroke: context-stroke; stroke-width: 1.5; }
   .dg .dot { fill: var(--muted); stroke: var(--muted); }
   .dg .dot.accent { fill: var(--accent); stroke: var(--accent); }
   .dg .dot.good { fill: var(--good); stroke: var(--good); }
