@@ -17,8 +17,11 @@ if (!chrome || !base || !['manage', 'extras', 'reload'].includes(scenario) || (s
   process.exit(2);
 }
 const profile = mkdtempSync(join(tmpdir(), 'artifact-ui-'));
+// 127.0.0.1 以外の名前はすぐに解決に失敗させ、ネットワークに頼らない。ページは Google Fonts を <head> で読み、
+// それが返るまで後ろのスクリプトも DOM の解析も止まるので、遅い回線では読み込み待ちが時間切れになる
 const proc = spawn(chrome, [
   '--headless=new', '--no-sandbox', '--disable-gpu', '--no-first-run',
+  '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
   '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank',
 ], { stdio: ['ignore', 'ignore', 'pipe'] });
 let stderr = '';
@@ -366,6 +369,9 @@ try {
   ws?.close();
   proc.kill();
   await exited;
-  // 本体が終わっても子プロセスがまだ profile に書いていることがあり、そのままでは ENOTEMPTY になる
-  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  // 本体が終わっても子プロセスがまだ profile（キャッシュなど）に書いていることがあり、ENOTEMPTY になり得る。
+  // 一時ディレクトリの後片付けなので、やり直しても消せなければ諦める（テストの結果には関係しない）
+  try {
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch {}
 }
