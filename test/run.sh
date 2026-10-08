@@ -984,6 +984,557 @@ cw_out=$(jq -nc --arg t "$CW_T2" '{session_id:"cw3", transcript_path:$t}' | TMPD
 expect_true "warn-cold-cache-cost: an expired persisted clock flags a fresh transcript at the clock's tier" \
   sh -c "printf '%s' '$cw_out' | jq -e '.systemMessage | test(\"\\\\\$0.66\")' >/dev/null"
 
+# --- repo-setup apply.sh --dry-run ------------------------------------------
+# The dry run prints the repository settings, then both rulesets. --check names
+# land in both rulesets' required_status_checks (strict only on develop);
+# without any, that rule is dropped so a check that never reports can't block
+# every merge. The merge methods the rulesets allow must be enabled in the
+# settings, or the ruleset's PRs could never be merged.
+
+REPO_SETUP="$SCRIPT_DIR/../common/.agents/skills/repo-setup/apply.sh"
+assert_eq "repo-setup: --check fills both rulesets, strict only on develop" \
+  "$(bash "$REPO_SETUP" --dry-run --check 'a b' --check c | jq -sc 'map(select(has("rules")) | .name, (.rules[] |
+    select(.type == "required_status_checks").parameters | [.strict_required_status_checks_policy,
+    (.required_status_checks | map(.context))]))')" \
+  '["develop_ruleset",[true,["a b","c"]],"main_ruleset",[false,["a b","c"]]]'
+assert_eq "repo-setup: without --check the status-check rule is dropped, the rest kept" \
+  "$(bash "$REPO_SETUP" --dry-run | jq -sc 'map(select(has("rules")) | [.rules[].type])')" \
+  '[["deletion","non_fast_forward","pull_request"],["deletion","non_fast_forward","pull_request"]]'
+assert_eq "repo-setup: develop squashes, main merges, and the settings enable exactly those" \
+  "$(bash "$REPO_SETUP" --dry-run | jq -sc '[(.[1:][] | .rules[] | select(.type == "pull_request").parameters.allowed_merge_methods[]),
+    (.[0] | [.allow_squash_merge, .allow_merge_commit, .allow_rebase_merge])]')" \
+  '["squash","merge",[true,true,false]]'
+expect_false "repo-setup: an unknown argument fails" \
+  sh -c "bash '$REPO_SETUP' --bogus 2>/dev/null"
+
+# --- artifact skill (skipped when node or curl unavailable) -----------------
+
+# ART_RUNTIME is what runs artifacts.mjs (node by default; CI also runs the suite with ART_RUNTIME=bun).
+# The harness around it (port probing, the browser driver) always uses node.
+ART_RUNTIME=${ART_RUNTIME:-node}
+
+# a missing ART_RUNTIME fails once and skips the section, instead of a cascade of "not found" failures
+if [ "$ART_RUNTIME" != node ] && ! command -v "$ART_RUNTIME" >/dev/null 2>&1; then
+  ng "artifact: ART_RUNTIME=$ART_RUNTIME is not installed (artifact skill tests skipped)"
+elif command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+  ART="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/artifacts.mjs"
+  # the real path: linked files are stored by it, so a symlinked temp dir (macOS /var) must not differ
+  ART_TMP=$(cd "$(mktemp -d)" && pwd -P)
+  # a port the OS reports free right now, rather than a guess that a busy host may already use
+  ART_PORT=$(node -e 'const s = require("node:net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); });')
+  ART_URL="http://127.0.0.1:$ART_PORT"
+  art() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART" "$@"; }
+  http_code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+  printf '<title>Demo  Page</title><p>hi</p>\n' >"$ART_TMP/My Demo.html"
+  printf '<p>untitled</p>\n' >"$ART_TMP/untitled.html"
+  # every publish in this block opens "the browser" through this recorder, never a real one
+  cat >"$ART_TMP/browser" <<RECORDER
+#!/bin/sh
+printf '%s\n' "\$1" >>"$ART_TMP/opened"
+RECORDER
+  chmod +x "$ART_TMP/browser"
+  BROWSER="$ART_TMP/browser"
+  export BROWSER
+  art_opened() { # print the URLs the recorder got, once the detached opener has had time to run
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      [ -s "$ART_TMP/opened" ] && break
+      sleep 0.1
+    done
+    cat "$ART_TMP/opened" 2>/dev/null
+  }
+
+  assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
+    "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "$ART_URL/a/my-demo/"
+  assert_eq "artifact: a first publish opens the page in \$BROWSER" "$(art_opened)" "$ART_URL/a/my-demo/"
+  assert_eq "artifact: list shows the slug, the <title> and no linked path" "$(art list | cut -f2-)" "$(printf 'my-demo\tDemo Page\t')"
+  mkdir -p "$ART_TMP/store/no-meta" "$ART_TMP/store/bad-json" "$ART_TMP/store/bad-time"
+  printf '{bad' >"$ART_TMP/store/bad-json/meta.json"
+  printf '{"title":"t","updatedAt":12345}' >"$ART_TMP/store/bad-time/meta.json"
+  assert_eq "artifact: entries with a missing or broken meta.json are skipped, not fatal" \
+    "$(art list 2>&1 | cut -f2)" my-demo
+  rm -rf "$ART_TMP/store/no-meta" "$ART_TMP/store/bad-json" "$ART_TMP/store/bad-time"
+  ART_CREATED=$(jq -r .createdAt "$ART_TMP/store/my-demo/meta.json")
+  art publish "$ART_TMP/My Demo.html" --slug my-demo >/dev/null
+  assert_eq "artifact: republishing keeps the description and createdAt" \
+    "$(jq -r '[.description, .createdAt] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'a demo\t%s' "$ART_CREATED")"
+  art publish "$ART_TMP/My Demo.html" --title 'Renamed' >/dev/null
+  assert_eq "artifact: --title overrides the <title>" "$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" Renamed
+  assert_eq "artifact: a blank --title is rejected and the page is left as it was" \
+    "$(
+      art publish "$ART_TMP/My Demo.html" --title ' ' 2>&1
+      echo "rc=$?"
+    )|$(jq -r .title "$ART_TMP/store/my-demo/meta.json")" \
+    "$(printf -- '--title is empty: give the page a name, or omit --title to take it from the <title> or first <h1>\nrc=1')|Renamed"
+  sleep 0.3 # let a (wrong) opener from the republishes above reach the recorder
+  assert_eq "artifact: republishing the same slug does not open another tab" "$(art_opened | wc -l | tr -d ' ')" 1
+  art publish "$ART_TMP/untitled.html" >/dev/null
+  assert_eq "artifact: a page without <title> is titled by its slug" "$(jq -r .title "$ART_TMP/store/untitled/meta.json")" untitled
+  # the project comes from origin even when cloned under another name, from the main
+  # checkout's directory for a worktree without origin, and from the cwd outside git
+  git init -q "$ART_TMP/alias" && git -C "$ART_TMP/alias" remote add origin git@github.com:someone/upstream-name.git
+  git init -q "$ART_TMP/plain" && git -C "$ART_TMP/plain" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+  git -C "$ART_TMP/plain" worktree add -q --detach "$ART_TMP/wt"
+  mkdir "$ART_TMP/outside"
+  for d in alias wt outside; do (cd "$ART_TMP/$d" && art publish "$ART_TMP/untitled.html" --slug "proj-$d" >/dev/null); done
+  assert_eq "artifact: publish records the project it was run in" \
+    "$(for d in alias wt outside; do jq -r .project "$ART_TMP/store/proj-$d/meta.json"; done | paste -sd' ' -)" \
+    "upstream-name plain outside"
+  art rm proj-alias proj-wt proj-outside
+  # basename of / is empty, which would collide with the management page's "all" value
+  (cd / && art publish "$ART_TMP/untitled.html" --slug proj-root >/dev/null)
+  assert_eq "artifact: publishing from / records no project" "$(jq 'has("project")' "$ART_TMP/store/proj-root/meta.json")" false
+  art rm proj-root
+  # 63 letters then a separator: cutting the derived slug at 64 must not leave a trailing hyphen
+  ART_LONG=$(printf '%063d' 0 | tr 0 a)
+  printf '<p>long</p>\n' >"$ART_TMP/$ART_LONG b.html"
+  assert_eq "artifact: a slug cut at 64 characters drops a trailing hyphen" \
+    "$(art publish "$ART_TMP/$ART_LONG b.html")" "$ART_URL/a/$ART_LONG/"
+  art rm "$ART_LONG"
+  # body-only HTML is wrapped in the template; a whole document is stored as is
+  expect_true "artifact: a body-only page is wrapped in the template" \
+    sh -c "head -1 '$ART_TMP/store/untitled/index.html' | grep -qi '^<!doctype html>' &&
+      grep -q 'content=\"local-artifacts template\"' '$ART_TMP/store/untitled/index.html' &&
+      grep -q '<p>untitled</p>' '$ART_TMP/store/untitled/index.html'"
+  # the page URL returns the management page as a frame with a header; the page itself comes from ?raw,
+  # unchanged except for the live-reload script appended at the end
+  expect_true "artifact: the page URL returns the frame, not sandboxed so that it can call the API" \
+    sh -c "curl -s '$ART_URL/a/untitled/' | grep -q '<title>Artifacts</title>' &&
+      ! curl -s -D - -o /dev/null '$ART_URL/a/untitled/' | grep -qi '^content-security-policy'"
+  curl -s "$ART_URL/a/untitled/?raw" >"$ART_TMP/raw.html"
+  expect_true "artifact: ?raw serves the stored page as is, followed only by the reload script" \
+    node -e 'const fs = require("node:fs"); const [raw, stored] = process.argv.slice(1).map((f) => fs.readFileSync(f, "utf8"));
+      process.exit(raw.startsWith(stored) && raw.slice(stored.length).startsWith("\n<script>{const es = new window.EventSource(") ? 0 : 1)' \
+    "$ART_TMP/raw.html" "$ART_TMP/store/untitled/index.html"
+  expect_false "artifact: a page with its own <title> is stored as is" \
+    grep -q 'local-artifacts template' "$ART_TMP/store/my-demo/index.html"
+  printf '  <h1>A &amp; <em>B</em></h1>\n<p>keeps %s</p>\n\n' "\$& and \$1" >"$ART_TMP/frag.html"
+  art publish "$ART_TMP/frag.html" >/dev/null
+  assert_eq "artifact: a fragment is titled by its <h1> as plain text, escaped again in <title>" \
+    "$(jq -r .title "$ART_TMP/store/frag/meta.json")|$(grep -o '<title>.*</title>' "$ART_TMP/store/frag/index.html")" \
+    'A & B|<title>A &amp; B</title>'
+  expect_true "artifact: the fragment is inserted verbatim" \
+    node -e 'const fs = require("node:fs"); process.exit(fs.readFileSync(process.argv[1], "utf8").includes(fs.readFileSync(process.argv[2], "utf8")) ? 0 : 1)' \
+    "$ART_TMP/store/frag/index.html" "$ART_TMP/frag.html"
+  printf '<h1>Sales</h1>\n<svg viewBox="0 0 1 1"><title>Bar chart</title></svg>\n' >"$ART_TMP/svg.html"
+  art publish "$ART_TMP/svg.html" >/dev/null
+  assert_eq "artifact: an SVG <title> neither stops the wrap nor becomes the page title" \
+    "$(grep -q 'local-artifacts template' "$ART_TMP/store/svg/index.html" && echo wrapped)|$(jq -r .title "$ART_TMP/store/svg/meta.json")" \
+    'wrapped|Sales'
+  art rm svg >/dev/null
+  art rm frag
+  expect_false "artifact: an invalid slug is rejected" \
+    sh -c "ARTIFACTS_DIR='$ART_TMP/store' '$ART_RUNTIME' '$ART' publish '$ART_TMP/My Demo.html' --slug ../x 2>/dev/null"
+  assert_eq "artifact: an invalid ARTIFACTS_PORT fails at once with a clear message" \
+    "$(
+      ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT=abc "$ART_RUNTIME" "$ART" list 2>&1
+      echo "rc=$?"
+    )" \
+    "$(printf 'invalid ARTIFACTS_PORT "abc": use a port number from 1 to 65535\nrc=1')"
+  expect_false "artifact: port 0 and out-of-range ports are rejected too" \
+    sh -c "ARTIFACTS_PORT=0 '$ART_RUNTIME' '$ART' list 2>/dev/null || ARTIFACTS_PORT=70000 '$ART_RUNTIME' '$ART' list 2>/dev/null"
+  expect_false "artifact: a missing file is rejected" \
+    sh -c "ARTIFACTS_DIR='$ART_TMP/store' '$ART_RUNTIME' '$ART' publish '$ART_TMP/nope.html' 2>/dev/null"
+  expect_false "artifact: publishing to a server that serves another store fails" \
+    sh -c "ARTIFACTS_DIR='$ART_TMP/other' ARTIFACTS_PORT='$ART_PORT' '$ART_RUNTIME' '$ART' publish '$ART_TMP/My Demo.html' 2>/dev/null"
+  expect_false "artifact: a failed publish leaves nothing in the store" test -e "$ART_TMP/other/my-demo"
+  expect_true "artifact: the management page is served" \
+    sh -c "curl -s '$ART_URL/' | grep -q '<title>Artifacts</title>'"
+  assert_eq "artifact: a page URL without the trailing slash redirects, an unknown slug is 404" \
+    "$(http_code "$ART_URL/a/my-demo") $(http_code "$ART_URL/a/no-such/")" "301 404"
+  expect_true "artifact: an unknown page URL still returns the frame, which shows the way back" \
+    sh -c "curl -s '$ART_URL/a/no-such/' | grep -q 'id=\"notfound\"'"
+  expect_true "artifact: the page is served in a sandbox" \
+    sh -c "curl -s -D - -o /dev/null '$ART_URL/a/my-demo/?raw' | grep -qi '^content-security-policy: sandbox'"
+  # download: the stored file as is, as an attachment named after the slug
+  curl -s -D "$ART_TMP/dl.headers" -o "$ART_TMP/dl.html" "$ART_URL/api/artifacts/my-demo/download"
+  expect_true "artifact: download returns the stored page unchanged" cmp -s "$ART_TMP/dl.html" "$ART_TMP/store/my-demo/index.html"
+  expect_true "artifact: download is an attachment named <slug>.html" \
+    grep -qi '^content-disposition: attachment; filename="my-demo.html"' "$ART_TMP/dl.headers"
+  assert_eq "artifact: download of an unknown or bad slug is 404" \
+    "$(http_code "$ART_URL/api/artifacts/no-such/download") $(http_code "$ART_URL/api/artifacts/Bad_Slug/download")" "404 404"
+  assert_eq "artifact: a malformed request target is a client error, not a server error" \
+    "$(http_code --request-target '//' "$ART_URL/") $(http_code --request-target 'http://[' "$ART_URL/")" "400 400"
+  assert_eq "artifact: a page opened as localhost is still served" \
+    "$(http_code -H "Host: localhost:$ART_PORT" "$ART_URL/")" 200
+  # live reload: the served page subscribes with the version it was rendered from
+  ART_NOW=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
+  ART_SINCE=$(node -p 'encodeURIComponent(process.argv[1])' "$ART_NOW")
+  expect_true "artifact: a served page subscribes to reloads with its own version" \
+    sh -c "curl -s '$ART_URL/a/my-demo/?raw' | grep -qF 'new window.EventSource(\"/api/events/my-demo?since=$ART_SINCE\")'"
+  ART_SSE=$(curl -s -D - -N --max-time 3 "$ART_URL/api/events/my-demo?since=stale")
+  assert_eq "artifact: a stale version gets a bare reload event, with CORS only for the sandboxed page (null)" \
+    "$(printf '%s' "$ART_SSE" | grep -ciE '^(access-control-allow-origin: null|event: reload|data: changed)')" 3
+  expect_false "artifact: the current version gets no reload event" \
+    sh -c "curl -s -N --max-time 1.5 '$ART_URL/api/events/my-demo?since=$ART_NOW' | grep -q '^event: reload'"
+  curl -s -N --max-time 4 "$ART_URL/api/events/my-demo?since=$ART_NOW" >"$ART_TMP/sse.out" &
+  sleep 0.3
+  art publish "$ART_TMP/My Demo.html" --slug my-demo >/dev/null
+  wait $!
+  expect_true "artifact: republishing notifies a stream that is already open" grep -q '^event: reload' "$ART_TMP/sse.out"
+  assert_eq "artifact: a request under a foreign Host is refused" \
+    "$(http_code -H 'Host: evil.example' "$ART_URL/")" 403
+  # editing the description from the management page: PATCH with JSON from its own origin; the version stays
+  art_patch() { curl -s -o /dev/null -w '%{http_code}' -X PATCH -H 'content-type: application/json' "$@"; }
+  ART_ORIGIN="Origin: http://127.0.0.1:$ART_PORT"
+  ART_BEFORE=$(jq -r .updatedAt "$ART_TMP/store/my-demo/meta.json")
+  assert_eq "artifact: PATCH from another origin is refused; from the management page it trims and sets the description, keeping updatedAt" \
+    "$(art_patch -H 'Origin: http://evil.example' -d '{"description":"x"}' "$ART_URL/api/artifacts/my-demo") $(art_patch -H "$ART_ORIGIN" -d '{"description":"  edited  "}' "$ART_URL/api/artifacts/my-demo")|$(jq -r --arg b "$ART_BEFORE" '[.description, (.updatedAt == $b)] | @tsv' "$ART_TMP/store/my-demo/meta.json")" \
+    "403 200|$(printf 'edited\ttrue')"
+  assert_eq "artifact: PATCH of an unknown slug is 404, of a non-string description 400" \
+    "$(art_patch -H "$ART_ORIGIN" -d '{"description":"x"}' "$ART_URL/api/artifacts/no-such") $(art_patch -H "$ART_ORIGIN" -d '{"description":1}' "$ART_URL/api/artifacts/my-demo")" "404 400"
+  assert_eq "artifact: a JSON body that is not an object is refused, for PATCH and for adding a link" \
+    "$(art_patch -H "$ART_ORIGIN" -d 'true' "$ART_URL/api/artifacts/my-demo") $(art_patch -H "$ART_ORIGIN" -d '["x"]' "$ART_URL/api/artifacts/my-demo") $(art_patch -H "$ART_ORIGIN" -d 'null' "$ART_URL/api/artifacts/my-demo") $(curl -s -X POST -H 'content-type: application/json' -H "$ART_ORIGIN" -d '"x"' "$ART_URL/api/artifacts")" \
+    "400 400 400 送られた内容を読めませんでした（JSON のオブジェクトで送ってください）"
+  assert_eq "artifact: PATCH sets the title and project and moves the entry to a new URL name, refusing one in use or invalid" \
+    "$(curl -s -X PATCH -H 'content-type: application/json' -H "$ART_ORIGIN" -d '{"slug":"renamed","title":"T","project":"p"}' "$ART_URL/api/artifacts/my-demo")|$(jq -r '[.title, .project] | @tsv' "$ART_TMP/store/renamed/meta.json")|$(test -e "$ART_TMP/store/my-demo" && echo left || echo moved) $(art_patch -H "$ART_ORIGIN" -d '{"slug":"untitled"}' "$ART_URL/api/artifacts/renamed") $(art_patch -H "$ART_ORIGIN" -d '{"slug":"Bad Slug"}' "$ART_URL/api/artifacts/renamed")" \
+    "{\"slug\":\"renamed\"}|$(printf 'T\tp')|moved 409 400"
+  art_patch -H "$ART_ORIGIN" -d '{"slug":"my-demo","title":"","project":""}' "$ART_URL/api/artifacts/renamed" >/dev/null
+  assert_eq "artifact: PATCH marks a favourite, unmarking drops the key, and a non-boolean is 400" \
+    "$(art_patch -H "$ART_ORIGIN" -d '{"favorite":true}' "$ART_URL/api/artifacts/my-demo") $(jq .favorite "$ART_TMP/store/my-demo/meta.json") $(art_patch -H "$ART_ORIGIN" -d '{"favorite":false}' "$ART_URL/api/artifacts/my-demo") $(jq 'has("favorite")' "$ART_TMP/store/my-demo/meta.json") $(art_patch -H "$ART_ORIGIN" -d '{"favorite":"yes"}' "$ART_URL/api/artifacts/my-demo")" \
+    "200 true 200 false 400"
+  assert_eq "artifact: clearing the title restores the page's own <title>, clearing the project drops it" \
+    "$(jq -r '[.title, has("project")] | @tsv' "$ART_TMP/store/my-demo/meta.json")" "$(printf 'Demo Page\tfalse')"
+  # a republish keeps what was set on the management page (favourite, edited title and project), --title still wins,
+  # and clearing the title and project there hands them back to the page and to where it is published from
+  # (republished from this repository: another project would be refused, see the next check)
+  art_patch -H "$ART_ORIGIN" -d '{"favorite":true,"title":"Mine","project":"p"}' "$ART_URL/api/artifacts/my-demo" >/dev/null
+  art publish "$ART_TMP/My Demo.html" >/dev/null
+  _art_kept=$(jq -r '[.favorite, .title, .project] | @tsv' "$ART_TMP/store/my-demo/meta.json")
+  art publish "$ART_TMP/My Demo.html" --title Agent >/dev/null
+  _art_forced=$(jq -r '[.title, .project] | @tsv' "$ART_TMP/store/my-demo/meta.json")
+  art_patch -H "$ART_ORIGIN" -d '{"favorite":false,"title":"","project":""}' "$ART_URL/api/artifacts/my-demo" >/dev/null
+  art publish "$ART_TMP/My Demo.html" >/dev/null
+  assert_eq "artifact: a republish keeps the favourite and the title and project edited on the management page" \
+    "$_art_kept|$_art_forced|$(jq -r '[.title, .project == "p", has("favorite"), has("titleEdited"), has("projectEdited")] | @tsv' "$ART_TMP/store/my-demo/meta.json")" \
+    "$(printf 'true\tMine\tp|Agent\tp|Demo Page\tfalse\tfalse\tfalse\tfalse')"
+  # the same slug from another project (here $ART_TMP, outside any repository) is refused and the page is left alone;
+  # --force replaces it with a fresh page that keeps nothing of the old one
+  art_patch -H "$ART_ORIGIN" -d '{"favorite":true,"description":"repo page"}' "$ART_URL/api/artifacts/my-demo" >/dev/null
+  _art_owner=$(jq -r .publishedFrom "$ART_TMP/store/my-demo/meta.json")
+  _art_refused=$(
+    cd "$ART_TMP" && art publish "$ART_TMP/My Demo.html" 2>&1
+    echo "rc=$?"
+  )
+  _art_left=$(jq -r '[.publishedFrom, .favorite, .description] | @tsv' "$ART_TMP/store/my-demo/meta.json")
+  _art_created=$(jq -r .createdAt "$ART_TMP/store/my-demo/meta.json")
+  (cd "$ART_TMP" && art publish "$ART_TMP/My Demo.html" --force >/dev/null)
+  assert_eq "artifact: a slug published from another project is refused unless --force, which starts the page afresh" \
+    "$_art_refused|$_art_left|$(jq -r --arg c "$_art_created" '[.publishedFrom, .project, has("favorite"), .description, .createdAt != $c] | @tsv' "$ART_TMP/store/my-demo/meta.json")" \
+    "$(printf '"my-demo" was published from project %s; use another --slug, or add --force to replace that page\nrc=1|%s\ttrue\trepo page|%s\t%s\tfalse\t\ttrue' "$_art_owner" "$_art_owner" "$(basename "$ART_TMP")" "$(basename "$ART_TMP")")"
+  assert_eq "artifact: DELETE from a foreign origin is refused" \
+    "$(http_code -X DELETE -H 'Origin: http://evil.example' "$ART_URL/api/artifacts/my-demo")" 403
+  assert_eq "artifact: DELETE from a sandboxed page (Origin: null) is refused" \
+    "$(http_code -X DELETE -H 'Origin: null' "$ART_URL/api/artifacts/my-demo")" 403
+  assert_eq "artifact: DELETE from the management page removes the page" \
+    "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo")|$(art list | cut -f2)" "204|untitled"
+  assert_eq "artifact: DELETE of a page that is already gone, or of a bad slug, is 404" \
+    "$(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/my-demo") $(http_code -X DELETE -H "Origin: http://localhost:$ART_PORT" "$ART_URL/api/artifacts/Bad_Slug")" "404 404"
+  # --link: the file stays where it is and is read on every request; its directory serves the relative references
+  mkdir -p "$ART_TMP/site/sub/.git" "$ART_TMP/site/.git"
+  printf '<h1>Linked v1</h1><link rel="stylesheet" href="s.css">\n' >"$ART_TMP/site/index.html"
+  printf 'p{}' >"$ART_TMP/site/s.css"
+  printf '<title>Sub</title><p>sub</p>\n' >"$ART_TMP/site/sub/p.html"
+  printf 'secret' >"$ART_TMP/site/.git/config"
+  printf 'secret' >"$ART_TMP/site/sub/.git/config"
+  printf 'outside' >"$ART_TMP/outside.txt"
+  ln -s "$ART_TMP/outside.txt" "$ART_TMP/site/escape.txt"
+  ART_LINK="$ART_URL/a/site"
+  # run from this repository: the project must still come from the file's directory
+  assert_eq "artifact: --link stores only meta.json with the path, and the project of the file's directory" \
+    "$(art publish "$ART_TMP/site/index.html" --link --slug site)|$(ls "$ART_TMP/store/site")|$(jq -r '[.path, .project] | @tsv' "$ART_TMP/store/site/meta.json")" \
+    "$ART_LINK/|meta.json|$(printf '%s\tsite' "$ART_TMP/site/index.html")"
+  assert_eq "artifact: list shows a linked file's title from the file, and its path" \
+    "$(art list | grep -F "$ART_TMP/site" | cut -f2-)" "$(printf 'site\tLinked v1\t%s' "$ART_TMP/site/index.html")"
+  printf '<h1>Linked v2</h1>\n' >"$ART_TMP/site/index.html"
+  expect_true "artifact: a linked file is read on every request and wrapped in the template when body-only" \
+    sh -c "curl -s '$ART_LINK/?raw' | grep -q 'local-artifacts template' && curl -s '$ART_LINK/?raw' | grep -qF '<title>Linked v2</title>'"
+  assert_eq "artifact: a linked file's relative references are served with their type, sandboxed and nosniff" \
+    "$(curl -s -D - -o /dev/null "$ART_LINK/s.css" | grep -ciE '^(content-type: text/css|content-security-policy: sandbox|x-content-type-options: nosniff)')" 3
+  expect_true "artifact: an HTML page under a linked directory is served without the frame and watches its own file" \
+    sh -c "curl -s '$ART_LINK/sub/p.html' | grep -qF '<title>Sub</title>' &&
+      curl -s '$ART_LINK/sub/p.html' | grep -qF 'new window.EventSource(\"/api/events/site/sub/p.html?since='"
+  # an encoded slash must not hide a dot element inside one segment (sub%2F.git)
+  assert_eq "artifact: dot paths (also behind an encoded slash), .., escaping symlinks, directories and a stored page's subpaths are 404" \
+    "$(for p in site/.git/config site/sub%2F.git/config site/sub%2f.git%2fconfig site/%2e%2e/outside.txt site/..%2Foutside.txt site/escape.txt site/sub/ site/sub untitled/index.html; do
+      printf '%s\n' "$(http_code --path-as-is "$ART_URL/a/$p")"
+    done | paste -sd' ' -)" "404 404 404 404 404 404 404 404 404"
+  # reading a FIFO would block the whole server until a writer shows up; -m keeps a regression from hanging the suite
+  mkfifo "$ART_TMP/site/pipe.txt" "$ART_TMP/site/pipe.html"
+  assert_eq "artifact: a FIFO under a linked directory is 404 and does not block the server" \
+    "$(http_code -m 3 "$ART_LINK/pipe.txt") $(http_code -m 3 "$ART_URL/api/health")" "404 200"
+  ART_MTIME=$(curl -s "$ART_LINK/?raw" | grep -o 'since=[^"]*' | cut -d= -f2)
+  curl -s -N --max-time 4 "$ART_URL/api/events/site?since=$ART_MTIME" >"$ART_TMP/sse-link.out" &
+  sleep 0.3
+  printf '<h1>Linked v3</h1>\n' >"$ART_TMP/site/index.html"
+  wait $!
+  expect_true "artifact: saving a linked file notifies its open pages" grep -q '^event: reload' "$ART_TMP/sse-link.out"
+  assert_eq "artifact: a link's title set from the management page is pinned, also across a re-register, and clearing it follows the file again" \
+    "$(art_patch -H "$ART_ORIGIN" -d '{"title":"Pinned"}' "$ART_URL/api/artifacts/site")|$(
+      art publish "$ART_TMP/site/index.html" --link --slug site >/dev/null
+      art list | grep -F "$ART_TMP/site" | cut -f3
+    )|$(art_patch -H "$ART_ORIGIN" -d '{"title":""}' "$ART_URL/api/artifacts/site")|$(art list | grep -F "$ART_TMP/site" | cut -f3)" \
+    "200|Pinned|200|Linked v3"
+  curl -s -o "$ART_TMP/dl-link.html" "$ART_URL/api/artifacts/site/download"
+  expect_true "artifact: download of a body-only linked file is wrapped in the template without the reloader" \
+    sh -c "grep -q 'local-artifacts template' '$ART_TMP/dl-link.html' && grep -qF '<title>Linked v3</title>' '$ART_TMP/dl-link.html' &&
+      grep -qF '<h1>Linked v3</h1>' '$ART_TMP/dl-link.html' && ! grep -q EventSource '$ART_TMP/dl-link.html'"
+  # \377 is not UTF-8: a whole document must come back byte for byte, not re-encoded
+  mkdir -p "$ART_TMP/doc"
+  printf '<!doctype html><title>Doc</title><p>\377</p>\n' >"$ART_TMP/doc/index.html"
+  art publish "$ART_TMP/doc/index.html" --link --slug doc-link >/dev/null
+  curl -s -o "$ART_TMP/dl-doc.html" "$ART_URL/api/artifacts/doc-link/download"
+  expect_true "artifact: download of a linked document returns the file as is" cmp -s "$ART_TMP/dl-doc.html" "$ART_TMP/doc/index.html"
+  # pages are streamed: a 1 MB document keeps every byte (\377 included) and gets the reloader after its last byte
+  node -e 'require("node:fs").writeFileSync(process.argv[1], Buffer.concat([Buffer.from("<!doctype html><title>Big</title><p>" + "x".repeat(1 << 20)), Buffer.from([0xff])]))' \
+    "$ART_TMP/doc/index.html"
+  curl -s -o "$ART_TMP/raw-doc.html" "$ART_URL/a/doc-link/?raw"
+  expect_true "artifact: a large linked document is streamed byte for byte with the reloader appended" \
+    node -e 'const fs = require("node:fs"); const raw = fs.readFileSync(process.argv[1]), doc = fs.readFileSync(process.argv[2]);
+      process.exit(raw.subarray(0, doc.length).equals(doc) && raw.subarray(doc.length).toString().startsWith("\n<script>{const es = new window.EventSource(") ? 0 : 1)' \
+    "$ART_TMP/raw-doc.html" "$ART_TMP/doc/index.html"
+  # a client hanging up mid-stream must not leave the file open (bun emits no res 'close' then); needs /proc
+  _art_pid=$(curl -s "$ART_URL/api/health" | jq -r .pid)
+  if [ -d "/proc/$_art_pid/fd" ]; then
+    mkdir -p "$ART_TMP/abort"
+    node -e 'process.stdout.write("<!doctype html><title>Abort</title><p>" + "x".repeat(8 << 20))' >"$ART_TMP/abort/index.html"
+    art publish "$ART_TMP/abort/index.html" --link --slug abort >/dev/null
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      for _p in "a/abort/?raw" "api/artifacts/abort/download"; do curl -s "$ART_URL/$_p" | head -c 10 >/dev/null; done
+    done
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      _art_open=0
+      for _fd in /proc/"$_art_pid"/fd/*; do
+        case "$(readlink "$_fd" 2>/dev/null)" in "$ART_TMP/abort/"*) _art_open=$((_art_open + 1)) ;; esac
+      done
+      [ "$_art_open" -eq 0 ] && break
+      sleep 0.2
+    done
+    assert_eq "artifact: a client hanging up mid-stream does not leave the file open" "$_art_open" 0
+    art rm abort >/dev/null
+  else
+    printf '  skip - artifact fd leak test (no /proc)\n'
+  fi
+  # only the first 1 KB is sniffed: a document marked later is still not wrapped and downloads byte for byte
+  node -e 'require("node:fs").writeFileSync(process.argv[1], Buffer.concat([Buffer.from("<!-- " + "x".repeat(2000) + " --><!doctype html><title>Late</title><p>"), Buffer.from([0xff])]))' \
+    "$ART_TMP/doc/index.html"
+  curl -s -o "$ART_TMP/dl-doc.html" "$ART_URL/api/artifacts/doc-link/download"
+  expect_true "artifact: a linked document marked after the first 1 KB is neither wrapped nor re-encoded" \
+    sh -c "cmp -s '$ART_TMP/dl-doc.html' '$ART_TMP/doc/index.html' && ! curl -s '$ART_URL/a/doc-link/?raw' | grep -q 'local-artifacts template'"
+  # an SVG <title> at the top of a fragment does not make the sniff take it for a document
+  printf '<svg viewBox="0 0 1 1"><title>Chart</title></svg>\n<h1>Frag</h1>\n' >"$ART_TMP/doc/index.html"
+  expect_true "artifact: a linked fragment starting with an SVG <title> is still wrapped" \
+    sh -c "curl -s '$ART_URL/a/doc-link/?raw' | grep -q 'local-artifacts template'"
+  art rm doc-link >/dev/null
+  # the server caches a link's title per file version; a rewrite of the same size must still be picked up
+  art_api_title() { curl -s "$ART_URL/api/artifacts" | jq -r '.[] | select(.slug == "site") | .title'; }
+  _art_t1=$(art_api_title)
+  printf '<h1>Linked v4</h1>\n' >"$ART_TMP/site/index.html"
+  assert_eq "artifact: the list API follows a linked file rewritten at the same size" "$_art_t1|$(art_api_title)" "Linked v3|Linked v4"
+  assert_eq "artifact: a slug cannot switch between a stored page and a linked file" \
+    "$(
+      art publish "$ART_TMP/untitled.html" --slug site 2>/dev/null
+      echo $?
+    ) $(
+      art publish "$ART_TMP/untitled.html" --slug untitled --link 2>/dev/null
+      echo $?
+    )" "1 1"
+  printf '<p>top</p>\n' >"$ART_TMP/top.html"
+  expect_false "artifact: a file directly under \$HOME cannot be linked (its whole directory would be served)" \
+    sh -c "HOME='$ART_TMP' ARTIFACTS_DIR='$ART_TMP/store' ARTIFACTS_PORT='$ART_PORT' '$ART_RUNTIME' '$ART' publish '$ART_TMP/top.html' --link 2>/dev/null"
+  mv "$ART_TMP/site/index.html" "$ART_TMP/site/gone.html"
+  assert_eq "artifact: a linked file that is gone is listed as missing, and its page and download are 404" \
+    "$(curl -s "$ART_URL/api/artifacts" | jq -r '.[] | select(.slug == "site") | .missing') $(http_code "$ART_LINK/") $(http_code "$ART_URL/api/artifacts/site/download")" \
+    "true 404 404"
+  mv "$ART_TMP/site/gone.html" "$ART_TMP/site/index.html"
+  art rm site
+  expect_true "artifact: rm of a linked file leaves the file itself" test -f "$ART_TMP/site/index.html"
+  # adding a link from the management page: POST /api/artifacts with JSON, from its own origin only
+  art_post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' "$@" "$ART_URL/api/artifacts"; }
+  assert_eq "artifact: adding a link from another origin, from a sandboxed page, or without JSON is refused" \
+    "$(art_post -H 'Origin: http://evil.example' -d "{\"path\":\"$ART_TMP/site/index.html\"}") $(art_post -H 'Origin: null' -d "{\"path\":\"$ART_TMP/site/index.html\"}") $(http_code -X POST -H "$ART_ORIGIN" -H 'content-type: text/plain' -d "{\"path\":\"$ART_TMP/site/index.html\"}" "$ART_URL/api/artifacts")" \
+    "403 403 415"
+  assert_eq "artifact: adding a relative or non-HTML path, a FIFO named .html, or bad JSON, is a client error" \
+    "$(art_post -H "$ART_ORIGIN" -d '{"path":"site/index.html"}') $(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/outside.txt\"}") $(art_post -m 3 -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/pipe.html\"}") $(art_post -H "$ART_ORIGIN" -d '{bad')" \
+    "400 400 400 400"
+  assert_eq "artifact: the management page adds a link, named after the directory of an index.html" \
+    "$(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/index.html\",\"slug\":\"\",\"description\":\"from ui\"}")|$(jq -r '[.path, .description] | @tsv' "$ART_TMP/store/site/meta.json")" \
+    "201|$(printf '%s\tfrom ui' "$ART_TMP/site/index.html")"
+  assert_eq "artifact: adding a link never replaces another file's slug given by hand, and re-adding the same path updates it" \
+    "$(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/sub/p.html\",\"slug\":\"site\"}") $(art_post -H "$ART_ORIGIN" -d "{\"path\":\"$ART_TMP/site/index.html\"}")|$(art list | cut -f2 | grep -c '^site')" \
+    "409 200|1"
+  # an omitted slug never takes over another file's: index.html in another "site" directory gets site-2
+  mkdir -p "$ART_TMP/other/site"
+  printf '<p>other</p>\n' >"$ART_TMP/other/site/index.html"
+  assert_eq "artifact: an omitted slug that another file uses gets a number, by --link and from the management page" \
+    "$(art publish "$ART_TMP/other/site/index.html" --link) $(curl -s -X POST -H "$ART_ORIGIN" -H 'content-type: application/json' -d "{\"path\":\"$ART_TMP/site/sub/p.html\",\"slug\":\"\"}" "$ART_URL/api/artifacts" | jq -r .slug)" \
+    "$ART_URL/a/site-2/ p"
+  art rm site-2
+  art publish "$ART_TMP/other/site/index.html" --link --slug by-hand >/dev/null
+  assert_eq "artifact: an omitted slug reuses the entry of the same path, whatever its slug" \
+    "$(art publish "$ART_TMP/other/site/index.html" --link)" "$ART_URL/a/by-hand/"
+  art rm site p by-hand
+  # hidden directories right under $HOME hold settings and keys; ones inside a project (.agents, .github) are fine
+  mkdir -p "$ART_TMP/.secret" "$ART_TMP/proj/.agents"
+  printf '<p>s</p>\n' >"$ART_TMP/.secret/x.html"
+  printf '<p>a</p>\n' >"$ART_TMP/proj/.agents/doc.html"
+  assert_eq "artifact: a file in a hidden directory of \$HOME cannot be linked, one in a project's hidden directory can" \
+    "$(
+      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART" publish "$ART_TMP/.secret/x.html" --link >/dev/null 2>&1
+      echo $?
+    ) $(HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART" publish "$ART_TMP/proj/.agents/doc.html" --link)" \
+    "1 $ART_URL/a/doc/"
+  art rm doc
+  # symlinks are resolved before the checks, so neither a file link nor a directory link reaches into it
+  printf 'hidden' >"$ART_TMP/.secret/data.txt"
+  mkdir -p "$ART_TMP/pub" "$ART_TMP/real"
+  ln -s "$ART_TMP/.secret/data.txt" "$ART_TMP/pub/alias.html"
+  ln -s "$ART_TMP/.secret" "$ART_TMP/pub/dir"
+  assert_eq "artifact: a symlink to a file or a directory in a hidden directory of \$HOME cannot be linked" \
+    "$(
+      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART" publish "$ART_TMP/pub/alias.html" --link >/dev/null 2>&1
+      echo $?
+    ) $(
+      HOME="$ART_TMP" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART" publish "$ART_TMP/pub/dir/x.html" --link >/dev/null 2>&1
+      echo $?
+    )" "1 1"
+  printf '<h1>R</h1>\n' >"$ART_TMP/real/page.html"
+  ln -s "$ART_TMP/real/page.html" "$ART_TMP/pub/shown.html"
+  assert_eq "artifact: a symlinked file is stored by its real path and named after the link" \
+    "$(art publish "$ART_TMP/pub/shown.html" --link)|$(jq -r .path "$ART_TMP/store/shown/meta.json")" "$ART_URL/a/shown/|$ART_TMP/real/page.html"
+  # replaced by a symlink after registration: the registration-time checks no longer hold
+  rm "$ART_TMP/real/page.html"
+  ln -s "$ART_TMP/.secret/data.txt" "$ART_TMP/real/page.html"
+  assert_eq "artifact: a linked file later replaced by a symlink is not served, downloaded or read for the list" \
+    "$(http_code "$ART_URL/a/shown/") $(http_code "$ART_URL/api/artifacts/shown/download") $(curl -s "$ART_URL/api/artifacts" | jq -r '.[] | select(.slug == "shown") | [.missing, .title] | @tsv')" \
+    "404 404 $(printf 'true\tshown')"
+  art rm shown
+  # in a headless browser (skipped without Chrome or Node's WebSocket)
+  ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
+  if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
+    # the page shows version 1, then version 2 once republished, without a manual reload
+    assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in a frame that allows clipboard writes and fullscreen and sends links to other sites to new tabs out of the sandbox" \
+      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true,true|own own none|true"
+    art rm live
+    # newest-first list | first row's download link and its new-tab link to the page alone | rows, pressed chip and URL after clicking a project tag |
+    # "全プロジェクト" chip clears the URL and is pressed | filtered rows | search in the URL | restored from it | first click only arms | row still there |
+    # rows after the second click | store after it | error shown when DELETE cannot
+    # reach the server | row kept | server indicator down | empty state once all are gone | indicator up again |
+    # polling turns it down and up again |
+    # | add modal open with the path focused, closed by cancel | add button hidden on the pages tab |
+    # 25 rows paged: default 10 a page, page 2 (in the URL), then 20 a page remembered and the URL back to bare
+    art publish "$ART_TMP/My Demo.html" >/dev/null
+    assert_eq "artifact: the management page lists, filters, deletes with a confirming second click, adds links in a modal and pages" \
+      "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" manage)" \
+      "Demo Page,untitled|/api/artifacts/my-demo/download my-demo.html /a/my-demo/?raw _blank|2 true true|true|1|untitled|1|本当に削除|2|Demo Page|my-demo|true|1|true|true|false|true|true|add-path false|true|10 1 / 3 false|10 2 / 3 false|2|20 1 / 2 false 20 true"
+    assert_eq "artifact: the management page sorts, filters favourites, switches themes, moves by keyboard, deletes in bulk, edits in a modal, copies paths and notifies; a page steps to its neighbours" \
+      "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" extras)" \
+      "Beta,Alpha,Gamma|Gamma,Beta,Alpha created|Alpha,Beta,Gamma|Gamma 1|PATCH /api/artifacts/a {\"favorite\":true}|作成 更新|Beta|1 件を選択中|2 件を選択中|本当に 2 件を削除|DELETE /api/artifacts/a,DELETE /api/artifacts/b|true old|PATCH /api/artifacts/a {\"description\":\"new\"}|true|true|copy /tmp/x/l.html|true|Missing|dark rgb(23, 25, 31) dark|undefined|/a/a/ /a/c/ 2 / 3 /?sort=title"
+    art publish "$ART_TMP/untitled.html" >/dev/null
+  else
+    printf '  skip - artifact management page test (Chrome or WebSocket not available)\n'
+  fi
+  art rm untitled
+  assert_eq "artifact: rm deletes the page" "$(art list)" ""
+  expect_false "artifact: rm of an unknown slug fails" sh -c "ARTIFACTS_DIR='$ART_TMP/store' '$ART_RUNTIME' '$ART' rm untitled 2>/dev/null"
+  # artifacts.sh runs artifacts.mjs with bun when bun is on PATH, else with node; the stand-ins record which one ran
+  ART_NODE=$(command -v node)
+  mkdir -p "$ART_TMP/rt-both" "$ART_TMP/rt-node"
+  for _rt in bun node; do
+    cat >"$ART_TMP/rt-both/$_rt" <<STUB
+#!/bin/sh
+echo $_rt >>"$ART_TMP/runtime"
+exec "$ART_NODE" "\$@"
+STUB
+    chmod +x "$ART_TMP/rt-both/$_rt"
+  done
+  cp "$ART_TMP/rt-both/node" "$ART_TMP/rt-node/node"
+  # /usr/bin:/bin only supplies dirname; a real bun there would make the node-only case meaningless
+  if env PATH=/usr/bin:/bin sh -c 'command -v bun' >/dev/null 2>&1; then
+    printf '  skip - artifact launcher test (bun is installed in /usr/bin or /bin)\n'
+  else
+    assert_eq "artifact: artifacts.sh prefers bun on PATH and falls back to node" \
+      "$(
+        for _d in rt-both rt-node; do
+          ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" PATH="$ART_TMP/$_d:/usr/bin:/bin" "$(dirname "$ART")/artifacts.sh" list
+        done
+        paste -sd' ' "$ART_TMP/runtime"
+      )" "bun node"
+  fi
+  # with neither runtime, say so instead of the shell's "exec: node: not found"; rt-none only supplies dirname
+  mkdir -p "$ART_TMP/rt-none"
+  ln -s "$(command -v dirname)" "$ART_TMP/rt-none/dirname"
+  assert_eq "artifact: artifacts.sh without bun or node says to install one, exit 127" \
+    "$(
+      PATH="$ART_TMP/rt-none" "$(dirname "$ART")/artifacts.sh" list 2>&1
+      echo "rc=$?"
+    )" "$(printf 'artifacts.sh: neither bun nor node is installed; install one of them (bun starts faster) and run again\nrc=127')"
+  # a copy of the skill has newer mtimes, like a skill updated under a running server
+  mkdir -p "$ART_TMP/skill"
+  for _f in artifacts.mjs ui.html template.html; do cp "$(dirname "$ART")/$_f" "$ART_TMP/skill/"; done
+  printf '<h1>Restart</h1>\n' >"$ART_TMP/restart.html"
+  art_pid() { curl -s "$ART_URL/api/health" | jq -r .pid; }
+  art_copy() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART_TMP/skill/artifacts.mjs" "$@"; }
+  _art_p0=$(art_pid)
+  art_copy publish "$ART_TMP/restart.html" >/dev/null
+  _art_p1=$(art_pid)
+  art_copy publish "$ART_TMP/restart.html" >/dev/null
+  assert_eq "artifact: publish restarts a server running other code, and keeps one running the same code" \
+    "$([ "$_art_p0" != "$_art_p1" ] && echo restarted)|$([ "$_art_p1" = "$(art_pid)" ] && echo kept)" "restarted|kept"
+  # two publishes race to replace the copy's server: a preload makes the stop of the old server also run a whole
+  # concurrent publish, which starts the new server before this one looks again; this one must use it, not wait on it
+  # CommonJS so that node loads it with --require (--import needs node 18.18+) and bun with --preload
+  cat >"$ART_TMP/race.cjs" <<'EOF'
+const { execFileSync } = require('node:child_process');
+const kill = process.kill.bind(process);
+process.kill = (pid, sig) => {
+  const sent = kill(pid, sig);
+  execFileSync(process.execPath, [process.env.ART_RACE_SCRIPT, 'publish', process.env.ART_RACE_PAGE], { stdio: 'ignore' });
+  return sent;
+};
+EOF
+  case "$ART_RUNTIME" in *bun) _art_preload=--preload ;; *) _art_preload=--require ;; esac
+  _art_p0=$(art_pid)
+  assert_eq "artifact: a publish racing another one to restart the server uses the server the other one started" \
+    "$(ART_RACE_SCRIPT="$ART" ART_RACE_PAGE="$ART_TMP/restart.html" ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" \
+      "$ART_RUNTIME" "$_art_preload" "$ART_TMP/race.cjs" "$ART" publish "$ART_TMP/restart.html" 2>&1)|$([ "$_art_p0" != "$(art_pid)" ] && echo replaced)" \
+    "$ART_URL/a/restart/|replaced"
+  art rm restart >/dev/null
+  art stop >/dev/null
+  _art_up=1
+  for _i in 1 2 3 4 5 6 7 8 9 10; do
+    http_code "$ART_URL/api/health" | grep -q 200 || {
+      _art_up=0
+      break
+    }
+    sleep 0.1
+  done
+  assert_eq "artifact: stop shuts the server down" "$_art_up" 0
+  # idle shutdown on its own port with a 0.6 s limit: an open SSE stream keeps it up, and it exits once that closes
+  _art_idle_port=$(node -e 'const s = require("node:net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); });')
+  art_idle() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$_art_idle_port" ARTIFACTS_IDLE_MINUTES=0.01 "$ART_RUNTIME" "$ART" "$@"; }
+  printf '<h1>Idle</h1>\n' >"$ART_TMP/idle.html"
+  art_idle publish "$ART_TMP/idle.html" >/dev/null
+  curl -s -N -m 2 "http://127.0.0.1:$_art_idle_port/api/events/idle?since=$(jq -r .updatedAt "$ART_TMP/store/idle/meta.json")" >/dev/null &
+  _art_sse=$!
+  # another request finishing meanwhile must not start the idle timer while the stream is still open
+  sleep 0.2
+  http_code "http://127.0.0.1:$_art_idle_port/api/health" >/dev/null
+  sleep 1
+  _art_idle_up=$(http_code "http://127.0.0.1:$_art_idle_port/api/health")
+  wait "$_art_sse"
+  sleep 1.2
+  assert_eq "artifact: the server stays up while a page is open and exits after the idle limit" \
+    "$_art_idle_up $(http_code "http://127.0.0.1:$_art_idle_port/api/health")" "200 000"
+  art_idle stop >/dev/null
+  art rm idle >/dev/null
+  assert_eq "artifact: a non-positive ARTIFACTS_IDLE_MINUTES is rejected" \
+    "$(ARTIFACTS_IDLE_MINUTES=0 art list 2>&1)" 'invalid ARTIFACTS_IDLE_MINUTES "0": use a positive number of minutes'
+  rm -rf "$ART_TMP"
+  unset BROWSER
+else
+  printf '  skip - artifact skill tests (node or curl not available)\n'
+fi
+
 # --- summary ---------------------------------------------------------------
 
 printf '\n%s test(s), %s failure(s)\n' "$TESTS" "$FAILS"

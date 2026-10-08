@@ -31,7 +31,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 ## 構成
 
 - `dotfiles` — エントリポイント（POSIX sh）。
-- `mirror.conf` — 1 つの正典ファイルを複数配布先へ symlink するミラー宣言。
+- `mirror.conf` — 1 つの正典（ファイルまたはディレクトリ）を複数の配布先へ展開するミラー宣言。
 - `common/` — 全環境共通の配布ペイロード
   - `.agents/AGENTS.md`, `.agents/skills/` — エージェント共通指示とスキル（mirror.conf で `.claude/` `.codex/` `.copilot/` へ展開）
   - `.agents/hooks/route-command-output.mjs` — 3 エージェント共通の PreToolUse(Bash) hook（rtk 経由の出力圧縮）。各エージェントの設定が `~/.agents/hooks/` を `--client=` 付きで直接呼ぶので mirror 不要。権限ルールは書き換え後のコマンドに対して照合されるので、`rtk` は裸のまま残し（sudo 前置時のみ絶対パス化）、allow/ask は `Bash(rtk git status *)` の形で書く
@@ -41,6 +41,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
   - `.config/git/ignore`, `.config/starship.toml`
   - `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE/release.md` — プロジェクトに PR テンプレートが無いときの既定（`pr-create` スキルが通常 / リリースで使い分ける）
 - `profiles/<name>/` — 環境レイヤー（`--profile` で選択）
+  - `bedrock/.agents/skills/artifact/` — Artifacts の代わりに単一 HTML ページを `http://127.0.0.1:4317` で配信・管理するスキル（`artifacts.mjs` は Node 標準ライブラリのみ）
 - `workspace/<name>/` — cocoon で生成する devcontainer 一式（`cocoon.toml` が正典、`.devcontainer/` は生成物、`post-start.sh` だけ手書き）
 
 ## 仕組み
@@ -48,6 +49,7 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 ### レイヤー
 
 - 優先度の低い順に `common/` → `profiles/<name>/` → `users/<name>/`。全レイヤー同一構造、競合時は上位が勝つ。
+- 上書きはファイル単位。ただし skill（`.agents/skills/<name>/`）はフォルダ単位で、その skill を持つ最上位レイヤーの中身だけが使われる（下位レイヤーのファイルは補われない）。
 - ユーザー解決: `--user` → `git config dotfiles.user` → `gh api user` → 無ければユーザーレイヤー無し。
 - プロファイル解決: `--profile`（繰り返し可、後勝ち）→ 環境変数 `DOTFILES_PROFILE`（空白区切り、後勝ち。記憶されない）→ `git config dotfiles.profile` → 無ければ無し。`install` は `--profile` の選択だけを `git config --local dotfiles.profile` に記憶する（`--dry-run` と参照系は書かない）。git config は checkout に置かれホストと `workspace/*` のコンテナで共有されるので、1 環境だけの選択は `DOTFILES_PROFILE` を使う。
 - `resolve_layers` が `LAYERS`（高→低）/ `LAYERS_REV`（fragment のマージ順、低→高）/ `ALL_LAYERS`（選択に依らない全レイヤー。prune / uninstall / doctor / clean-backups の走査範囲）を組み立て、優先順位は `layer_src` が決める。
@@ -64,3 +66,4 @@ just gitleaks-scan  # git 履歴全体のシークレットスキャン
 ### mirror.conf
 
 - 各行 `target source`（レイヤ相対、`#` はコメント）。source はレイヤ解決を通るのでユーザー上書きに追従する。ソースが無い行は警告してスキップ。
+- ディレクトリの source は target に実ディレクトリとして作られ、子はレイヤー間で合成される（profile にだけある skill も common の skill と並ぶ）。葉だけが symlink になる。

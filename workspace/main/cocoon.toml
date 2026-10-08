@@ -127,6 +127,7 @@ enable = [
     "gitleaks",
     "go",
     "golangci-lint",
+    "google-chrome",
     "just",
     "node",
     "opentofu",

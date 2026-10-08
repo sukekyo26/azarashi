@@ -30,7 +30,7 @@ aliases = { d = "docker", dc = "docker compose", dcdown = "docker compose down",
 enable = [
     "android-sdk",
     # latest は lock できないので版とコードネームで pin する (cocoon.lock に記録される)。
-    "android-studio=2026.1.4.8-quail4-patch1",
+    "android-studio=2026.2.1.8-rabbit1",
     "flutter",
     "claude-code",
     "copilot-cli",
@@ -39,6 +39,7 @@ enable = [
     "docker-cli",
     "github-cli",
     "gitleaks",
+    "google-chrome",
     "just",
     "node",
     "rtk",
@@ -58,7 +59,7 @@ rtk = "binary"
 # システムイメージは容量が大きいので入れず、Device Manager から都度入れる。
 android-sdk = { api_level = "37.2", build_tools = "37.0.0", extra_packages = ["emulator"] }
 # /studio の表に載るのは現行版の SHA-256 だけなので、pin が古くなっても検証されるよう明示する。
-android-studio = { checksum_amd64 = "25c97ca6c6b505f2a20bff962dfd28718327f61e25b09a9bc915f1dae7b1e534" }
+android-studio = { checksum_amd64 = "f8775c67cf899d9133712a2d7ee3ef7231e07fb16dbe0544c47e5f5babd5931b" }
 
 [apt]
 packages = [

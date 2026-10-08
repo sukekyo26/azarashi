@@ -2,12 +2,12 @@
 # Records resolved plugin versions + per-arch checksums for reproducible builds.
 
 lock_version = 1
-inputs_hash = '70edc461e6b863e96709fdbbb8f0f10cc383334457ca215432d2147474be70b2'
+inputs_hash = '972643b1185b8f001b045d8440e2b356bd31ce01c27c16215e58a618471b5cbe'
 
 [[plugins]]
 id = 'android-studio'
-requested = '=2026.1.4.8-quail4-patch1'
-version = '2026.1.4.8-quail4-patch1'
+requested = '=2026.2.1.8-rabbit1'
+version = '2026.2.1.8-rabbit1'
 
 [[plugins]]
 id = 'cocoon'

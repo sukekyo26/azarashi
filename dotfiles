@@ -21,9 +21,9 @@
 #
 # mirror.conf (repo root) maps extra target paths to a single canonical source
 # (e.g. .claude/CLAUDE.md and .copilot/copilot-instructions.md to
-# .agents/AGENTS.md) so shared content lives in one place; each target is
-# deployed as a symlink (a file source as a file symlink, a directory source as
-# one directory symlink).
+# .agents/AGENTS.md) so shared content lives in one place. A file source is
+# deployed as a file symlink; a directory source is materialized like any other
+# directory, its children merged across the layers and only leaves symlinked.
 set -u
 
 REPO_DIR=$(
@@ -372,7 +372,24 @@ resolve_layers() {
 # layer_src <rel> — print the highest-precedence active layer path that has
 # <rel>, or nothing if no layer has it. This is the single place precedence is
 # decided; every other walk defers to it rather than re-implementing the order.
+# A skill (.agents/skills/<name>/) is overridden as a whole: the highest layer
+# that has the skill dir supplies every path in it, and a file it lacks is not
+# filled in from a lower layer (an override may drop the base's scripts).
 layer_src() {
+  case "$1" in
+    .agents/skills/?*)
+      _ls_unit=${1#.agents/skills/}
+      _ls_unit=.agents/skills/${_ls_unit%%/*}
+      for _ls in $LAYERS; do
+        [ -e "$REPO_DIR/$_ls/$_ls_unit" ] || [ -L "$REPO_DIR/$_ls/$_ls_unit" ] || continue
+        if [ -e "$REPO_DIR/$_ls/$1" ] || [ -L "$REPO_DIR/$_ls/$1" ]; then
+          printf '%s' "$REPO_DIR/$_ls/$1"
+        fi
+        return 0
+      done
+      return 0
+      ;;
+  esac
   for _ls in $LAYERS; do
     if [ -e "$REPO_DIR/$_ls/$1" ] || [ -L "$REPO_DIR/$_ls/$1" ]; then
       printf '%s' "$REPO_DIR/$_ls/$1"
@@ -452,12 +469,17 @@ ensure_destdir() {
 # active layers. A name is deployed only from the layer layer_src picks for it,
 # so each name is handled exactly once and precedence lives in one place.
 deploy_children() {
+  # a mirror target has no layer dir of its own; list its source's instead.
+  # Kept in $2, not a global: deploy_rel recurses back here and would clobber it.
+  _dcs=$(mirror_source "$1")
+  set -- "$1" "${_dcs:-$1}"
   for _dcl in $LAYERS; do
-    [ -d "$REPO_DIR/$_dcl/$1" ] || continue
-    for _dc in "$REPO_DIR/$_dcl/$1"/* "$REPO_DIR/$_dcl/$1"/.*; do
+    _dcd="$REPO_DIR/$_dcl/$2"
+    [ -d "$_dcd" ] || continue
+    for _dc in "$_dcd"/* "$_dcd"/.*; do
       [ -e "$_dc" ] || [ -L "$_dc" ] || continue
       case ${_dc##*/} in . | ..) continue ;; esac
-      [ "$(layer_src "$1/${_dc##*/}")" = "$_dc" ] || continue
+      [ "$(effective_src "$1/${_dc##*/}")" = "$_dc" ] || continue
       deploy_rel "$1/${_dc##*/}"
     done
   done
@@ -518,10 +540,11 @@ deploy_rel() {
   link_path "$_eff" "$HOME/$1"
 }
 
-# --- file mirrors ----------------------------------------------------------
-# mirror.conf maps a target path to a single canonical source; the source is
-# deployed to the target as one managed symlink (file -> file symlink, dir -> a
-# single directory symlink), so shared content lives in one place.
+# --- mirrors ---------------------------------------------------------------
+# mirror.conf maps a target path to a single canonical source, so shared
+# content lives in one place. A file source becomes one managed file symlink; a
+# directory source is deployed like a layer directory (real dirs, leaf links,
+# children merged across layers), so a profile can add to it.
 
 # _mirror_path_safe <rel> — true if <rel> is a layer-relative path that cannot
 # escape its layer: non-empty, not absolute, and free of any '..' component.
@@ -572,18 +595,20 @@ mirror_source() {
   done <"$MIRROR_CONF"
 }
 
-# deploy_mirror <target-rel> <source-rel> — link the source to the target as a
-# single managed symlink, materializing the target's parent directory first.
+# deploy_mirror <target-rel> <source-rel> — deploy the source at the target,
+# materializing the target's parent directory first. deploy_rel resolves the
+# target to its source through effective_src.
 deploy_mirror() {
-  _dm_eff=$(effective_src "$2")
-  if [ -z "$_dm_eff" ]; then
+  # layer_src, not effective_src: deploy_rel resolves the source against the
+  # layers only, so a source that is itself a mirror target must warn here
+  if [ -z "$(layer_src "$2")" ]; then
     warn "mirror source not found, skipping: $1 <- $2"
     return 0
   fi
   case $1 in
     */*) ensure_destdir "$HOME/${1%/*}" ;;
   esac
-  link_path "$_dm_eff" "$HOME/$1"
+  deploy_rel "$1"
 }
 
 # deploy_mirrors — apply every rule in mirror.conf. Run after the main deploy so

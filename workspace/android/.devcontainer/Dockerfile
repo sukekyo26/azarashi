@@ -313,7 +313,7 @@ ENV PATH="/usr/local/android-sdk/cmdline-tools/latest/bin:/usr/local/android-sdk
 # Install Android Studio
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="2026.1.4.8-quail4-patch1" CHECKSUM_AMD64="25c97ca6c6b505f2a20bff962dfd28718327f61e25b09a9bc915f1dae7b1e534" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="archive" PIN="2026.2.1.8-rabbit1" CHECKSUM_AMD64="f8775c67cf899d9133712a2d7ee3ef7231e07fb16dbe0544c47e5f5babd5931b" CHECKSUM_ARM64="" bash <<'COCOON_PLUGIN_EOF'
 #!/usr/bin/env bash
 # Install Android Studio (https://developer.android.com/studio)
 #
@@ -795,6 +795,40 @@ fi
 
 tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
 rm /tmp/gitleaks.tar.gz
+COCOON_PLUGIN_EOF
+# Install Google Chrome
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    RC_FILE="$HOME/.zshrc" RC_SYNTAX="posix" LOGIN_SHELL="zsh" COCOON_INSTALL_METHOD="apt" bash <<'COCOON_PLUGIN_EOF'
+#!/usr/bin/env bash
+# Install Google Chrome (https://www.google.com/chrome/)
+#
+# Registers Google's signed apt repository via the same signed-by keyring
+# mechanism as docker-cli / github-cli: apt verifies every Chrome package
+# against the pinned Google signing key, so the install no longer trusts TLS
+# alone. The key is stored ASCII-armored and referenced directly by
+# signed-by, so no gpg binary is required (the minimal base ships
+# ca-certificates + curl but not gnupg). Chrome for Linux ships amd64 only
+# (this plugin is in e2e/arm64-exclude.txt).
+set -euo pipefail
+
+mkdir -p /etc/apt/keyrings
+# Normalize the dir mode so apt's sandboxed _apt user can traverse it under a
+# restrictive umask; otherwise apt-get update can fail to read the keyring even
+# though the key file is go+r. Matches github-cli / docker-cli's keyless flow.
+chmod 755 /etc/apt/keyrings
+curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors \
+  https://dl.google.com/linux/linux_signing_key.pub \
+  -o /etc/apt/keyrings/google-chrome.asc
+chmod go+r /etc/apt/keyrings/google-chrome.asc
+
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] https://dl.google.com/linux/chrome/deb/ stable main" \
+  >/etc/apt/sources.list.d/google-chrome.list
+
+apt-get update
+apt-get install -y --no-install-recommends google-chrome-stable
+apt-get clean
+rm -rf /var/lib/apt/lists/* /var/tmp/*
 COCOON_PLUGIN_EOF
 # Install just
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
