@@ -1063,6 +1063,23 @@ console.log([
   /unknown end "x"/.test(fails(() => diagram({ id: "mark", width: 9, height: 9, title: "t" }).edge("M0,0 H5", { end: "x" }))),
 ].join(" "));
 ')" "true 5 5 true true true"
+  # crossing edges are refused unless one opts in; branches, merges and shared runs are not crossings;
+  # an edge may not run through another edge's label or a frame heading
+  assert_eq "artifact: diagram.mjs refuses crossing edges and edges through labels or frame headings, but allows joins and opted-in crossings" \
+    "$(ART_DIAGRAM="$ART_SKILL/diagram/diagram.mjs" node --input-type=module -e '
+const { diagram } = await import(process.env.ART_DIAGRAM);
+let n = 0;
+const base = () => diagram({ id: "x" + n++, width: 300, height: 200, title: "t" });
+const fails = (f) => { try { f(); return ""; } catch (e) { return e.message; } };
+const plus = (d, crossing) => d.edge("M10,100 H290", { end: null }).edge("M150,10 V190", { end: null, crossing });
+console.log([
+  /crosses edge .* at 150,100/.test(fails(() => plus(base(), false).svg())),
+  fails(() => plus(base(), true).svg()) === "",
+  fails(() => base().edge("M10,100 H150 V190", { end: null }).edge("M150,100 H290", { end: null }).edge("M10,100 H150 V10", { end: null }).svg()) === "",
+  /runs through label "note"/.test(fails(() => base().label("note", 150, 80).edge("M150,60 V100", { end: null }).svg())),
+  /runs through the heading of frame "Heading"/.test(fails(() => base().frame(20, 120, 200, 60, "Heading").edge("M50,125 V150", { end: null }).svg())),
+].join(" "));
+')" "true true true true true"
   # icons-aws: a small Icon package with the real layout (48px service, 32px group, 48px light/dark resource icons,
   # and files that must be skipped) stands in for the 14MB download
   for _f in \
