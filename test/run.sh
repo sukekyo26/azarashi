@@ -1063,13 +1063,69 @@ console.log([
   /unknown end "x"/.test(fails(() => diagram({ id: "mark", width: 9, height: 9, title: "t" }).edge("M0,0 H5", { end: "x" }))),
 ].join(" "));
 ')" "true 5 5 true true true"
+  # icons-aws: a small Icon package with the real layout (48px service, 32px group, 48px light/dark resource icons,
+  # and files that must be skipped) stands in for the 14MB download
+  for _f in \
+    Architecture-Service-Icons_01022030/Arch_Artificial-Intelligence/48/Arch_Amazon-Bedrock_48.svg \
+    Architecture-Service-Icons_01022030/Arch_Compute/48/Arch_AWS-Lambda_48.svg \
+    Architecture-Service-Icons_01022030/Arch_Compute/32/Arch_AWS-Lambda_32.svg \
+    Architecture-Service-Icons_01022030/Arch_Management-Tools/48/Arch_AWS-Lambda_48.svg \
+    Architecture-Group-Icons_01022030/AWS-Cloud-logo_32.svg \
+    Architecture-Group-Icons_01022030/AWS-Cloud-logo_32_Dark.svg \
+    Architecture-Group-Icons_01022030/Region_32.svg \
+    Resource-Icons_01022030/Res_General-Icons/Res_48_Light/Res_Client_48_Light.svg \
+    Resource-Icons_01022030/Res_General-Icons/Res_48_Dark/Res_Client_48_Dark.svg \
+    Resource-Icons_01022030/Res_Compute/Res_AWS-Lambda_Lambda-Function_48.svg \
+    Category-Icons_01022030/Arch-Category_Compute_48.svg \
+    __MACOSX/Architecture-Service-Icons_01022030/Arch_Compute/48/._Arch_AWS-Lambda_48.svg; do
+    mkdir -p "$ART_TMP/pkg/$(dirname "$_f")"
+    printf '<svg xmlns="http://www.w3.org/2000/svg"><title>%s</title></svg>\n' "$_f" >"$ART_TMP/pkg/$_f"
+  done
+  node "$SCRIPT_DIR/make-zip.mjs" "$ART_TMP/Icon-package.zip" "$ART_TMP/pkg"
+  art_icons() { ARTIFACTS_ICONS_DIR="$ART_TMP/icons" "$ART_RUNTIME" "$ART" icons-aws "$@"; }
+  assert_eq "artifact: icons-aws search before a fetch says how to fetch, exit 1" \
+    "$(art_icons search lambda 2>&1 | grep -c 'run "artifacts.sh icons-aws fetch"') $(
+      art_icons search lambda >/dev/null 2>&1
+      echo "$?"
+    )" "1 1"
+  assert_eq "artifact: icons-aws fetch keeps the 48px service, group and resource icons, and skips a version it already has" \
+    "$(art_icons fetch "$ART_TMP/Icon-package.zip" | sed "s#$ART_TMP#TMP#") | $(art_icons fetch "$ART_TMP/Icon-package.zip" | sed "s#$ART_TMP#TMP#")" \
+    "fetched 6 AWS icons (01022030) into TMP/icons/aws | AWS icons 01022030 are already in TMP/icons/aws (add --force to fetch them again)"
+  # renameSync is made to fail only when the new version is moved into place
+  assert_eq "artifact: icons-aws fetch puts the previous icons back when the new ones cannot be moved into place" \
+    "$(ARTIFACTS_ICONS_DIR="$ART_TMP/icons" ART_ICONS="$ART_SKILL/app/icons-aws.mjs" ART_ZIP="$ART_TMP/Icon-package.zip" node --input-type=module -e '
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+const rename = fs.renameSync;
+fs.renameSync = (from, to) => {
+  if (from.includes(".tmp-") && to.endsWith("/aws")) throw new Error("injected");
+  return rename(from, to);
+};
+syncBuiltinESMExports();
+const { fetchIcons, AWS_DIR } = await import(process.env.ART_ICONS);
+let msg = "";
+try { await fetchIcons(process.env.ART_ZIP, { force: true }); } catch (e) { msg = e.message; }
+console.log([msg, fs.existsSync(AWS_DIR + "/index.json"), fs.readdirSync(AWS_DIR + "/..").join(",")].join(" "));
+')" "injected true aws"
+  assert_eq "artifact: icons-aws search lists aws/ names with every word; a service in two categories keeps the first; dark variants are kept" \
+    "$(art_icons search lambda | paste -sd' ') | $(grep -o 'Arch_[A-Za-z-]*/48' "$ART_TMP/icons/aws/aws-lambda.svg") | $(jq -r '[.icons["res/client"].dark, .icons["group/aws-cloud-logo"].dark, (.icons["group/region"].dark // false)] | map(tostring) | join(" ")' "$ART_TMP/icons/aws/index.json")" \
+    "$(printf 'aws/aws-lambda\tCompute aws/res/aws-lambda-lambda-function\tCompute') | Arch_Compute/48 | true true false"
+  assert_eq "artifact: the Icon package link is found in the icons page, and an unknown icon in a diagram suggests close names" \
+    "$(ARTIFACTS_ICONS_DIR="$ART_TMP/icons" ART_ICONS="$ART_SKILL/app/icons-aws.mjs" ART_DIAGRAM="$ART_SKILL/diagram/diagram.mjs" node --input-type=module -e '
+const { findPackageUrl } = await import(process.env.ART_ICONS);
+const { diagram } = await import(process.env.ART_DIAGRAM);
+const url = findPackageUrl("<a href=\"https://d1.awsstatic.com/x/Icon-package_07312026.abc.zip\">Icon package</a> <a href=\"https://d1.awsstatic.com/x/Microsoft-PPTx-toolkits_07312026.zip\">");
+let msg = "";
+try { diagram({ id: "i", width: 200, height: 100, title: "t" }).icon(10, 10, "aws/lambda").svg(); } catch (e) { msg = e.message; }
+console.log([url, /did you mean aws\/aws-lambda/.test(msg)].join(" "));
+')" "https://d1.awsstatic.com/x/Icon-package_07312026.abc.zip true"
   # diagram/examples import diagram.mjs from $HOME the way guide.md tells agents to, so a stand-in HOME links the skill there
   mkdir -p "$ART_TMP/home/.agents/skills"
   ln -s "$ART_SKILL" "$ART_TMP/home/.agents/skills/artifact"
   assert_eq "artifact: every diagram example passes the layout checks and writes a page with its diagram" \
     "$(for _ex in "$ART_SKILL"/diagram/examples/*.mjs; do
-      HOME="$ART_TMP/home" node "$_ex" "$ART_TMP/example.html" && printf '%s %s\n' "$(basename "$_ex" .mjs)" "$(grep -c '<svg' "$ART_TMP/example.html")"
-    done | paste -sd' ')" "architecture 1 class 1 er 1 flow 1 git 1 sequence 1 state 1 timeline 1 venn 1"
+      HOME="$ART_TMP/home" ARTIFACTS_ICONS_DIR="$ART_TMP/icons" node "$_ex" "$ART_TMP/example.html" && printf '%s %s\n' "$(basename "$_ex" .mjs)" "$(grep -c '<svg' "$ART_TMP/example.html")"
+    done | paste -sd' ')" "architecture 1 aws 1 class 1 er 1 flow 1 git 1 sequence 1 state 1 timeline 1 venn 1"
 
   assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
     "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "$ART_URL/a/my-demo/"
@@ -1498,7 +1554,7 @@ STUB
     )" "$(printf 'artifacts.sh: neither bun nor node is installed; install one of them (bun starts faster) and run again\nrc=127')"
   # a copy of the skill has newer mtimes, like a skill updated under a running server
   mkdir -p "$ART_TMP/skill"
-  for _f in artifacts.mjs ui.html template.html; do cp "$(dirname "$ART")/$_f" "$ART_TMP/skill/"; done
+  cp -R "$(dirname "$ART")/." "$ART_TMP/skill/"
   printf '<h1>Restart</h1>\n' >"$ART_TMP/restart.html"
   art_pid() { curl -s "$ART_URL/api/health" | jq -r .pid; }
   art_copy() { ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" "$ART_RUNTIME" "$ART_TMP/skill/artifacts.mjs" "$@"; }
