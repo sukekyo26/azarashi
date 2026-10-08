@@ -1062,6 +1062,13 @@ console.log([
   /used twice/.test(fails(() => diagram({ id: "ok", width: 9, height: 9, title: "t" }))),
 ].join(" "));
 ')" "true 5 5 true true"
+  # diagram/examples import diagram.mjs from $HOME the way guide.md tells agents to, so a stand-in HOME links the skill there
+  mkdir -p "$ART_TMP/home/.agents/skills"
+  ln -s "$ART_SKILL" "$ART_TMP/home/.agents/skills/artifact"
+  assert_eq "artifact: every diagram example passes the layout checks and writes a page with its diagram" \
+    "$(for _ex in "$ART_SKILL"/diagram/examples/*.mjs; do
+      HOME="$ART_TMP/home" node "$_ex" "$ART_TMP/example.html" && printf '%s %s\n' "$(basename "$_ex" .mjs)" "$(grep -c '<svg' "$ART_TMP/example.html")"
+    done | paste -sd' ')" "architecture 1 flow 1 sequence 1 state 1"
 
   assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
     "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "$ART_URL/a/my-demo/"
