@@ -49,7 +49,7 @@ const USAGE = `usage: artifacts.sh <command>
   serve          run the server in the foreground
   stop           stop the background server
   icons-aws fetch [<url-or-path>] [--force]
-                 keep the AWS Architecture Icons (48px service, group and resource SVGs) in
+                 keep the AWS Architecture Icons (48px service and resource SVGs, 32px group SVGs) in
                  $ARTIFACTS_ICONS_DIR/aws (default ~/.local/share/artifacts-icons/aws) for diagram.mjs;
                  the Icon package zip is found on https://aws.amazon.com/architecture/icons/ unless
                  a URL or a local path is given, and the same version is not fetched again unless --force

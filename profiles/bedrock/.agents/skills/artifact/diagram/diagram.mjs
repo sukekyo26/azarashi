@@ -135,7 +135,7 @@ export function diagram({ id, width, height, title }) {
     frame(x, y, w, h, label, { accent = false, icon, square = false } = {}) {
       const what = `frame "${label}"`;
       frames.push({ x, y, w, h, what });
-      // 枠の線（幅 1）は座標を中心に描かれるので、アイコンを 1 ずらして線の外側の半分まで覆う
+      // 枠の線（幅 1.2）は座標を中心に描かれるので、アイコンを 1 ずらして線の外側の半分（0.6）まで覆う
       const corner = icon === undefined ? '' : image(icon, x - 1, y - 1, 32, what);
       out.areas.push(`<g class="frame${accent ? ' accent' : ''}${corner ? ' grouped' : ''}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${icon === undefined && !square ? 10 : 0}"/>`
         + `${corner}<text x="${x + (icon === undefined ? 12 : 40)}" y="${y + (icon === undefined ? 18 : 15)}" text-anchor="start">${esc(label)}</text></g>`);
