@@ -24,10 +24,15 @@ writeFileSync('page.html', `${css}<header><h1>API の構成</h1></header><sectio
 |:-----|:-------|
 | `frame(x, y, w, h, 見出し, { accent })` | 入れ子の枠。見出しは左上の内側に入るので、中身は上端から 32 以上下に置く |
 | `box(x, y, w, h, rows, { tone, shape })` | `rows` は文字列（1 行目が太字、2 行目以降が補足）か `[文字列, 'main' \| 'sub' \| 'main code' \| 'sub code']`。`tone` は `accent` / `good` / `warn` / `bad`。`shape` は `rect` / `pill` / `hex`（判定）/ `state`（状態） |
-| `edge(path, { label, at, dashed, both, arrow })` | 絶対座標の `M` `H` `V` `L` だけの折れ線。`label` は `at: [x, y]` に背景付きで置く |
-| `label(文字, x, y, anchor)` | 背景付きの文字。`anchor` は `middle` / `start` / `end` |
+| `table(x, y, w, 見出し, rows, { tone })` | 見出しと行の表（ER 図のエンティティ・クラス図のクラス）。`rows` は `[名前, 型や補足]` か名前の文字列、`'---'` は区切り線。高さは `tableHeight(rows)`（`diagram.mjs` から import）で、行 i（0 始まり、区切りなし）の中心は `y + 41 + 22i` |
+| `edge(path, { label, at, dashed, bold, tone, start, end })` | 絶対座標の `M` `H` `V` `L` だけの折れ線。`label` は `at: [x, y]` に背景付きで置く。`start` / `end` は線の端の記号で、`arrow`（`end` の既定）/ `triangle`（継承）/ `diamond`（コンポジション）/ `odiamond`（集約）/ `one` / `many` / `zero-one` / `zero-many`（ER の多重度）/ `null`（なし、`start` の既定） |
+| `dot(cx, cy, { tone, hollow, r })` | 丸（コミット・節目・開始点）。線は中心まで引いてよい |
+| `bar(x1, x2, y, { tone, label })` | 期間の横棒。`label` は棒の右に置く |
+| `axis(x1, x2, y, [[x, 文字], …], { grid })` | 時間軸と目盛り。`grid` に上端の y を渡すと縦の補助線を引く |
+| `circle(cx, cy, r, { tone })` | ベン図の半透明の円。重なってよい |
+| `label(文字, x, y, anchor, { plain, strong })` | 文字。`anchor` は `middle` / `start` / `end`。`plain` は背景なし（色の付いた面の上）、`strong` は太字 |
 | `line(x1, y1, x2, y2, kind)` | 矢印でない線。`kind` は `lifeline`（シーケンス図の縦線）/ `divider`（区切り） |
-| `raw(svg)` | 部品に無いもの（検査の対象外）。`class="band"`（処理中の帯）・`class="dot"`（開始点）が使える |
+| `raw(svg)` | 部品に無いもの（検査の対象外）。`class="band"`（処理中の帯）が使える |
 
 ## 手順
 
@@ -39,10 +44,17 @@ writeFileSync('page.html', `${css}<header><h1>API の構成</h1></header><sectio
 
 ## 図の種類ごとの型
 
-- **構成図**: 入れ子の枠で置き場所（どこで動くか）を分ける。主な流れの線に ①②… と番号を振り、図の下に同じ番号の説明を `<ol>` で並べる。
-- **シーケンス図**: 参加者を等間隔の列に並べて縦線（`lifeline`）を引き、メッセージを 40 刻みで上から下へ置く。応答は破線、ラベルは線の上。場面の切り替わりは `divider` とラベルで示す。
-- **状態遷移図**: 状態は `state` の箱。複数の状態から同じ先へ向かう遷移は 1 本の線にまとめる。開始点は `dot`。
-- **判定フロー**: 本流を縦一列に通し、判定は `hex`、拒否や例外は右へ出して `bad` の `pill` に理由を書く。判定を飛ばす経路は左側を迂回させる。
+描く種類の例（`examples/`）を 1 つだけ読み、格子の取り方と線の引き方をまねる。例はどれも検査を通る完全なスクリプトで、題材はこのスキルとこのリポジトリの実データ。
+
+- **構成図**（`examples/architecture.mjs`）: 入れ子の枠で置き場所（どこで動くか）を分ける。主な流れの線に ①②… と番号を振り、図の下に同じ番号の説明を `<ol>` で並べる。
+- **シーケンス図**（`examples/sequence.mjs`）: 参加者を等間隔の列に並べて縦線（`lifeline`）を引き、メッセージを 40 刻みで上から下へ置く。応答は破線、ラベルは線の上。場面の切り替わりは `divider` とラベルで示す。
+- **状態遷移図**（`examples/state.mjs`）: 状態は `state` の箱。複数の状態から同じ先へ向かう遷移は 1 本の線にまとめる。開始点は `dot`。
+- **判定フロー**（`examples/flow.mjs`）: 本流を縦一列に通し、判定は `hex`、拒否や例外は右へ出して `bad` の `pill` に理由を書く。判定を飛ばす経路は左側を迂回させる。
+- **ER 図**（`examples/er.mjs`）: エンティティは `table`。主のエンティティを中央に置き、関係の線は相手の表の行の高さに合わせて水平 1 本で引く。端の記号は「相手から見た数」。
+- **クラス図**（`examples/class.mjs`）: 親を上の段に置き、継承（`triangle`）は兄弟で共有する折れ線で親の下辺へ入れる。属性とメソッドは `'---'` で分け、図の目的に要るメンバーだけを書く。
+- **Git のブランチ図**（`examples/git.mjs`）: ブランチごとに 1 行のレーン、横はコミットの順。主なブランチは `bold` と色で区別し、名札（`pill`）を分岐点の左に置く。分岐と合流は斜めの線 1 本。
+- **タイムライン**（`examples/timeline.mjs`）: 時刻から x を求める関数を 1 つ決め、期間は `bar`、節目は上の段の `dot`。行の名前は左端にまとめる。
+- **ベン図**（`examples/venn.mjs`）: `circle` を三角に重ね、領域の文字は `plain` で置く。文字の位置は、どの円の内側・外側かを座標で確かめる。
 
 ## 見た目
 
