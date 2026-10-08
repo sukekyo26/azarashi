@@ -133,8 +133,15 @@ export async function fetchIcons(source, { force = false } = {}) {
     writeFileSync(join(tmp, 'index.json'), `${JSON.stringify({ version, source: from, icons }, null, 1)}\n`);
     // 置き換えは丸ごと。途中で失敗しても前の版が残る
     const old = `${AWS_DIR}.old-${process.pid}`;
-    if (existsSync(AWS_DIR)) renameSync(AWS_DIR, old);
-    renameSync(tmp, AWS_DIR);
+    const hadOld = existsSync(AWS_DIR);
+    if (hadOld) renameSync(AWS_DIR, old);
+    try {
+      renameSync(tmp, AWS_DIR);
+    } catch (e) {
+      // 新しい版を置けなかったら、退避した前の版を戻してから失敗を伝える
+      if (hadOld) renameSync(old, AWS_DIR);
+      throw e;
+    }
     rmSync(old, { recursive: true, force: true });
     return `fetched ${Object.keys(icons).length} AWS icons (${version}) into ${AWS_DIR}`;
   } finally {

@@ -1091,6 +1091,22 @@ console.log([
   assert_eq "artifact: icons-aws fetch keeps the 48px service, group and resource icons, and skips a version it already has" \
     "$(art_icons fetch "$ART_TMP/Icon-package.zip" | sed "s#$ART_TMP#TMP#") | $(art_icons fetch "$ART_TMP/Icon-package.zip" | sed "s#$ART_TMP#TMP#")" \
     "fetched 6 AWS icons (01022030) into TMP/icons/aws | AWS icons 01022030 are already in TMP/icons/aws (add --force to fetch them again)"
+  # renameSync is made to fail only when the new version is moved into place
+  assert_eq "artifact: icons-aws fetch puts the previous icons back when the new ones cannot be moved into place" \
+    "$(ARTIFACTS_ICONS_DIR="$ART_TMP/icons" ART_ICONS="$ART_SKILL/app/icons-aws.mjs" ART_ZIP="$ART_TMP/Icon-package.zip" node --input-type=module -e '
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+const rename = fs.renameSync;
+fs.renameSync = (from, to) => {
+  if (from.includes(".tmp-") && to.endsWith("/aws")) throw new Error("injected");
+  return rename(from, to);
+};
+syncBuiltinESMExports();
+const { fetchIcons, AWS_DIR } = await import(process.env.ART_ICONS);
+let msg = "";
+try { await fetchIcons(process.env.ART_ZIP, { force: true }); } catch (e) { msg = e.message; }
+console.log([msg, fs.existsSync(`${AWS_DIR}/index.json`), fs.readdirSync(`${AWS_DIR}/..`).join(",")].join(" "));
+')" "injected true aws"
   assert_eq "artifact: icons-aws search lists aws/ names with every word; a service in two categories keeps the first; dark variants are kept" \
     "$(art_icons search lambda | paste -sd' ') | $(grep -o 'Arch_[A-Za-z-]*/48' "$ART_TMP/icons/aws/aws-lambda.svg") | $(jq -r '[.icons["res/client"].dark, .icons["group/aws-cloud-logo"].dark, (.icons["group/region"].dark // false)] | map(tostring) | join(" ")' "$ART_TMP/icons/aws/index.json")" \
     "$(printf 'aws/aws-lambda\tCompute aws/res/aws-lambda-lambda-function\tCompute') | Arch_Compute/48 | true true false"
