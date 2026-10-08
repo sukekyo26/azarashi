@@ -280,7 +280,7 @@ export function diagram({ id, width, height, title }) {
       solids.forEach((a, i) => solids.slice(i + 1).forEach((b) => overlaps(a, b) && problems.push(`${a.what} overlaps ${b.what}`)));
       for (const b of [...boxes, ...marks]) for (const f of frames) if (overlaps(b, f) && !inside(b, f)) problems.push(`${b.what} straddles the edge of ${f.what}`);
       for (const p of paths) for (const b of boxes) if (p.segs.some((s) => crosses(s, b))) problems.push(`edge "${p.d}" runs through ${b.what}`);
-      // 線がほかの線のラベル・アイコンの名前・枠の見出しを横切ると、ラベルの背景で線が途切れて見える
+      // 線がほかの線のラベル・アイコンの名前・枠の見出しを横切ると、背景付きのラベルでは線が途切れて見え、背景の無いラベルや見出しでは文字に線が重なって読みにくい
       for (const p of paths) {
         for (const r of [...labels, ...heads]) if (r !== p.own && p.segs.some((s) => crosses(s, r))) problems.push(`edge "${p.d}" runs through ${r.what}`);
       }
