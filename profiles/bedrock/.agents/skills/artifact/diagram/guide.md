@@ -4,7 +4,7 @@
 
 ## 道具
 
-同じディレクトリの `diagram.mjs` で組む。座標を渡して部品を足すと、`svg()` が文字のはみ出し・箱やラベルの重なり・箱を横切る線・枠をまたぐ箱・キャンバスからのはみ出しを検査する。通らなければ直す箇所の一覧を付けて例外になるので、座標を直して実行し直す。`css` はページに 1 回だけ入れる（色は雛形の CSS 変数で、ダークモードに追従する）。
+同じディレクトリの `diagram.mjs` で組む。座標を渡して部品を足すと、`svg()` が文字のはみ出し・箱やラベルの重なり・箱を横切る線・ほかのラベルや枠の見出しを横切る線・線同士の交差・枠をまたぐ箱・キャンバスからのはみ出しを検査する。通らなければ直す箇所の一覧を付けて例外になるので、座標を直して実行し直す。`css` はページに 1 回だけ入れる（色は雛形の CSS 変数で、ダークモードに追従する）。
 
 一時ディレクトリに組み立てスクリプトを書き、`node`（か `bun`）で実行してページを書き出してから publish する。
 
@@ -26,7 +26,7 @@ writeFileSync('page.html', `${css}<header><h1>API の構成</h1></header><sectio
 | `icon(x, y, 名前, { label, size })` | アイコン（既定 48px、左上が x, y）。`label` はアイコンの下に置く。線はアイコンの辺で止める |
 | `box(x, y, w, h, rows, { tone, shape })` | `rows` は文字列（1 行目が太字、2 行目以降が補足）か `[文字列, 'main' \| 'sub' \| 'main code' \| 'sub code']`。`tone` は `accent` / `good` / `warn` / `bad`。`shape` は `rect` / `pill` / `hex`（判定）/ `state`（状態） |
 | `table(x, y, w, 見出し, rows, { tone })` | 見出しと行の表（ER 図のエンティティ・クラス図のクラス）。`rows` は `[名前, 型や補足]` か名前の文字列、`'---'` は区切り線。高さは `tableHeight(rows)`（`diagram.mjs` から import）で、行 i（0 始まり、区切りなし）の中心は `y + 41 + 22i` |
-| `edge(path, { label, at, dashed, bold, tone, start, end })` | 絶対座標の `M` `H` `V` `L` だけの折れ線。`label` は `at: [x, y]` に背景付きで置く。`start` / `end` は線の端の記号で、`arrow`（`end` の既定）/ `triangle`（継承）/ `diamond`（コンポジション）/ `odiamond`（集約）/ `one` / `many` / `zero-one` / `zero-many`（ER の多重度）/ `null`（なし、`start` の既定） |
+| `edge(path, { label, at, dashed, bold, tone, start, end, crossing })` | 絶対座標の `M` `H` `V` `L` だけの折れ線。`label` は `at: [x, y]` に背景付きで置く。ほかの線と X 字に交わると止まる（分岐・合流と、同じ道筋の共有は交差としない）。避けられない交差だけ `crossing: true` で許す。`start` / `end` は線の端の記号で、`arrow`（`end` の既定）/ `triangle`（継承）/ `diamond`（コンポジション）/ `odiamond`（集約）/ `one` / `many` / `zero-one` / `zero-many`（ER の多重度）/ `null`（なし、`start` の既定） |
 | `dot(cx, cy, { tone, hollow, r })` | 丸（コミット・節目・開始点）。線は中心まで引いてよい |
 | `bar(x1, x2, y, { tone, label })` | 期間の横棒。`label` は棒の右に置く |
 | `axis(x1, x2, y, [[x, 文字], …], { grid })` | 時間軸と目盛り。`grid` に上端の y を渡すと縦の補助線を引く |
@@ -70,4 +70,4 @@ AWS の公式アイコンを `aws/<名前>` で使える。名前は `artifacts.
 
 ## 書き終えたら
 
-`svg()` が検査しないもの（線同士の交差、ラベルがどの線のものか分かるか）は座標を見直して確かめる。
+`svg()` が検査しないもの（ラベルがどの線のものか分かるか、線どうしが近すぎて見分けにくくないか）は座標を見直して確かめる。

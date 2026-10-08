@@ -79,6 +79,16 @@ function crosses([x1, y1, x2, y2], b) {
   return false;
 }
 
+// 2 本の線分が X 字に交わる点。平行（同じ道筋を共有する区間を含む）と、どちらかの端（分岐・合流・角）で触れるのは交差としない
+function crossing([x1, y1, x2, y2], [x3, y3, x4, y4]) {
+  const den = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3);
+  if (Math.abs(den) < 1e-9) return null;
+  const t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / den;
+  const u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / den;
+  const e = 1e-6;
+  return t > e && t < 1 - e && u > e && u < 1 - e ? [Math.round(x1 + t * (x2 - x1)), Math.round(y1 + t * (y2 - y1))] : null;
+}
+
 /**
  * 図を 1 枚作る。id はページ内で一意（線の端の記号の id に使う）。
  * 各メソッドは座標を受けて部品を足し、svg() が検査して `<div class="dg-wrap"><svg>…</svg></div>` を返す。
@@ -95,6 +105,7 @@ export function diagram({ id, width, height, title }) {
   const frames = [];
   const areas = []; // 重なってよいもの（ベン図の円）
   const labels = [];
+  const heads = []; // 枠の見出し。線が横切ってはいけない
   const paths = [];
   const used = new Set();
   const problems = [];
@@ -135,6 +146,10 @@ export function diagram({ id, width, height, title }) {
     frame(x, y, w, h, label, { accent = false, icon, square = false } = {}) {
       const what = `frame "${label}"`;
       frames.push({ x, y, w, h, what });
+      if (label) {
+        const [hx, hy, size] = icon === undefined ? [x + 12, y + 18, 12] : [x + 40, y + 15, SIZE.main];
+        heads.push({ x: hx, y: hy - 9, w: textWidth(label, size, false), h: 18, what: `the heading of ${what}` });
+      }
       // 枠の線（幅 1.2）は座標を中心に描かれるので、アイコンを 1 ずらして線の外側の半分（0.6）まで覆う
       const corner = icon === undefined ? '' : image(icon, x - 1, y - 1, 32, what);
       out.areas.push(`<g class="frame${accent ? ' accent' : ''}${corner ? ' grouped' : ''}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${icon === undefined && !square ? 10 : 0}"/>`
@@ -190,14 +205,19 @@ export function diagram({ id, width, height, title }) {
         + `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" class="outline"/></g>`);
       return api;
     },
-    // 直角の折れ線。箱の辺から辺へ引く。start・end は線の端の記号（MARKERS の名前か null）。label は at の位置に置く
-    edge(d, { label, at, dashed = false, bold = false, tone: t = '', start = null, end = 'arrow' } = {}) {
-      paths.push({ d, segs: segments(d) });
+    // 直角の折れ線。箱の辺から辺へ引く。start・end は線の端の記号（MARKERS の名前か null）。label は at の位置に置く。
+    // crossing は、避けられない交差をこの線にだけ許す
+    edge(d, {
+      label, at, dashed = false, bold = false, tone: t = '', start = null, end = 'arrow', crossing: crossOk = false,
+    } = {}) {
+      const path = { d, segs: segments(d), crossOk };
+      paths.push(path);
       const cls = `edge${dashed ? ' dashed' : ''}${bold ? ' bold' : ''}${tone(t, `edge "${d}"`)}`;
       out.edges.push(`<path d="${d}" class="${cls}"${marker(start, 'start', d)}${marker(end, 'end', d)}/>`);
       if (label !== undefined) {
         if (!at) throw new Error(`diagram "${id}": edge "${d}" has a label but no at: [x, y]`);
         api.label(label, ...at);
+        path.own = labels.at(-1);
       }
       return api;
     },
@@ -260,6 +280,15 @@ export function diagram({ id, width, height, title }) {
       solids.forEach((a, i) => solids.slice(i + 1).forEach((b) => overlaps(a, b) && problems.push(`${a.what} overlaps ${b.what}`)));
       for (const b of [...boxes, ...marks]) for (const f of frames) if (overlaps(b, f) && !inside(b, f)) problems.push(`${b.what} straddles the edge of ${f.what}`);
       for (const p of paths) for (const b of boxes) if (p.segs.some((s) => crosses(s, b))) problems.push(`edge "${p.d}" runs through ${b.what}`);
+      // 線がほかの線のラベル・アイコンの名前・枠の見出しを横切ると、ラベルの背景で線が途切れて見える
+      for (const p of paths) {
+        for (const r of [...labels, ...heads]) if (r !== p.own && p.segs.some((s) => crosses(s, r))) problems.push(`edge "${p.d}" runs through ${r.what}`);
+      }
+      paths.forEach((a, i) => paths.slice(i + 1).forEach((b) => {
+        if (a.crossOk || b.crossOk) return;
+        const at = a.segs.flatMap((s) => b.segs.map((q) => crossing(s, q))).find(Boolean);
+        if (at) problems.push(`edge "${a.d}" crosses edge "${b.d}" at ${at}; move one of them, or add crossing: true to one if it cannot be avoided`);
+      }));
       if (problems.length) throw new Error(`diagram "${id}" needs fixing:\n- ${[...new Set(problems)].join('\n- ')}`);
       const defs = [...used].map((k) => {
         const [vb, w, h, rx, ry, body] = MARKERS[k];
