@@ -10,7 +10,7 @@
 
 ```js
 import { writeFileSync } from 'node:fs';
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram.mjs`);
+const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 const d = diagram({ id: 'arch', width: 640, height: 200, title: 'API の構成' });
 d.frame(16, 16, 608, 168, 'VPC')

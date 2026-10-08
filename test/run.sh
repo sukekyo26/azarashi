@@ -1017,7 +1017,8 @@ ART_RUNTIME=${ART_RUNTIME:-node}
 if [ "$ART_RUNTIME" != node ] && ! command -v "$ART_RUNTIME" >/dev/null 2>&1; then
   ng "artifact: ART_RUNTIME=$ART_RUNTIME is not installed (artifact skill tests skipped)"
 elif command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
-  ART="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/artifacts.mjs"
+  ART_SKILL="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact"
+  ART="$ART_SKILL/app/artifacts.mjs"
   # the real path: linked files are stored by it, so a symlinked temp dir (macOS /var) must not differ
   ART_TMP=$(cd "$(mktemp -d)" && pwd -P)
   # a port the OS reports free right now, rather than a guess that a busy host may already use
@@ -1045,7 +1046,7 @@ RECORDER
 
   # diagram.mjs: a clean diagram renders; each kind of layout mistake is reported, all at once; curves and reused ids are refused
   assert_eq "artifact: diagram.mjs renders a clean diagram and reports overflowing text, overlaps, straddled frames, edges through boxes and the canvas edge" \
-    "$(ART_DIAGRAM="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/diagram.mjs" node --input-type=module -e '
+    "$(ART_DIAGRAM="$ART_SKILL/diagram/diagram.mjs" node --input-type=module -e '
 const { diagram } = await import(process.env.ART_DIAGRAM);
 const fails = (f) => { try { f(); return ""; } catch (e) { return e.message; } };
 const svg = diagram({ id: "ok", width: 300, height: 120, title: "t" }).frame(10, 10, 280, 100, "f")
@@ -1474,7 +1475,7 @@ STUB
     assert_eq "artifact: artifacts.sh prefers bun on PATH and falls back to node" \
       "$(
         for _d in rt-both rt-node; do
-          ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" PATH="$ART_TMP/$_d:/usr/bin:/bin" "$(dirname "$ART")/artifacts.sh" list
+          ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" PATH="$ART_TMP/$_d:/usr/bin:/bin" "$ART_SKILL/artifacts.sh" list
         done
         paste -sd' ' "$ART_TMP/runtime"
       )" "bun node"
@@ -1484,7 +1485,7 @@ STUB
   ln -s "$(command -v dirname)" "$ART_TMP/rt-none/dirname"
   assert_eq "artifact: artifacts.sh without bun or node says to install one, exit 127" \
     "$(
-      PATH="$ART_TMP/rt-none" "$(dirname "$ART")/artifacts.sh" list 2>&1
+      PATH="$ART_TMP/rt-none" "$ART_SKILL/artifacts.sh" list 2>&1
       echo "rc=$?"
     )" "$(printf 'artifacts.sh: neither bun nor node is installed; install one of them (bun starts faster) and run again\nrc=127')"
   # a copy of the skill has newer mtimes, like a skill updated under a running server
