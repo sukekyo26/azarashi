@@ -300,7 +300,8 @@ export const css = `<style>
   .dg .table .sep { stroke: var(--line); }
   .dg .cell { fill: var(--fg); }
   .dg .type { fill: var(--muted); font-size: 12px; }
-  .dg .frame rect { fill: none; stroke: var(--muted); stroke-dasharray: 5 4; }
+  /* 枠の点線は補足の文字より少しだけ濃く。color-mix を解釈できない環境では直前の --muted が残る */
+  .dg .frame rect { fill: none; stroke: var(--muted); stroke: color-mix(in srgb, var(--muted) 75%, var(--fg)); stroke-width: 1.2; stroke-dasharray: 5 4; }
   .dg .frame.accent rect { stroke: var(--accent); }
   .dg .frame text { fill: var(--muted); font-size: 12px; font-weight: 700; }
   .dg .frame.grouped text { fill: var(--fg); font-size: 13px; }
