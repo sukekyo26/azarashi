@@ -1,4 +1,6 @@
 // 座標で図を組み、guide.md の「書き終えたら」の確認を機械で行って inline SVG を返す。使い方は guide.md
+import { lookupIcon } from '../app/icons-aws.mjs';
+
 const ids = new Set();
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 // LIMIT: 文字幅は概算（日本語 1 文字 ≈ 文字サイズ、英数字 ≈ 0.6 倍）。フォントを替えて外れるなら実測に替える
@@ -106,16 +108,45 @@ export function diagram({ id, width, height, title }) {
     used.add(kind);
     return ` marker-${where}="url(#${id}-${kind})"`;
   };
+  // アイコン集を頭に付けた名前（aws/…）の SVG を <image> で置く。インラインの <svg> にしないのは、公式の SVG の id がアイコン同士で衝突するため
+  const image = (name, x, y, size, what) => {
+    const [set, ...rest] = String(name).split('/');
+    const hint = '(search with: artifacts.sh icons-aws search <word>)';
+    if (set !== 'aws' || !rest.length) {
+      problems.push(`${what}: "${name}" needs the icon set in front, like aws/amazon-ec2 ${hint}`);
+      return '';
+    }
+    const found = lookupIcon(rest.join('/'));
+    if (found.candidates) {
+      problems.push(`${what}: no AWS icon "${name}"${found.candidates.length ? `; did you mean ${found.candidates.join(', ')}?` : ''} ${hint}`);
+      return '';
+    }
+    const img = (href, cls) => `<image href="${href}" x="${x}" y="${y}" width="${size}" height="${size}"${cls ? ` class="${cls}"` : ''}/>`;
+    return found.dark ? img(found.light, 'icon-light') + img(found.dark, 'icon-dark') : img(found.light);
+  };
   const fit = (text, size, code, room, what) => {
     const tw = textWidth(text, size, code);
     if (tw > room) problems.push(`${what}: "${text}" needs about ${Math.ceil(tw - room)}px more width`);
   };
   const api = {
-    // 入れ子の枠。見出しは左上の内側に置くので、中身は見出しの下（上端から 32 以上）から並べる
-    frame(x, y, w, h, label, { accent = false } = {}) {
-      frames.push({ x, y, w, h, what: `frame "${label}"` });
-      out.areas.push(`<g class="frame${accent ? ' accent' : ''}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10"/>`
-        + `<text x="${x + 12}" y="${y + 18}" text-anchor="start">${esc(label)}</text></g>`);
+    // 入れ子の枠。見出しは左上の内側に置くので、中身は見出しの下（上端から 32 以上、icon 付きは 40 以上）から並べる。
+    // icon を渡すと AWS のグループ枠の作法で描く: 角を丸めず、角に 32px のアイコンを置いて見出しをその右へずらす。
+    // square はアイコン無しで角だけ丸めない（AWS 構成図の中のほかの枠）
+    frame(x, y, w, h, label, { accent = false, icon, square = false } = {}) {
+      const what = `frame "${label}"`;
+      frames.push({ x, y, w, h, what });
+      // 枠の線（幅 1）は座標を中心に描かれるので、アイコンを 1 ずらして線の外側の半分まで覆う
+      const corner = icon === undefined ? '' : image(icon, x - 1, y - 1, 32, what);
+      out.areas.push(`<g class="frame${accent ? ' accent' : ''}${corner ? ' grouped' : ''}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${icon === undefined && !square ? 10 : 0}"/>`
+        + `${corner}<text x="${x + (icon === undefined ? 12 : 40)}" y="${y + (icon === undefined ? 18 : 15)}" text-anchor="start">${esc(label)}</text></g>`);
+      return api;
+    },
+    // AWS などのアイコン（左上を x, y に置く）。label はアイコンの下に置く。線はアイコンの辺で止める
+    icon(x, y, name, { label, size = 48 } = {}) {
+      const what = `icon "${name}"`;
+      boxes.push({ x, y, w: size, h: size, what });
+      out.boxes.push(image(name, x, y, size, what));
+      if (label !== undefined) api.label(label, x + size / 2, y + size + 16);
       return api;
     },
     // rows: 文字列（1 行目は太字、2 行目以降は補足）か [文字列, 'main' | 'sub' | 'main code' | 'sub code']
@@ -272,6 +303,9 @@ export const css = `<style>
   .dg .frame rect { fill: none; stroke: var(--muted); stroke-dasharray: 5 4; }
   .dg .frame.accent rect { stroke: var(--accent); }
   .dg .frame text { fill: var(--muted); font-size: 12px; font-weight: 700; }
+  .dg .frame.grouped text { fill: var(--fg); font-size: 13px; }
+  .dg .icon-dark { display: none; }
+  @media (prefers-color-scheme: dark) { .dg .icon-light { display: none; } .dg .icon-dark { display: inline; } }
   .dg .edge, .dg .line { fill: none; stroke: var(--muted); stroke-width: 1.5; }
   .dg .edge.dashed { stroke-dasharray: 5 4; }
   .dg .edge.bold { stroke-width: 3; }

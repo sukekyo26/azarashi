@@ -43,3 +43,16 @@
 - 生成元のプロジェクトは、実行した場所ではなくファイルのある場所から決める。
 - slug を省くとファイル名（`index.html` ならディレクトリ名）になる。同じパスの登録があればそれを更新し、別のファイルが同じ名前を使っていれば `-2`・`-3` … を付けて新しく登録する。`--slug` を明示したときは CLI では上書きする。
 - 保存したページとリンクで同じ slug は使えない。種類を変えるときは `rm` してから登録し直す。
+
+## AWS アイコン
+
+図（`diagram/diagram.mjs`）で AWS の公式アイコンを `aws/<名前>` として使うために、アイコンを手元に取得する。
+
+| 操作 | 方法 |
+|:----|:----|
+| 取得 | `artifacts.sh icons-aws fetch`。[公式ページ](https://aws.amazon.com/architecture/icons/)から Icon package の zip（約 14MB）を探して取得し、サービス（48px）・グループ（32px）・リソース（48px、ライト用とダーク用）の SVG だけを取り出す。zip の URL かダウンロード済みのパスを引数で渡すこともできる。同じ版が既にあれば何もしない（`--force` で取り直す） |
+| 検索 | `artifacts.sh icons-aws search <語>...`。すべての語を名前に含むアイコンを `aws/名前<TAB>カテゴリ` で出す |
+
+- 置き場所は `~/.local/share/artifacts-icons/aws/`（`ARTIFACTS_ICONS_DIR` で変更）。取り直しは丸ごと置き換え、途中で失敗しても前の版が残る。
+- 利用条件は公式ページの「We allow customers and partners to use these toolkits and assets to create architecture diagrams.」で、再配布には触れていない。このためアイコンはリポジトリに入れず、各自のマシンで取得する。
+- 埋め込んだアイコンは図の中に data URI で入るので、公開したページやダウンロードした HTML でも消えない。

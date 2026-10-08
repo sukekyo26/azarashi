@@ -15,6 +15,7 @@ import {
 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { fetchIcons, searchIcons } from './icons-aws.mjs';
 
 const APP = 'local-artifacts';
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -46,7 +47,14 @@ const USAGE = `usage: artifacts.sh <command>
   list           list pages, newest first (updated<TAB>slug<TAB>title<TAB>linked path)
   rm <slug>...   delete pages (a linked file itself is left untouched)
   serve          run the server in the foreground
-  stop           stop the background server`;
+  stop           stop the background server
+  icons-aws fetch [<url-or-path>] [--force]
+                 keep the AWS Architecture Icons (48px service, group and resource SVGs) in
+                 $ARTIFACTS_ICONS_DIR/aws (default ~/.local/share/artifacts-icons/aws) for diagram.mjs;
+                 the Icon package zip is found on https://aws.amazon.com/architecture/icons/ unless
+                 a URL or a local path is given, and the same version is not fetched again unless --force
+  icons-aws search <word>...
+                 list the icons whose name contains every word (aws/name<TAB>category)`;
 
 // ja は管理画面に返す日本語の理由。管理画面から起き得る失敗にだけ付ける
 class UsageError extends Error {
@@ -796,6 +804,13 @@ async function main() {
     case 'stop':
       await stop();
       break;
+    case 'icons-aws': {
+      const [sub, ...rest] = args;
+      if (sub === 'fetch' && rest.length <= 1) console.log(await fetchIcons(rest[0], { force: values.force }));
+      else if (sub === 'search' && rest.length) console.log(searchIcons(rest).join('\n'));
+      else fail(USAGE);
+      break;
+    }
     default:
       fail(USAGE);
   }
