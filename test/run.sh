@@ -1105,7 +1105,7 @@ syncBuiltinESMExports();
 const { fetchIcons, AWS_DIR } = await import(process.env.ART_ICONS);
 let msg = "";
 try { await fetchIcons(process.env.ART_ZIP, { force: true }); } catch (e) { msg = e.message; }
-console.log([msg, fs.existsSync(`${AWS_DIR}/index.json`), fs.readdirSync(`${AWS_DIR}/..`).join(",")].join(" "));
+console.log([msg, fs.existsSync(AWS_DIR + "/index.json"), fs.readdirSync(AWS_DIR + "/..").join(",")].join(" "));
 ')" "injected true aws"
   assert_eq "artifact: icons-aws search lists aws/ names with every word; a service in two categories keeps the first; dark variants are kept" \
     "$(art_icons search lambda | paste -sd' ') | $(grep -o 'Arch_[A-Za-z-]*/48' "$ART_TMP/icons/aws/aws-lambda.svg") | $(jq -r '[.icons["res/client"].dark, .icons["group/aws-cloud-logo"].dark, (.icons["group/region"].dark // false)] | map(tostring) | join(" ")' "$ART_TMP/icons/aws/index.json")" \
