@@ -17,8 +17,11 @@ if (!chrome || !base || !['manage', 'extras', 'reload'].includes(scenario) || (s
   process.exit(2);
 }
 const profile = mkdtempSync(join(tmpdir(), 'artifact-ui-'));
+// 127.0.0.1 以外の名前はすぐに解決に失敗させ、ネットワークに頼らない。ページは Google Fonts を <head> で読み、
+// それが返るまで後ろのスクリプトも DOM の解析も止まるので、遅い回線では読み込み待ちが時間切れになる
 const proc = spawn(chrome, [
   '--headless=new', '--no-sandbox', '--disable-gpu', '--no-first-run',
+  '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
   '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank',
 ], { stdio: ['ignore', 'ignore', 'pipe'] });
 let stderr = '';
@@ -37,7 +40,7 @@ async function until(fn, what, tries = 100) {
   throw new Error(`timed out waiting for ${what}`);
 }
 
-async function manage({ send, evaluate }) {
+async function manage({ evaluate, navigate }) {
   const titles = () => evaluate("[...document.querySelectorAll('#list li .title')].map((a) => a.textContent).join(',')");
   const rows = () => evaluate("document.querySelectorAll('#list li').length");
   const filter = (q) => evaluate(`(() => {
@@ -53,7 +56,7 @@ async function manage({ send, evaluate }) {
   })()`);
 
   const out = [];
-  await send('Page.navigate', { url: `${base}/` });
+  await navigate(`${base}/`);
   out.push(await until(titles, 'the list to render'));
   out.push(await evaluate("(() => { const d = document.querySelector('#list li .download'); const o = document.querySelector('#list li .open'); return `${d.getAttribute('href')} ${d.getAttribute('download')} ${o.getAttribute('href')} ${o.target}`; })()"));
   // a row's project tag filters by it and keeps the choice in the URL; the "全プロジェクト" chip clears it
@@ -70,7 +73,7 @@ async function manage({ send, evaluate }) {
   out.push(await rows());
   // the search is kept in the URL and restored from it
   out.push(await evaluate("new URLSearchParams(location.search).get('q')"));
-  await send('Page.navigate', { url: `${base}/?q=untitled` });
+  await navigate(`${base}/?q=untitled`);
   out.push(await until(() => evaluate("document.getElementById('q').value === 'untitled' && document.querySelectorAll('#list li').length"), 'the search restored from the URL'));
   await filter('');
   out.push(await clickDelete('untitled'));
@@ -126,10 +129,8 @@ async function manage({ send, evaluate }) {
 
 // 並び替え・キーボード操作・まとめて削除・モーダルでの説明の編集・パスのコピー。
 // 一覧と書き込みは差し替えた fetch で受け、送られた要求を calls に記録する
-async function extras({ send, evaluate }) {
-  await send('Page.navigate', { url: `${base}/` });
-  const ready = () => until(() => evaluate("document.readyState === 'complete' && typeof load === 'function'").catch(() => false), 'the page');
-  await ready();
+async function extras({ send, evaluate, navigate }) {
+  await navigate(`${base}/`);
   const stub = `(() => {
     window.calls = [];
     const at = (d) => \`2026-01-0\${d}T00:00:00.000Z\`;
@@ -214,15 +215,14 @@ async function extras({ send, evaluate }) {
   out.push(await evaluate("String(document.documentElement.dataset.theme)"));
   // a page opened from the list steps to its neighbours in that list's order, and the logo returns to that list
   await evaluate("sessionStorage.setItem('artifacts.list', '?sort=title')");
-  await send('Page.navigate', { url: `${base}/a/b/` });
-  await ready();
+  await navigate(`${base}/a/b/`);
   await evaluate(stub);
   out.push(await until(() => evaluate("document.getElementById('frame-pos').textContent && ['frame-prev', 'frame-next'].map((id) => document.getElementById(id).getAttribute('href')).concat(document.getElementById('frame-pos').textContent, document.querySelector('.brand').getAttribute('href')).join(' ')"), 'the neighbours'));
   return out;
 }
 
 // 開いているページが、公開し直しに合わせて（sandbox の中から）読み直されること
-async function reload({ send, evaluate }) {
+async function reload({ send, evaluate, navigate }) {
   const dir = mkdtempSync(join(tmpdir(), 'artifact-live-'));
   const publish = (v) => {
     writeFileSync(join(dir, 'live.html'), `<title>Live</title><p id="v">${v}</p>`);
@@ -233,12 +233,12 @@ async function reload({ send, evaluate }) {
   try {
     const out = [];
     publish('1');
-    await send('Page.navigate', { url: `${base}/a/live/?raw` });
+    await navigate(`${base}/a/live/?raw`);
     out.push(await until(shown('1'), 'the first version') && '1');
     publish('2');
     out.push(await until(shown('2'), 'the page to reload') && '2');
     // the page URL itself is the frame: the tab is named after the page and the iframe loads ?raw
-    await send('Page.navigate', { url: `${base}/a/live/` });
+    await navigate(`${base}/a/live/`);
     out.push(await until(() => evaluate("document.title.startsWith('Live') && document.title"), 'the frame title'));
     out.push(await evaluate("new URL(document.getElementById('frame').src).search === '?raw'"));
     // the frame lets the page write to the clipboard and go fullscreen. The page reports its own policy to the frame
@@ -246,13 +246,13 @@ async function reload({ send, evaluate }) {
     // permissionsPolicy is the standard name; Chrome still ships it as featurePolicy. Without either, say so instead of a false "denied"
     writeFileSync(join(dir, 'perm.html'), "<title>Perm</title><script>const policy = document.permissionsPolicy ?? document.featurePolicy; setInterval(() => parent.postMessage(policy ? ['clipboard-write', 'fullscreen'].map((f) => policy.allowsFeature(f)).join() : 'no policy API', '*'), 100)</script>");
     execFileSync(process.execPath, [art, 'publish', join(dir, 'perm.html'), '--slug', 'perm'], { stdio: 'ignore' });
-    await send('Page.navigate', { url: `${base}/a/perm/` });
+    await navigate(`${base}/a/perm/`);
     // one listener per document keeps the last report; until() polls it at its usual pace
     out.push(await until(() => evaluate("(window.listening ||= (addEventListener('message', (e) => { window.reported = e.data; }), true)) && window.reported"), 'the page permissions'));
     execFileSync(process.execPath, [art, 'rm', 'perm'], { stdio: 'ignore' });
-    out.push(await leave({ send, evaluate, dir }));
+    out.push(await leave({ send, evaluate, navigate, dir }));
     // an unknown page shows the way back instead of the frame
-    await send('Page.navigate', { url: `${base}/a/no-such/` });
+    await navigate(`${base}/a/no-such/`);
     out.push(await until(() => evaluate("!document.getElementById('notfound').hidden && document.getElementById('frame').hidden && !document.getElementById('frame').hasAttribute('src')"), 'the not-found state'));
     return out;
   } finally {
@@ -264,7 +264,7 @@ async function reload({ send, evaluate }) {
 // target の無いリンクも外枠の中ではなく新しいタブで開く（多くのサイトは iframe に入れられるのを拒む）。
 // 同じサーバー内のリンクは今までどおり外枠の中で開く。別のサイトは、iframe を拒む小さなサーバーで代える。
 // 出力は開いたタブごとの origin（無ければ none）
-async function leave({ send, evaluate, dir }) {
+async function leave({ send, evaluate, navigate, dir }) {
   const site = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html', 'x-frame-options': 'DENY' });
     res.end('<title>Elsewhere</title>');
@@ -279,7 +279,7 @@ async function leave({ send, evaluate, dir }) {
       + "<script>const open = () => {}; const URL = null; const EventSource = null; const self = null;"
       + "setInterval(() => parent.postMessage('ready', '*'), 100)</script>");
     execFileSync(process.execPath, [art, 'publish', join(dir, 'leave.html'), '--slug', 'leave'], { stdio: 'ignore' });
-    await send('Page.navigate', { url: `${base}/a/leave/` });
+    await navigate(`${base}/a/leave/`);
     await until(() => evaluate("(window.listening ||= (addEventListener('message', (e) => { window.reported = e.data; }), true)) && window.reported"), 'the page in the frame');
     const box = JSON.parse(await evaluate("JSON.stringify(document.getElementById('frame').getBoundingClientRect())"));
     for (const y of [20, 80, 140]) {
@@ -312,7 +312,7 @@ async function leave({ send, evaluate, dir }) {
 
 let ws;
 try {
-  // a cold CI runner can take several seconds to start Chrome
+  // 冷えた CI ランナーでは最初の起動に 30 秒を超えることがある（ディスクから読み込む間 kill にも応じない）
   const port = await until(() => {
     if (proc.exitCode !== null) throw new Error(`Chrome exited with code ${proc.exitCode}`);
     try {
@@ -320,7 +320,7 @@ try {
     } catch {
       return null;
     }
-  }, 'Chrome to start', 600);
+  }, 'Chrome to start', 2400);
   const target = await until(async () => {
     try {
       return (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === 'page');
@@ -351,9 +351,16 @@ try {
     if (result.exceptionDetails) throw new Error(`${expression}: ${result.exceptionDetails.exception?.description}`);
     return result.result.value;
   };
+  // Page.navigate は読み込みを待たずに返る。読み込み途中の文書（要素がまだ無い）を評価しないよう、読み終わるまで待つ。
+  // 古い文書には印を付けて区別する。URL では比べられない（検索語などで今の URL が行き先と同じことがある）
+  const navigate = async (url) => {
+    await evaluate('window.leaving = true');
+    await send('Page.navigate', { url });
+    await until(() => evaluate("!window.leaving && document.readyState === 'complete'").catch(() => false), `${url} to load`);
+  };
 
   const scenarios = { manage, extras, reload };
-  console.log((await scenarios[scenario]({ send, evaluate })).join('|'));
+  console.log((await scenarios[scenario]({ send, evaluate, navigate })).join('|'));
 } catch (e) {
   console.error(`artifact-ui: ${e.message}`);
   if (stderr) console.error(`--- Chrome stderr (tail) ---\n${stderr}`);
@@ -362,5 +369,9 @@ try {
   ws?.close();
   proc.kill();
   await exited;
-  rmSync(profile, { recursive: true, force: true });
+  // 本体が終わっても子プロセスがまだ profile（キャッシュなど）に書いていることがあり、ENOTEMPTY になり得る。
+  // 一時ディレクトリの後片付けなので、やり直しても消せなければ諦める（テストの結果には関係しない）
+  try {
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch {}
 }
