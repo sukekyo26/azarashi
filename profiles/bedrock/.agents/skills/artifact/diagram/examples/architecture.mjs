@@ -37,7 +37,7 @@ d.edge(`M224,${row(1)} H644`, { label: '① 起動確認', at: [434, row(1)] })
   // 1 つの箱から 2 か所へ出す線は、出る高さを ±8 ずらして重ねない
   .edge(`M884,${row(4) - 8} H1100 V300`)
   .edge(`M884,${row(4) + 8} H1070 V${row(5) - 28}`)
-  .edge(`M988,${row(5)} H884`, { both: true, label: 'API', at: [936, row(5)] });
+  .edge(`M988,${row(5)} H884`, { start: 'arrow', label: 'API', at: [936, row(5)] });
 
 writeFileSync(process.argv[2] ?? 'page.html', `${css}
 <section>

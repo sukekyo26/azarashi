@@ -14,7 +14,7 @@ for (const [x, name, sub, tone] of [
   d.box(x, 88, 200, 64, [name, sub], { tone, shape: 'state' });
 }
 
-d.raw('<circle cx="22" cy="120" r="7" class="dot"/>')
+d.dot(22, 120)
   .edge('M29,120 H60')
   // 自分へ戻る遷移は箱の上に張り出す
   .edge('M110,88 V58 H210 V88', { label: '起動失敗（ポート使用中）', at: [160, 40] })
@@ -24,7 +24,7 @@ d.raw('<circle cx="22" cy="120" r="7" class="dot"/>')
   .edge('M860,132 H660', { label: '最後の接続が閉じる', at: [760, 150] })
   // 2 つの状態から同じ先へ向かう遷移は、下の 1 本にまとめて矢印を 1 つにする
   .edge('M960,152 V216 H160 V152', { label: 'SIGTERM（stop・古い版を publish が検出）', at: [360, 216] })
-  .edge('M560,152 V216', { arrow: false });
+  .edge('M560,152 V216', { end: null });
 
 writeFileSync(process.argv[2] ?? 'page.html', `${css}
 <section>
