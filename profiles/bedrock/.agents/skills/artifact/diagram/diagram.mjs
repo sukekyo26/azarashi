@@ -165,7 +165,7 @@ export const css = `<style>
   .dg .label-bg { fill: var(--bg); }
   .dg .label { fill: var(--fg); font-size: ${SIZE.sub}px; }
   .dg .lifeline { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 6 4; }
-  .dg .divider { stroke: var(--line); stroke-dasharray: 8 6; }
+  .dg .divider { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 12 6; }
   .dg .band { fill: var(--accent-soft); stroke: var(--accent); }
   .dg .dot { fill: var(--muted); }
 </style>`;
