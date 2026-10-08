@@ -49,7 +49,7 @@ description: 'Artifacts 機能が使えない環境で、単一 HTML ページ�
 - **1 ファイルで完結させる**。CSS と JS はインライン。外部スクリプトは cdnjs / jsdelivr / unpkg からバージョンを固定して読み込み、データは埋め込む（他の URL を fetch しない）。
 - **タイトルはページの名前にする**（2〜4 語の名詞句）。説明は `--description` に書く。
 - **実データを使い、読み込んだ時点で全内容を見せる**（ダミー文字列やスクロールで出現させる演出を使わない）。
-- 幅の広い図は `overflow-x: auto` の箱に入れる。Mermaid は既定で図を幅まで縮めて読めなくなるので、図の種類ごとに `useMaxWidth: false` を指定する（例: `mermaid.initialize({ flowchart: { useMaxWidth: false } })`）。
+- 図（構成図・フロー・シーケンスなど）は Mermaid などの描画ライブラリを使わず inline SVG で描く。描く前に同じディレクトリの `diagram.md` を読む。データのグラフはこの限りでない。
 - `localStorage` などは sandbox で例外を投げ得るので try/catch で包む。
 - 完全な HTML を書くときは加えて: 色は `:root` の CSS 変数で定義し `prefers-color-scheme: dark` で上書きする、`body` に背景色を明示する、左右 16px 以上の余白を取り幅約 400px でも横スクロールさせない、Web フォントは Google Fonts と代替フォント、数値列は `tabular-nums`、`prefers-reduced-motion` を尊重する。
 
