@@ -1,4 +1,4 @@
-// 座標で図を組み、diagram.md の「書き終えたら」の確認を機械で行って inline SVG を返す。使い方は diagram.md
+// 座標で図を組み、guide.md の「書き終えたら」の確認を機械で行って inline SVG を返す。使い方は guide.md
 const ids = new Set();
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 // LIMIT: 文字幅は概算（日本語 1 文字 ≈ 文字サイズ、英数字 ≈ 0.6 倍）。フォントを替えて外れるなら実測に替える
