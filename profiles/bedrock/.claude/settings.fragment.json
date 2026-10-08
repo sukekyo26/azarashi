@@ -9,7 +9,6 @@
     "claude-opus-5-5": "global.anthropic.claude-opus-5-5",
     "claude-sonnet-5-5": "global.anthropic.claude-sonnet-5-5",
     "claude-sonnet-4-5-20250929": "pin:disabled",
-    "claude-sonnet-4-5-20250929[1m]": "pin:disabled",
     "haiku": "global.anthropic.claude-haiku-5-5"
   },
   "env": {
