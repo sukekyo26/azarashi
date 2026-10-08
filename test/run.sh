@@ -1043,6 +1043,25 @@ RECORDER
     cat "$ART_TMP/opened" 2>/dev/null
   }
 
+  # diagram.mjs: a clean diagram renders; each kind of layout mistake is reported, all at once; curves and reused ids are refused
+  assert_eq "artifact: diagram.mjs renders a clean diagram and reports overflowing text, overlaps, straddled frames, edges through boxes and the canvas edge" \
+    "$(ART_DIAGRAM="$SCRIPT_DIR/../profiles/bedrock/.agents/skills/artifact/diagram.mjs" node --input-type=module -e '
+const { diagram } = await import(process.env.ART_DIAGRAM);
+const fails = (f) => { try { f(); return ""; } catch (e) { return e.message; } };
+const svg = diagram({ id: "ok", width: 300, height: 120, title: "t" }).frame(10, 10, 280, 100, "f")
+  .box(30, 44, 100, 52, ["a", "b"]).box(170, 44, 100, 52, ["c"]).edge("M130,70 H170", { label: "x", at: [150, 56] }).svg();
+const bad = fails(() => diagram({ id: "bad", width: 300, height: 120, title: "t" }).frame(10, 10, 150, 100, "f")
+  .box(20, 40, 60, 40, ["とても長い名前の箱"]).box(70, 40, 60, 40, ["b"]).box(140, 40, 60, 40, ["c"])
+  .box(220, 40, 40, 30, ["d"]).edge("M240,0 V120").box(270, 90, 40, 30, ["e"]).svg());
+console.log([
+  svg.startsWith("<div class=\"dg-wrap\"><svg") && svg.includes("marker-end=\"url(#ok-arrow)\""),
+  ["needs about", "overlaps", "straddles", "runs through", "sticks out"].filter((k) => bad.includes(k)).length,
+  bad.split("\n- ").length - 1,
+  /absolute M, H, V and L/.test(fails(() => diagram({ id: "curve", width: 9, height: 9, title: "t" }).edge("M0,0 C1,1 2,2 3,3"))),
+  /used twice/.test(fails(() => diagram({ id: "ok", width: 9, height: 9, title: "t" }))),
+].join(" "));
+')" "true 5 5 true true"
+
   assert_eq "artifact: publish derives the slug from the file name and prints the URL" \
     "$(art publish "$ART_TMP/My Demo.html" --description 'a demo')" "$ART_URL/a/my-demo/"
   assert_eq "artifact: a first publish opens the page in \$BROWSER" "$(art_opened)" "$ART_URL/a/my-demo/"
