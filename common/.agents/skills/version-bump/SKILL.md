@@ -91,4 +91,3 @@ CHANGELOG があれば `## [Unreleased]` の内容から、無ければ前回リ
 - [ ] (CHANGELOG がある場合) `## [X.Y.Z] - YYYY-MM-DD` を追加し、`[Unreleased]` は見出しだけ残し、compare リンクを更新した（全ロケール）
 - [ ] リリースコミットを PR 経由で `develop` に squash マージした
 - [ ] `develop` → `main` のリリース PR をリリーステンプレートで作成し、**merge commit** でマージする旨を確認した
-- [ ] CI がグリーン
