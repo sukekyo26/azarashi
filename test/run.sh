@@ -1055,7 +1055,7 @@ const bad = fails(() => diagram({ id: "bad", width: 300, height: 120, title: "t"
   .box(20, 40, 60, 40, ["とても長い名前の箱"]).box(70, 40, 60, 40, ["b"]).box(140, 40, 60, 40, ["c"])
   .box(220, 40, 40, 30, ["d"]).edge("M240,0 V120").box(270, 90, 40, 30, ["e"]).svg());
 console.log([
-  svg.startsWith("<div class=\"dg-wrap\"><svg") && svg.includes("marker-end=\"url(#ok-arrow)\""),
+  svg.startsWith("<div class=\"dg-wrap\" style=") && svg.includes("marker-end=\"url(#ok-arrow)\""),
   ["needs about", "overlaps", "straddles", "runs through", "sticks out"].filter((k) => bad.includes(k)).length,
   bad.split("\n- ").length - 1,
   /absolute M, H, V and L/.test(fails(() => diagram({ id: "curve", width: 9, height: 9, title: "t" }).edge("M0,0 C1,1 2,2 3,3"))),
@@ -1516,6 +1516,12 @@ console.log([url, /did you mean aws\/aws-lambda/.test(msg)].join(" "));
     assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in a frame that allows clipboard writes and fullscreen and sends links to other sites to new tabs out of the sandbox" \
       "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true,true|own own none|true"
     art rm live
+    # fit, then ＋ (125%, zoomed) | Ctrl + wheel keeps the point under the pointer | a plain wheel leaves the view | a drag follows the pointer | 全体 restores the fit
+    HOME="$ART_TMP/home" node "$ART_SKILL/diagram/examples/architecture.mjs" "$ART_TMP/diagram.html"
+    art publish "$ART_TMP/diagram.html" >/dev/null
+    assert_eq "artifact: a diagram fits its frame and zooms with the buttons and Ctrl + wheel, pans by dragging and fits again" \
+      "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" zoom)" "true|125 true|true|true|true|true"
+    art rm diagram
     # newest-first list | first row's download link and its new-tab link to the page alone | rows, pressed chip and URL after clicking a project tag |
     # "全プロジェクト" chip clears the URL and is pressed | filtered rows | search in the URL | restored from it | first click only arms | row still there |
     # rows after the second click | store after it | error shown when DELETE cannot

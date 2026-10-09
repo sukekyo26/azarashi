@@ -2,7 +2,7 @@
 // 実行: node sequence.mjs page.html
 import { writeFileSync } from 'node:fs';
 
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 // 格子: 参加者の列は 260 間隔、メッセージは 40 刻み。ラベルは線の 14 上に置く
 const X = { cli: 130, store: 390, srv: 650, br: 910 };
@@ -45,7 +45,7 @@ msg(624, 'srv', 'br', 'event: reload', true);
 // 自分へのメッセージは右へ張り出す小さな折れ線
 d.edge(`M${X.br},648 H${X.br + 40} V676 H${X.br}`, { label: 'location.reload()', at: [X.br - 10, 662] });
 
-writeFileSync(process.argv[2] ?? 'page.html', `${css}
+writeFileSync(process.argv[2] ?? 'page.html', `${assets}
 <section>
   <h2>publish から自動再読み込みまで</h2>
   <p class="muted">応答は破線、サーバーが版を比べ続ける区間は帯で示す。</p>

@@ -2,7 +2,7 @@
 // 実行: node er.mjs page.html
 import { writeFileSync } from 'node:fs';
 
-const { css, diagram, tableHeight } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram, tableHeight } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 // 行 i（0 始まり）の中心は y + 41 + 22i。関係の線を水平にするため、相手の表の高さをその行に合わせる
 const rowY = (y, i) => y + 41 + 22 * i;
@@ -22,7 +22,7 @@ d.edge(`M240,${rowY(40, 3)} H380`, { start: 'zero-one', end: 'zero-many', label:
   .edge(`M640,${40 + tableHeight(page) / 2} H780`, { start: 'one', end: 'zero-one', label: '保存したとき', at: [710, 40 + tableHeight(page) / 2] })
   .edge(`M640,${172 + tableHeight(link) / 2} H780`, { start: 'one', end: 'zero-one', label: '--link のとき', at: [710, 172 + tableHeight(link) / 2] });
 
-writeFileSync(process.argv[2] ?? 'page.html', `${css}
+writeFileSync(process.argv[2] ?? 'page.html', `${assets}
 <section>
   <h2>artifact の保存データ</h2>
   ${d.svg()}

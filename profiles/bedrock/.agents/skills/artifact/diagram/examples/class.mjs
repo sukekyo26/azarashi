@@ -2,7 +2,7 @@
 // 各クラスには artifacts.mjs が使うメンバーだけを、定義しているクラスに書く。実行: node class.mjs page.html
 import { writeFileSync } from 'node:fs';
 
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 // 格子: 列の中心 x = 150, 430, 710, 990（表の幅 240）、段の上端 y = 20, 138, 256, 418。段の間 30 の高さで継承線を折る
 const col = (c) => [150, 430, 710, 990][c] - 120;
@@ -32,7 +32,7 @@ d.edge('M590,459 H550', { label: 'req', at: [570, 447] })
   .edge('M990,286 V550 H710 V507', { dashed: true, label: 'リクエストごとに作る', at: [850, 550] })
   .edge('M710,550 H430 V520', { dashed: true });
 
-writeFileSync(process.argv[2] ?? 'page.html', `${css}
+writeFileSync(process.argv[2] ?? 'page.html', `${assets}
 <section>
   <h2>Node の http まわりのクラス</h2>
   ${d.svg()}

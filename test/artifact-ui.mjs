@@ -4,6 +4,7 @@
 //   manage: 管理画面。前提はストアに my-demo（Demo Page、新しい方）と untitled の 2 件だけがあること
 //   extras: 並び替え・キーボード操作・まとめて削除・説明の編集・パスのコピー（一覧は差し替えるのでストアの中身は問わない）
 //   reload: ライブリロードと、ページの外枠。artifacts.mjs で live を公開し直す（ARTIFACTS_DIR / ARTIFACTS_PORT を引き継ぐ）
+//   zoom: 図の枠での拡大・縮小・移動。前提は diagram に図が 1 枚のページが公開されていること
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -12,8 +13,8 @@ import { join } from 'node:path';
 
 const [chrome, base, scenario, art] = process.argv.slice(2);
 // Chrome を起動する前に確かめ、引数の取り違えを型エラーではなく使い方で知らせる
-if (!chrome || !base || !['manage', 'extras', 'reload'].includes(scenario) || (scenario === 'reload' && !art)) {
-  console.error('usage: artifact-ui.mjs <chrome> <base-url> manage | extras | reload <artifacts.mjs>');
+if (!chrome || !base || !['manage', 'extras', 'reload', 'zoom'].includes(scenario) || (scenario === 'reload' && !art)) {
+  console.error('usage: artifact-ui.mjs <chrome> <base-url> manage | extras | zoom | reload <artifacts.mjs>');
   process.exit(2);
 }
 const profile = mkdtempSync(join(tmpdir(), 'artifact-ui-'));
@@ -310,6 +311,49 @@ async function leave({ send, evaluate, navigate, dir }) {
   }
 }
 
+// 枠の内側の点 (ax, ay) にある図の座標を、見えている範囲（viewBox）から求めて比べる
+async function zoom({ send, evaluate, navigate }) {
+  await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 800, deviceScaleFactor: 1, mobile: false });
+  await navigate(`${base}/a/diagram/?raw`);
+  const view = () => evaluate("document.querySelector('.dg').getAttribute('viewBox')");
+  const click = (k) => evaluate(`document.querySelector('.dg-tools [data-zoom=${k}]').click()`);
+  const at = (ax, ay) => evaluate(`(() => {
+    const v = document.querySelector('.dg').viewBox.baseVal, w = document.querySelector('.dg-wrap');
+    return [v.x + ${ax} * v.width / w.clientWidth, v.y + ${ay} * v.height / w.clientHeight];
+  })()`);
+  const wrap = await evaluate(`(() => {
+    const w = document.querySelector('.dg-wrap'), r = w.getBoundingClientRect();
+    w.scrollIntoView();
+    return { x: r.left + w.clientLeft, y: w.getBoundingClientRect().top + w.clientTop };
+  })()`);
+  const mouse = (type, x, y, extra = {}) => send('Input.dispatchMouseEvent', { type, x: wrap.x + x, y: wrap.y + y, ...extra });
+  const near = (a, b) => Math.abs(a[0] - b[0]) < 0.5 && Math.abs(a[1] - b[1]) < 0.5;
+
+  const out = [];
+  const fitted = await view();
+  // fits whole: the view covers the 1248x512 canvas and the fit button is off
+  out.push(await evaluate("(() => { const v = document.querySelector('.dg').viewBox.baseVal; return v.width >= 1248 && v.height >= 512 && document.querySelector('.dg-tools [data-zoom=fit]').disabled; })()"));
+  await click('in');
+  out.push(await evaluate(`(() => { const v = document.querySelector('.dg').viewBox.baseVal; return Math.round(${JSON.stringify(fitted)}.split(' ')[2] / v.width * 100) + ' ' + document.querySelector('.dg-wrap').classList.contains('zoomed'); })()`));
+  // Ctrl + wheel zooms in about the pointer: the diagram point under it stays put
+  const before = await at(200, 100);
+  await mouse('mouseWheel', 200, 100, { deltaX: 0, deltaY: -200, modifiers: 2 });
+  const zoomed = await view();
+  out.push(zoomed !== fitted && near(before, await at(200, 100)));
+  // a plain wheel scrolls the page and leaves the view alone
+  await mouse('mouseWheel', 200, 100, { deltaX: 0, deltaY: 100 });
+  out.push(await view() === zoomed);
+  // dragging moves the diagram with the pointer
+  const grabbed = await at(300, 150);
+  await mouse('mousePressed', 300, 150, { button: 'left', clickCount: 1 });
+  await mouse('mouseMoved', 200, 100, { button: 'left', buttons: 1 });
+  await mouse('mouseReleased', 200, 100, { button: 'left', clickCount: 1 });
+  out.push(near(grabbed, await at(200, 100)));
+  await click('fit');
+  out.push(await view() === fitted);
+  return out;
+}
+
 let ws;
 try {
   // 冷えた CI ランナーでは最初の起動に 30 秒を超えることがある（ディスクから読み込む間 kill にも応じない）
@@ -359,7 +403,7 @@ try {
     await until(() => evaluate("!window.leaving && document.readyState === 'complete'").catch(() => false), `${url} to load`);
   };
 
-  const scenarios = { manage, extras, reload };
+  const scenarios = { manage, extras, reload, zoom };
   console.log((await scenarios[scenario]({ send, evaluate, navigate })).join('|'));
 } catch (e) {
   console.error(`artifact-ui: ${e.message}`);

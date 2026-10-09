@@ -2,7 +2,7 @@
 // アイコンは先に artifacts.sh icons-aws fetch で取得しておく。名前は artifacts.sh icons-aws search <語> で引く。実行: node aws.mjs page.html
 import { writeFileSync } from 'node:fs';
 
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 // 格子: アイコンは 48px、流れの行の y = 140。アイコン付きの枠の中身は上端から 40 以上下に置く。AWS 構成図の枠は角を丸めない
 const d = diagram({ id: 'aws', width: 1000, height: 330, title: 'bedrock プロファイルの構成' });
@@ -20,7 +20,7 @@ d.edge('M124,140 H436', { label: '推論リクエスト', at: [200, 140] })
   .edge('M484,140 H600 V202 H632')
   .edge('M484,140 H600 V264 H632');
 
-writeFileSync(process.argv[2] ?? 'page.html', `${css}
+writeFileSync(process.argv[2] ?? 'page.html', `${assets}
 <section>
   <h2>bedrock プロファイルの構成</h2>
   ${d.svg()}

@@ -2,7 +2,7 @@
 // 実行: node git.mjs page.html
 import { writeFileSync } from 'node:fs';
 
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 // 格子: レーンの y、コミットは x = 200 から 70 刻み。分岐と合流は斜めの線 1 本
 const lane = { develop: 50, artifact: 110, flakes: 170, svg: 230, layout: 290, examples: 350 };
@@ -31,7 +31,7 @@ d.dot(480, 170).dot(410, 230).dot(550, 230).dot(760, 290).dot(900, 350).dot(970,
 d.label('#109', 200, 30).label('#75', 270, 30)
   .label('#111', 620, 90).label('#110', 690, 90).label('#112', 830, 90).label('#113 レビュー中', 1110, 90);
 
-writeFileSync(process.argv[2] ?? 'page.html', `${css}
+writeFileSync(process.argv[2] ?? 'page.html', `${assets}
 <section>
   <h2>artifact スキルのブランチ</h2>
   ${d.svg()}
