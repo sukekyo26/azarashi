@@ -6,6 +6,8 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 // LIMIT: 文字幅は概算（日本語 1 文字 ≈ 文字サイズ、英数字 ≈ 0.6 倍）。フォントを替えて外れるなら実測に替える
 const textWidth = (s, size, code) => [...s].reduce((w, c) => w + (c.codePointAt(0) > 0x2e80 ? size : size * (code ? 0.62 : 0.6)), 0);
 const SIZE = { main: 13, sub: 12 };
+// 広い画面で拡大するのは、図の太字が雛形の本文（16px）と同じ大きさになるまで
+const MAX_SCALE = 16 / SIZE.main;
 const PAD = 16;
 const LINE = 17;
 const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -294,7 +296,7 @@ export function diagram({ id, width, height, title }) {
         const [vb, w, h, rx, ry, body] = MARKERS[k];
         return `<marker id="${id}-${k}" viewBox="${vb}" refX="${rx}" refY="${ry}" markerWidth="${w}" markerHeight="${h}" markerUnits="userSpaceOnUse" orient="auto-start-reverse">${body}</marker>`;
       }).join('');
-      return `<div class="dg-wrap"><svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="min-width: ${width}px" class="dg" role="img" aria-label="${esc(title)}">`
+      return `<div class="dg-wrap"><svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="min-width: ${width}px; max-width: ${Math.round(width * MAX_SCALE)}px" class="dg" role="img" aria-label="${esc(title)}">`
         + `<defs>${defs}</defs>${out.areas.join('')}${out.edges.join('')}${out.boxes.join('')}${out.labels.join('')}</svg></div>`;
     },
   };
@@ -305,7 +307,7 @@ export function diagram({ id, width, height, title }) {
 // text-anchor は属性で付ける（CSS で指定すると属性より強く、個別の指定が効かなくなる）
 export const css = `<style>
   .dg-wrap { overflow-x: auto; padding-block: 4px; }
-  /* 本文の幅いっぱいに広げ、原寸より狭い画面では縮めずに横スクロールさせる（文字を読める大きさに保つ） */
+  /* 本文の幅に合わせて広げ（上限は max-width）、原寸より狭い画面では縮めずに横スクロールさせる（文字を読める大きさに保つ） */
   .dg { display: block; width: 100%; height: auto; font-family: var(--font); }
   .dg text { dominant-baseline: central; }
   .dg .main { fill: var(--fg); font-size: ${SIZE.main}px; font-weight: 700; }
