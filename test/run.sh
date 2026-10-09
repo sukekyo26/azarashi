@@ -1516,11 +1516,11 @@ console.log([url, /did you mean aws\/aws-lambda/.test(msg)].join(" "));
     assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in a frame that allows clipboard writes and fullscreen and sends links to other sites to new tabs out of the sandbox" \
       "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true,true|own own none|true"
     art rm live
-    # fit, then ＋ (125%, zoomed) | Ctrl + wheel keeps the point under the pointer | a plain wheel leaves the view | a drag follows the pointer | 全体 restores the fit
+    # fit, then ＋ (125%, zoomed) | Ctrl + wheel keeps the point under the pointer | a plain wheel leaves the view | a drag follows the pointer | 全体 restores the fit | running the assets script again adds no second toolbar
     HOME="$ART_TMP/home" node "$ART_SKILL/diagram/examples/architecture.mjs" "$ART_TMP/diagram.html"
     art publish "$ART_TMP/diagram.html" >/dev/null
-    assert_eq "artifact: a diagram fits its frame and zooms with the buttons and Ctrl + wheel, pans by dragging and fits again" \
-      "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" zoom)" "true|125 true|true|true|true|true"
+    assert_eq "artifact: a diagram fits its frame and zooms with the buttons and Ctrl + wheel, pans by dragging, fits again and sets up once" \
+      "$(node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" zoom)" "true|125 true|true|true|true|true|1"
     art rm diagram
     # newest-first list | first row's download link and its new-tab link to the page alone | rows, pressed chip and URL after clicking a project tag |
     # "全プロジェクト" chip clears the URL and is pressed | filtered rows | search in the URL | restored from it | first click only arms | row still there |

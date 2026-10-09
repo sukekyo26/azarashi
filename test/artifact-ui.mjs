@@ -352,6 +352,8 @@ async function zoom({ send, evaluate, navigate }) {
   out.push(near(grabbed, await at(200, 100)));
   await click('fit');
   out.push(await view() === fitted);
+  // the assets script run a second time (a page that includes assets twice) adds no second toolbar
+  out.push(await evaluate("(0, eval)([...document.scripts].find((s) => s.textContent.includes('zoomable')).textContent), document.querySelectorAll('.dg-tools').length"));
   return out;
 }
 

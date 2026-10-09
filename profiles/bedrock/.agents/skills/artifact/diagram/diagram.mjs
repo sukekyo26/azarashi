@@ -308,6 +308,9 @@ export function diagram({ id, width, height, title }) {
 function zoomable() {
   const MAX = 4;
   const setup = (wrap) => {
+    // 複数の図のページを 1 枚にまとめると assets が重複し得る。その分の 2 回目は何もしない
+    if (wrap.dataset.zoomable) return;
+    wrap.dataset.zoomable = 'on';
     const svg = wrap.querySelector('svg');
     const [, , W, H] = svg.getAttribute('viewBox').split(' ').map(Number);
     // s は図の 1 単位あたりの画面の px、(cx, cy) は見えている範囲の中心。fitted の間は枠の大きさが変わっても全体表示を保つ
