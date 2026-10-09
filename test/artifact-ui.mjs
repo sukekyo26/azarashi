@@ -322,9 +322,10 @@ async function zoom({ send, evaluate, navigate }) {
     return [v.x + ${ax} * v.width / w.clientWidth, v.y + ${ay} * v.height / w.clientHeight];
   })()`);
   const wrap = await evaluate(`(() => {
-    const w = document.querySelector('.dg-wrap'), r = w.getBoundingClientRect();
+    const w = document.querySelector('.dg-wrap');
     w.scrollIntoView();
-    return { x: r.left + w.clientLeft, y: w.getBoundingClientRect().top + w.clientTop };
+    const r = w.getBoundingClientRect();
+    return { x: r.left + w.clientLeft, y: r.top + w.clientTop };
   })()`);
   const mouse = (type, x, y, extra = {}) => send('Input.dispatchMouseEvent', { type, x: wrap.x + x, y: wrap.y + y, ...extra });
   const near = (a, b) => Math.abs(a[0] - b[0]) < 0.5 && Math.abs(a[1] - b[1]) < 0.5;
