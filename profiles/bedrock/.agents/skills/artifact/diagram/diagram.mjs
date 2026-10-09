@@ -296,19 +296,135 @@ export function diagram({ id, width, height, title }) {
         const [vb, w, h, rx, ry, body] = MARKERS[k];
         return `<marker id="${id}-${k}" viewBox="${vb}" refX="${rx}" refY="${ry}" markerWidth="${w}" markerHeight="${h}" markerUnits="userSpaceOnUse" orient="auto-start-reverse">${body}</marker>`;
       }).join('');
-      return `<div class="dg-wrap"><svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="min-width: ${width}px; max-width: ${Math.round(width * MAX_SCALE)}px" class="dg" role="img" aria-label="${esc(title)}">`
+      return `<div class="dg-wrap" style="aspect-ratio: ${width} / ${height}; max-height: min(85vh, ${Math.round(height * MAX_SCALE)}px)"><svg viewBox="0 0 ${width} ${height}" class="dg" role="img" aria-label="${esc(title)}">`
         + `<defs>${defs}</defs>${out.areas.join('')}${out.edges.join('')}${out.boxes.join('')}${out.labels.join('')}</svg></div>`;
     },
   };
   return api;
 }
 
-// ページに 1 回だけ入れる。色は雛形の CSS 変数で、ダークモードに追従する。
+// 枠の中で図を拡大・縮小・移動する。最初は図の全体を枠に収める。
+// 枠の大きさは CSS で決まり、viewBox を枠と同じ縦横比で書き換えるので、見えている範囲がそのまま viewBox になる
+function zoomable() {
+  const MAX = 4;
+  const setup = (wrap) => {
+    // 複数の図のページを 1 枚にまとめると assets が重複し得る。その分の 2 回目は何もしない
+    if (wrap.dataset.zoomable) return;
+    wrap.dataset.zoomable = 'on';
+    const svg = wrap.querySelector('svg');
+    const [, , W, H] = svg.getAttribute('viewBox').split(' ').map(Number);
+    // s は図の 1 単位あたりの画面の px、(cx, cy) は見えている範囲の中心。fitted の間は枠の大きさが変わっても全体表示を保つ
+    let s = 1, cx = W / 2, cy = H / 2, fitted = true;
+    const fit = () => Math.min(wrap.clientWidth / W, wrap.clientHeight / H);
+    // 縮小は全体表示か原寸の小さい方まで
+    const min = () => Math.min(fit(), 1);
+    const tools = document.createElement('div');
+    tools.className = 'dg-tools';
+    tools.innerHTML = '<span>Ctrl / ⌘ + ホイール・ピンチで拡大、拡大中はドラッグで移動</span>'
+      + [['in', '＋', '拡大'], ['out', '－', '縮小'], ['fit', '全体', '全体を表示'], ['one', '原寸', '原寸で表示']]
+        .map(([k, t, l]) => `<button type="button" data-zoom="${k}" title="${l}" aria-label="${l}">${t}</button>`).join('');
+    wrap.before(tools);
+    const button = (k) => tools.querySelector(`[data-zoom="${k}"]`);
+
+    const render = () => {
+      const w = wrap.clientWidth, h = wrap.clientHeight;
+      if (!w || !h) return;
+      if (fitted) [s, cx, cy] = [fit(), W / 2, H / 2];
+      s = Math.min(Math.max(s, min()), MAX);
+      const vw = w / s, vh = h / s;
+      // 図より広く見えている向きは中央に寄せ、狭い向きは図の端より外へ出さない
+      const clamp = (c, v, size) => (v >= size ? size / 2 : Math.min(Math.max(c, v / 2), size - v / 2));
+      cx = clamp(cx, vw, W);
+      cy = clamp(cy, vh, H);
+      svg.setAttribute('viewBox', `${cx - vw / 2} ${cy - vh / 2} ${vw} ${vh}`);
+      wrap.classList.toggle('zoomed', vw < W - 0.5 || vh < H - 0.5);
+      button('in').disabled = s >= MAX;
+      button('out').disabled = s <= min();
+      button('fit').disabled = fitted;
+      button('one').disabled = Math.abs(s - 1) < 1e-3;
+    };
+    // 画面の座標を枠の内側（枠線を除く）の左上からの px にする
+    const local = (x, y) => {
+      const r = wrap.getBoundingClientRect();
+      return [x - r.left - wrap.clientLeft, y - r.top - wrap.clientTop];
+    };
+    // (ax, ay) は local の座標。その点の下にある図の位置を動かさずに k 倍する
+    const zoomAt = (k, ax = wrap.clientWidth / 2, ay = wrap.clientHeight / 2) => {
+      const ns = Math.min(Math.max(s * k, min()), MAX);
+      const dx = ax - wrap.clientWidth / 2, dy = ay - wrap.clientHeight / 2;
+      cx += dx / s - dx / ns;
+      cy += dy / s - dy / ns;
+      s = ns;
+      fitted = false;
+      render();
+    };
+
+    tools.addEventListener('click', (e) => {
+      const k = e.target.closest('button')?.dataset.zoom;
+      if (k === 'in') zoomAt(1.25);
+      if (k === 'out') zoomAt(0.8);
+      if (k === 'one') zoomAt(1 / s);
+      if (k === 'fit') {
+        fitted = true;
+        render();
+      }
+    });
+    // ホイールだけならページのスクロールに回す。トラックパッドのピンチも ctrlKey 付きの wheel で届く
+    wrap.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      zoomAt(Math.exp(-dy * 0.002), ...local(e.clientX, e.clientY));
+    }, { passive: false });
+
+    // 1 本の指・マウスは移動、2 本の指は 2 点の中点を軸に拡大・縮小しながら移動する
+    const points = new Map();
+    const gesture = () => {
+      const [a, b = a] = [...points.values()];
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) };
+    };
+    wrap.addEventListener('pointerdown', (e) => {
+      // 全体表示中のマウスは文字の選択に残す
+      if (e.button !== 0 || (e.pointerType === 'mouse' && !wrap.classList.contains('zoomed'))) return;
+      e.preventDefault();
+      wrap.setPointerCapture(e.pointerId);
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    });
+    wrap.addEventListener('pointermove', (e) => {
+      if (!points.has(e.pointerId)) return;
+      const before = gesture();
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const after = gesture();
+      cx -= (after.x - before.x) / s;
+      cy -= (after.y - before.y) / s;
+      if (before.d && after.d) zoomAt(after.d / before.d, ...local(after.x, after.y));
+      else render();
+    });
+    for (const type of ['pointerup', 'pointercancel']) wrap.addEventListener(type, (e) => points.delete(e.pointerId));
+    // 最初の通知は描画の直前なので、描画を待たずに状態を読むコード（テスト）のためにここで 1 回決めておく
+    render();
+    new ResizeObserver(render).observe(wrap);
+  };
+  const init = () => document.querySelectorAll('.dg-wrap').forEach(setup);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+}
+
+// ページに 1 回だけ入れる（図より前でよい）。色は雛形の CSS 変数で、ダークモードに追従する。
 // text-anchor は属性で付ける（CSS で指定すると属性より強く、個別の指定が効かなくなる）
-export const css = `<style>
-  .dg-wrap { overflow-x: auto; padding-block: 4px; }
-  /* 本文の幅に合わせて広げ（上限は max-width）、原寸より狭い画面では縮めずに横スクロールさせる（文字を読める大きさに保つ） */
-  .dg { display: block; width: 100%; height: auto; font-family: var(--font); }
+export const assets = `<script>(${zoomable})();</script>
+<style>
+  /* 枠は本文の幅いっぱい。高さは図の縦横比で決め、画面の高さと拡大の上限（max-height）で頭打ちにして、図は枠の中央に置く */
+  .dg-wrap { position: relative; width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; touch-action: pan-y; }
+  .dg-wrap.zoomed { cursor: grab; touch-action: none; user-select: none; }
+  .dg-wrap.zoomed:active { cursor: grabbing; }
+  .dg-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; margin-bottom: -0.6rem; font-size: 12px; line-height: 1.4; }
+  .dg-tools span { color: var(--muted); margin-right: auto; }
+  @media (max-width: 640px) { .dg-tools span { display: none; } }
+  .dg-tools button { min-width: 2.2rem; padding: 2px 8px; font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+  .dg-tools button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .dg-tools button:disabled { opacity: 0.4; cursor: default; }
+  .dg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; font-family: var(--font); }
   .dg text { dominant-baseline: central; }
   .dg .main { fill: var(--fg); font-size: ${SIZE.main}px; font-weight: 700; }
   .dg .sub { fill: var(--muted); font-size: ${SIZE.sub}px; }

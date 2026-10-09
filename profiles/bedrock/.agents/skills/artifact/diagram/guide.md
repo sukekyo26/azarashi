@@ -4,20 +4,20 @@
 
 ## 道具
 
-同じディレクトリの `diagram.mjs` で組む。座標を渡して部品を足すと、`svg()` が文字のはみ出し・箱やラベルの重なり・箱を横切る線・ほかのラベルや枠の見出しを横切る線・線同士の交差・枠をまたぐ箱・キャンバスからのはみ出しを検査する。通らなければ直す箇所の一覧を付けて例外になるので、座標を直して実行し直す。`css` はページに 1 回だけ入れる（色は雛形の CSS 変数で、ダークモードに追従する）。
+同じディレクトリの `diagram.mjs` で組む。座標を渡して部品を足すと、`svg()` が文字のはみ出し・箱やラベルの重なり・箱を横切る線・ほかのラベルや枠の見出しを横切る線・線同士の交差・枠をまたぐ箱・キャンバスからのはみ出しを検査する。通らなければ直す箇所の一覧を付けて例外になるので、座標を直して実行し直す。`assets` はページに 1 回だけ入れる（色は雛形の CSS 変数で、ダークモードに追従する）。図は枠に入り、最初は全体が枠に収まる大きさで出る。読む人はボタン・Ctrl/⌘＋ホイール・ピンチで拡大し、ドラッグで移動できる。
 
 一時ディレクトリに組み立てスクリプトを書き、`node`（か `bun`）で実行してページを書き出してから publish する。
 
 ```js
 import { writeFileSync } from 'node:fs';
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 const d = diagram({ id: 'arch', width: 640, height: 200, title: 'API の構成' });
 d.frame(16, 16, 608, 168, 'VPC')
   .box(40, 72, 200, 56, [['ALB', 'main code'], '公開の入口'], { tone: 'accent' })
   .box(400, 72, 200, 56, ['API サーバー', 'ECS'])
   .edge('M240,100 H400', { label: 'HTTPS', at: [320, 100] });
-writeFileSync('page.html', `${css}<header><h1>API の構成</h1></header><section><h2>全体</h2>${d.svg()}</section>`);
+writeFileSync('page.html', `${assets}<header><h1>API の構成</h1></header><section><h2>全体</h2>${d.svg()}</section>`);
 ```
 
 | 部品 | 使い方 |

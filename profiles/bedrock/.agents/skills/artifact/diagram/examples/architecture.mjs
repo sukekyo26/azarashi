@@ -2,7 +2,7 @@
 // 実行: node architecture.mjs page.html
 import { writeFileSync } from 'node:fs';
 
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 // 格子: 行の中心 y = 92 + 88n（箱の高さ 56、行の間 32）。列は 左端 / 置き場所 / サーバー / ブラウザ
 const row = (n) => 92 + (n - 1) * 88;
@@ -39,7 +39,7 @@ d.edge(`M224,${row(1)} H644`, { label: '① 起動確認', at: [434, row(1)] })
   .edge(`M884,${row(4) + 8} H1070 V${row(5) - 28}`)
   .edge(`M988,${row(5)} H884`, { start: 'arrow', label: 'API', at: [936, row(5)] });
 
-writeFileSync(process.argv[2] ?? 'page.html', `${css}
+writeFileSync(process.argv[2] ?? 'page.html', `${assets}
 <section>
   <h2>artifact の仕組み</h2>
   ${d.svg()}

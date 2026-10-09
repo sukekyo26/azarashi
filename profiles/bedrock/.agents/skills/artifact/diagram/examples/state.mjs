@@ -2,7 +2,7 @@
 // 実行: node state.mjs page.html
 import { writeFileSync } from 'node:fs';
 
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 // 格子: 状態の中心 y = 120、箱 200×64、間隔 200（ラベル 1 つ分より広く取る）。平行線は中心から ±12
 const d = diagram({ id: 'state', width: 1080, height: 252, title: 'サーバーの状態' });
@@ -26,7 +26,7 @@ d.dot(22, 120)
   .edge('M960,152 V216 H160 V152', { label: 'SIGTERM（stop・古い版を publish が検出）', at: [360, 216] })
   .edge('M560,152 V216', { end: null });
 
-writeFileSync(process.argv[2] ?? 'page.html', `${css}
+writeFileSync(process.argv[2] ?? 'page.html', `${assets}
 <section>
   <h2>サーバーの起動と停止</h2>
   ${d.svg()}

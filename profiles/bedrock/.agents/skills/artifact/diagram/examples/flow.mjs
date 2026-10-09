@@ -2,7 +2,7 @@
 // 実行: node flow.mjs page.html
 import { writeFileSync } from 'node:fs';
 
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 // 格子: 本流の中心 x = 300、段の中心 y = 40 + 76n（箱の高さ 52、段の間 24）。拒否の札は x = 540 から
 const cy = (n) => 40 + n * 76;
@@ -42,7 +42,7 @@ for (const [n, label, reason] of [
     .edge(`M470,${cy(n)} H540`, { label, at: [505, cy(n) - 14] });
 }
 
-writeFileSync(process.argv[2] ?? 'page.html', `${css}
+writeFileSync(process.argv[2] ?? 'page.html', `${assets}
 <section>
   <h2>publish の検査</h2>
   ${d.svg()}

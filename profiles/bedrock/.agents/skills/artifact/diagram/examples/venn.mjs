@@ -2,7 +2,7 @@
 // 実行: node venn.mjs page.html
 import { writeFileSync } from 'node:fs';
 
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 // 半径 170 の円を三角に並べる。文字はどの円の内側・外側かを座標で確かめた位置に置く
 const d = diagram({ id: 'venn', width: 760, height: 520, title: 'エージェントごとの設定' });
@@ -19,7 +19,7 @@ region(268, 321, ['statusline.sh', 'settings.json']);
 region(210, 141, ['output style', '専用の hook']);
 region(550, 141, ['config.toml', 'hooks.json']);
 
-writeFileSync(process.argv[2] ?? 'page.html', `${css}
+writeFileSync(process.argv[2] ?? 'page.html', `${assets}
 <section>
   <h2>エージェントごとの設定</h2>
   ${d.svg()}

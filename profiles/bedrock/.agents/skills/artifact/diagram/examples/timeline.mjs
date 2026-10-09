@@ -2,7 +2,7 @@
 // 実行: node timeline.mjs page.html
 import { writeFileSync } from 'node:fs';
 
-const { css, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
+const { assets, diagram } = await import(`${process.env.HOME}/.agents/skills/artifact/diagram/diagram.mjs`);
 
 // 目盛り: 10/06 0:00 からの時間 h を x = 160 + 9h に置く（1 日 = 216px）。左の 160px は行の名前
 const at = (day, hh, mm = 0) => 160 + 9 * ((day - 6) * 24 + hh + mm / 60);
@@ -21,7 +21,7 @@ d.dot(at(6, 0, 42), row.milestone, { tone: 'accent' }).label('スキル追加', 
   .dot(at(7, 7, 57), row.milestone, { tone: 'accent' }).label('develop へ統合', at(7, 7, 57), 24)
   .dot(at(9, 0, 17), row.milestone, { tone: 'accent' }).label('図を SVG に', at(9, 0, 17), 24);
 
-writeFileSync(process.argv[2] ?? 'page.html', `${css}
+writeFileSync(process.argv[2] ?? 'page.html', `${assets}
 <section>
   <h2>artifact スキルの PR の時期</h2>
   ${d.svg()}
