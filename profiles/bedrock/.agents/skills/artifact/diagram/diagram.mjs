@@ -401,6 +401,8 @@ function zoomable() {
       else render();
     });
     for (const type of ['pointerup', 'pointercancel']) wrap.addEventListener(type, (e) => points.delete(e.pointerId));
+    // 最初の通知は描画の直前なので、描画を待たずに状態を読むコード（テスト）のためにここで 1 回決めておく
+    render();
     new ResizeObserver(render).observe(wrap);
   };
   const init = () => document.querySelectorAll('.dg-wrap').forEach(setup);
