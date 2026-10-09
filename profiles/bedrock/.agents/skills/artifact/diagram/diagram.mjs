@@ -296,7 +296,7 @@ export function diagram({ id, width, height, title }) {
         const [vb, w, h, rx, ry, body] = MARKERS[k];
         return `<marker id="${id}-${k}" viewBox="${vb}" refX="${rx}" refY="${ry}" markerWidth="${w}" markerHeight="${h}" markerUnits="userSpaceOnUse" orient="auto-start-reverse">${body}</marker>`;
       }).join('');
-      return `<div class="dg-wrap" style="max-width: ${Math.round(width * MAX_SCALE)}px; aspect-ratio: ${width} / ${height}"><svg viewBox="0 0 ${width} ${height}" class="dg" role="img" aria-label="${esc(title)}">`
+      return `<div class="dg-wrap" style="aspect-ratio: ${width} / ${height}; max-height: min(85vh, ${Math.round(height * MAX_SCALE)}px)"><svg viewBox="0 0 ${width} ${height}" class="dg" role="img" aria-label="${esc(title)}">`
         + `<defs>${defs}</defs>${out.areas.join('')}${out.edges.join('')}${out.boxes.join('')}${out.labels.join('')}</svg></div>`;
     },
   };
@@ -317,7 +317,6 @@ function zoomable() {
     const min = () => Math.min(fit(), 1);
     const tools = document.createElement('div');
     tools.className = 'dg-tools';
-    tools.style.maxWidth = wrap.style.maxWidth;
     tools.innerHTML = '<span>Ctrl / ⌘ + ホイール・ピンチで拡大、拡大中はドラッグで移動</span>'
       + [['in', '＋', '拡大'], ['out', '－', '縮小'], ['fit', '全体', '全体を表示'], ['one', '原寸', '原寸で表示']]
         .map(([k, t, l]) => `<button type="button" data-zoom="${k}" title="${l}" aria-label="${l}">${t}</button>`).join('');
@@ -410,8 +409,8 @@ function zoomable() {
 // text-anchor は属性で付ける（CSS で指定すると属性より強く、個別の指定が効かなくなる）
 export const assets = `<script>(${zoomable})();</script>
 <style>
-  /* 本文の幅に合わせて広げ（上限は max-width）、高さは図の縦横比で決めて画面の高さで頭打ちにする */
-  .dg-wrap { position: relative; width: 100%; max-height: 85vh; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; touch-action: pan-y; }
+  /* 枠は本文の幅いっぱい。高さは図の縦横比で決め、画面の高さと拡大の上限（max-height）で頭打ちにして、図は枠の中央に置く */
+  .dg-wrap { position: relative; width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; touch-action: pan-y; }
   .dg-wrap.zoomed { cursor: grab; touch-action: none; user-select: none; }
   .dg-wrap.zoomed:active { cursor: grabbing; }
   .dg-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; margin-bottom: -0.6rem; font-size: 12px; line-height: 1.4; }
