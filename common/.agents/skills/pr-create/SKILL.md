@@ -49,7 +49,7 @@ upstream が無ければ `git push -u origin <current>`、ahead なら `git push
 | 状況 | タイトル |
 |:-----|:--------|
 | 通常の開発 PR | コミット数に依らず `feat(scope): summary` 形式で差分全体を要約する（単一コミットでもメッセージをそのまま流用しない） |
-| `develop → main` でバージョンアップあり | `develop` のリリースコミットと同一タイトル（`chore: release vX.Y.Z` 等。プロジェクト規約から取り、ハードコードしない） |
+| `develop → main` でバージョンアップあり | `version-bump` スキルの「タイトルの表記」で決まる `main` 側の表記（`chore: release vX.Y.Z` 等）。`develop` の準備コミット `chore: prepare release vX.Y.Z` とは別の名前にする |
 | `develop → main` でバージョンアップなし | コミット内容を集約した通常タイトル |
 
 `git log origin/main..HEAD --pretty=format:'%s'` でリリースコミットの有無を確認する。

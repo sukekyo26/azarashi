@@ -1,6 +1,6 @@
 <!--
 PR title must follow Conventional Commits: feat(scope): ... / fix(scope): ... / chore: ... etc.
-Release PRs (develop → main) may use `chore: release vX.Y.Z`.
+Release PRs (develop → main) may use `chore: release vX.Y.Z`; the release-prep PR into develop uses `chore: prepare release vX.Y.Z`.
 -->
 
 ## Summary
