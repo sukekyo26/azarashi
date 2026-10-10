@@ -1,6 +1,7 @@
 <!--
 Release PR: develop → main. Authored by the version-bump / pr-create skills, not by hand.
-Title MUST match the release commit on develop (Conventional Commits, e.g. `chore: release vX.Y.Z`).
+Title follows the repo's earlier release PRs on main (Conventional Commits, e.g. `chore: release vX.Y.Z`).
+The CHANGELOG + version PR into develop is titled `chore: prepare release vX.Y.Z` so the two stay distinct.
 
 Normal feature / fix PRs use the default pull_request_template.md instead.
 -->
