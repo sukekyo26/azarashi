@@ -1513,8 +1513,8 @@ console.log([url, /did you mean aws\/aws-lambda/.test(msg)].join(" "));
   ART_CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
   if [ -n "$ART_CHROME" ] && node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'; then
     # the page shows version 1, then version 2 once republished, without a manual reload
-    assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in a frame that allows clipboard writes and fullscreen and sends links to other sites to new tabs out of the sandbox" \
-      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true,true|own own none|true"
+    assert_eq "artifact: an open page reloads itself when republished, and its URL shows it in a frame that allows clipboard writes and fullscreen and sends links to other sites to new tabs out of the sandbox and moves the whole tab for links to another page" \
+      "$(ARTIFACTS_DIR="$ART_TMP/store" ARTIFACTS_PORT="$ART_PORT" node "$SCRIPT_DIR/artifact-ui.mjs" "$ART_CHROME" "$ART_URL" reload "$ART")" "1|2|Live · Artifacts|true|true,true|own own none /a/no-such/|true"
     art rm live
     # fit, then ＋ (125%, zoomed) | Ctrl + wheel keeps the point under the pointer | a plain wheel leaves the view | a drag follows the pointer | 全体 restores the fit | running the assets script again adds no second toolbar
     HOME="$ART_TMP/home" node "$ART_SKILL/diagram/examples/architecture.mjs" "$ART_TMP/diagram.html"

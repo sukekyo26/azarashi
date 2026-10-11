@@ -263,8 +263,8 @@ async function reload({ send, evaluate, navigate }) {
 
 // ページ内のリンクで別のサイトへ出る。target=_blank のタブは sandbox を引き継がずそのサイトの origin で動き、
 // target の無いリンクも外枠の中ではなく新しいタブで開く（多くのサイトは iframe に入れられるのを拒む）。
-// 同じサーバー内のリンクは今までどおり外枠の中で開く。別のサイトは、iframe を拒む小さなサーバーで代える。
-// 出力は開いたタブごとの origin（無ければ none）
+// 同じサーバー内のリンクは今までどおり外枠の中で開き、外枠の URL（/a/<slug>/）へのリンクは外枠を重ねずタブごと移る。
+// 別のサイトは、iframe を拒む小さなサーバーで代える。出力は開いたタブごとの origin（無ければ none）と、移った先のパス
 async function leave({ send, evaluate, navigate, dir }) {
   const site = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html', 'x-frame-options': 'DENY' });
@@ -275,7 +275,7 @@ async function leave({ send, evaluate, navigate, dir }) {
   try {
     // 3 つのリンクを決まった位置に置き、読み込めたら外枠に知らせる
     writeFileSync(join(dir, 'leave.html'), `<title>Leave</title><style>a { position: fixed; left: 0; width: 200px; height: 40px; }</style>`
-      + `<a href="${other}/blank" target="_blank" style="top: 0">blank</a><a href="${other}/plain" style="top: 60px">plain</a><a href="inner.html" style="top: 120px">inner</a>`
+      + `<a href="${other}/blank" target="_blank" style="top: 0">blank</a><a href="${other}/plain" style="top: 60px">plain</a><a href="inner.html" style="top: 120px">inner</a><a href="/a/no-such/" style="top: 180px">frame</a>`
       // the page declares globals named like the ones the appended script uses; the script must not pick them up
       + "<script>const open = () => {}; const URL = null; const EventSource = null; const self = null;"
       + "setInterval(() => parent.postMessage('ready', '*'), 100)</script>");
@@ -304,6 +304,14 @@ async function leave({ send, evaluate, navigate, dir }) {
       origins.push(origin === other ? 'own' : origin);
       await send('Target.closeTarget', { targetId: t.targetId });
     }
+    // inner のリンクで iframe が移ったので、開き直してから押す
+    await navigate(`${base}/a/leave/`);
+    await until(() => evaluate("(window.listening ||= (addEventListener('message', (e) => { window.reported = e.data; }), true)) && window.reported"), 'the page in the frame again');
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await send('Input.dispatchMouseEvent', { type, x: box.x + 20, y: box.y + 200, button: 'left', clickCount: 1 });
+    }
+    // 移った先は外枠そのもので、iframe の中に外枠は入らない
+    origins.push(await until(() => evaluate("location.pathname === '/a/no-such/' && location.pathname").catch(() => null), 'the tab to move'));
     execFileSync(process.execPath, [art, 'rm', 'leave'], { stdio: 'ignore' });
     return origins.join(' ');
   } finally {
