@@ -12,23 +12,23 @@ version = '2026.2.1.8-rabbit1'
 [[plugins]]
 id = 'cocoon'
 requested = 'latest'
-version = '0.19.0'
-checksum_amd64 = '6c7995a235c125ae2f9295d3b1a7dae47e42b5a091a23b34a9ae82058ae8928a'
-checksum_arm64 = 'f07f8d2d3bdabfcf3ca76b54af9165eb5a8a542daacb97e1112275da3568c6d7'
+version = '0.20.0'
+checksum_amd64 = '09f0dd38734a004c20c546dd02a762a15f0b704c886d6fd36cefc5e02e8425ef'
+checksum_arm64 = 'c8896ec08734f2c724856e13ac34075982fdb05293074e7924a603cef3696651'
 
 [[plugins]]
 id = 'copilot-cli'
 requested = 'latest'
-version = '1.0.89'
-checksum_amd64 = 'c5c234ccba6fae2b7a9eae462caf628e86c21b5e6240ec2e885727fc148a1dcc'
-checksum_arm64 = '8406c9e0bbfd0cb868b2a3e9488d500b76401685afdb5d71149233df1d36921b'
+version = '1.0.95'
+checksum_amd64 = 'c91a8874f3b2bdc905c2452f9d9fc923013924feb431e256eb769ff792719d7f'
+checksum_arm64 = '4cae94d3abd15699d6a479103a9a39fb3c1dcd85a6ce191882f1902340f10f44'
 
 [[plugins]]
 id = 'docker-buildx'
 requested = 'latest'
-version = '0.37.1'
-checksum_amd64 = '9447199cdb435f25880548343c128a4b6650e8891ee598905d8d29d39a8e359b'
-checksum_arm64 = 'e5cc9fe3bbff5cbc91230981f7860e06076110730a2db997082652199042a1f2'
+version = '0.38.0'
+checksum_amd64 = '4fe4cc38adf48169132749b6ca22a990928db0118e3407584ee553723115d287'
+checksum_arm64 = '38e890e1a162bfdbf32fbe91404991dc4fc28e55b0de901b34374a061bab4d2c'
 
 [[plugins]]
 id = 'gitleaks'
@@ -54,9 +54,9 @@ checksum_arm64 = '6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289a
 [[plugins]]
 id = 'rtk'
 requested = 'latest'
-version = '0.50.0'
-checksum_amd64 = 'bc2b8902b0d9c796c82ef45f16ae2307e17757afeca5ee156235a3dc7bda5f89'
-checksum_arm64 = 'd1cc49dfa2cd443fc32625444b59fe616b6c80478cca210985118347174dd758'
+version = '0.51.0'
+checksum_amd64 = '5028d3b19a8f0990d30fec9fbb07e32782bc5698e618fb1861aad8a9ccba4eb5'
+checksum_arm64 = '8d6d1aad9e69b42481eda7039507d1f7ee93698f87713cecd873d287c1931632'
 
 [[plugins]]
 id = 'shellcheck'
@@ -78,4 +78,4 @@ checksum_arm64 = 'dc30189378d2f2e287384e8a692d3f95ad1df64cf0e8c36aa9201516028aed
 [[plugins]]
 id = 'uv'
 requested = 'latest'
-version = '0.12.21'
+version = '0.13.0'
