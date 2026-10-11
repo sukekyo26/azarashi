@@ -479,6 +479,7 @@ function send(res, status, body, headers = {}) {
 
 // 外枠の中では、別のサイトへのリンクを新しいタブで開く。多くのサイトは iframe に入れられるのを拒むので、
 // 外枠の中で開くと何も表示されない。_top・_parent も sandbox が上の階層への移動を禁じていて開けない。
+// 同じサーバーの外枠の URL（/ と /a/<slug>/）へのリンクは、iframe の中に外枠を重ねて開かないよう、外枠に知らせてタブごと移らせる。
 // sandbox の中では location.origin が "null" なので、比べるのは host。
 // ページは open・URL・self などを同名のトップレベル宣言で覆えるので、覆えない window・top・location 以外は window から引く
 const LEAVE_FRAME = "if (top !== window) window.addEventListener('click', (e) => {"
@@ -486,8 +487,10 @@ const LEAVE_FRAME = "if (top !== window) window.addEventListener('click', (e) =>
   + "if (!a || e.defaultPrevented || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;"
   + "if (!['', '_self', '_parent', '_top'].includes(a.target)) return;"
   + "const u = new window.URL(a.href, location.href);"
-  + "if (!/^https?:$/.test(u.protocol) || u.host === location.host) return;"
-  + "e.preventDefault(); window.open(u.href, '_blank', 'noopener');});";
+  + "if (!/^https?:$/.test(u.protocol)) return;"
+  + "if (u.host !== location.host) { e.preventDefault(); window.open(u.href, '_blank', 'noopener'); return; }"
+  + "if (!/^\\/(a\\/[^/]+\\/?)?$/.test(u.pathname) || u.searchParams.has('raw')) return;"
+  + "e.preventDefault(); top.postMessage({ artifactOpen: u.pathname + u.search + u.hash }, location.protocol + '//' + location.host);});";
 
 // 配信時にだけ末尾へ足すスクリプト。公開し直したら（リンクはファイルを保存したら）開いているタブを再読み込みさせ、
 // 外枠の中では外部リンクを新しいタブで開く。読み込んだ版を since に埋め込むので、接続前に変わっても取りこぼさない。

@@ -566,6 +566,12 @@
   let items = [];
   // /a/<slug>/ ならページの外枠として動く（サーバーが同じ HTML を返す）
   const framed = location.pathname.match(/^\/a\/([^/]+)\/$/)?.[1];
+  // ページ内の外枠の URL へのリンクは、付加スクリプトの知らせでタブごと移る。送り手は sandbox のページなので、
+  // この iframe からの知らせで、同じ origin の外枠の URL のときだけ従う（javascript: などへは移らない）
+  if (framed) addEventListener('message', (e) => {
+    const to = e.source === $('frame').contentWindow && typeof e.data?.artifactOpen === 'string' && new URL(e.data.artifactOpen, location.origin);
+    if (to && to.origin === location.origin && /^\/(a\/[^/]+\/?)?$/.test(to.pathname) && !to.searchParams.has('raw')) location.href = to.href;
+  });
   // 保存したページ（pages）と、絶対パスで登録したリンク（links）をタブで分ける
   const inTab = (a, t = tab) => Boolean(a.path) === (t === 'links');
   // 生成元を記録する前のページ。project はディレクトリ名で / を含まないので衝突しない
