@@ -192,6 +192,7 @@ packages = [
     "bat",
     "sqlite3",
     "trivy",
+    "fonts-noto-cjk",
 ]
 
 # [apt.mirror] — 上流 apt URL を地域ミラーに書き換え。
