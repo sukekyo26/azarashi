@@ -192,6 +192,8 @@ packages = [
     "bat",
     "sqlite3",
     "trivy",
+    # google-chrome で日本語のページを描くため（無いと豆腐になる）
+    "fonts-noto-cjk",
 ]
 
 # [apt.mirror] — 上流 apt URL を地域ミラーに書き換え。
