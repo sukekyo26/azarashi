@@ -192,7 +192,6 @@ packages = [
     "bat",
     "sqlite3",
     "trivy",
-    # google-chrome で日本語のページを描くため（無いと豆腐になる）
     "fonts-noto-cjk",
 ]
 
